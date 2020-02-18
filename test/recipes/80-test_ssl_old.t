@@ -221,7 +221,10 @@ sub testss {
             SKIP: {
                 $ENV{CN2} = "ECDSA Certificate";
                 skip 'failure', 4 unless
-                    ok(run(app(["openssl", "ecparam", "-name", "P-256",
+                    ok(run(app(["openssl", "genpkey", "-genparam",
+                                "-algorithm", "EC",
+                                "-pkeyopt", "ec_paramgen_curve:P-256",
+                                "-pkeyopt", "ec_param_enc:named_curve",
                                 "-out", "ecp.ss"])),
                        "make EC parameters");
                 skip 'failure', 3 unless
@@ -546,41 +549,3 @@ sub testssl {
 	}
     };
 }
-
-unlink $CAkey;
-unlink $CAcert;
-unlink $CAserial;
-unlink $CAreq;
-unlink $CAreq2;
-
-unlink $Ukey;
-unlink $Ureq;
-unlink $Ucert;
-unlink basename($Ucert, '.ss').'.srl';
-
-unlink $Dkey;
-unlink $Dreq;
-unlink $Dcert;
-
-unlink $Ekey;
-unlink $Ereq;
-unlink $Ecert;
-
-unlink $P1key;
-unlink $P1req;
-unlink $P1cert;
-unlink basename($P1cert, '.ss').'.srl';
-unlink $P1intermediate;
-unlink "intP1.ss";
-
-unlink $P2key;
-unlink $P2req;
-unlink $P2cert;
-unlink $P2intermediate;
-unlink "intP2.ss";
-
-unlink "ecp.ss";
-unlink "err.ss";
-
-unlink $server_sess;
-unlink $client_sess;
