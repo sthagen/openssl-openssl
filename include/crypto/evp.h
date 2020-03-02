@@ -619,6 +619,9 @@ int evp_keymgmt_util_cache_keydata(EVP_PKEY *pk, size_t index,
 void evp_keymgmt_util_cache_keyinfo(EVP_PKEY *pk);
 void *evp_keymgmt_util_fromdata(EVP_PKEY *target, EVP_KEYMGMT *keymgmt,
                                 int selection, const OSSL_PARAM params[]);
+int evp_keymgmt_util_has(EVP_PKEY *pk, int selection);
+int evp_keymgmt_util_match(EVP_PKEY *pk1, EVP_PKEY *pk2, int selection);
+int evp_keymgmt_util_copy(EVP_PKEY *to, EVP_PKEY *from, int selection);
 
 
 /*
@@ -637,6 +640,9 @@ const OSSL_PARAM *evp_keymgmt_settable_params(const EVP_KEYMGMT *keymgmt);
 int evp_keymgmt_has(const EVP_KEYMGMT *keymgmt, void *keyddata, int selection);
 int evp_keymgmt_validate(const EVP_KEYMGMT *keymgmt, void *keydata,
                          int selection);
+int evp_keymgmt_match(const EVP_KEYMGMT *keymgmt,
+                      const void *keydata1, const void *keydata2,
+                      int selection);
 
 int evp_keymgmt_import(const EVP_KEYMGMT *keymgmt, void *keydata,
                        int selection, const OSSL_PARAM params[]);
@@ -646,6 +652,9 @@ int evp_keymgmt_export(const EVP_KEYMGMT *keymgmt, void *keydata,
                        int selection, OSSL_CALLBACK *param_cb, void *cbarg);
 const OSSL_PARAM *evp_keymgmt_export_types(const EVP_KEYMGMT *keymgmt,
                                            int selection);
+int evp_keymgmt_copy(const EVP_KEYMGMT *keymgmt,
+                     void *keydata_to, const void *keydata_from,
+                     int selection);
 
 /* Pulling defines out of C source files */
 

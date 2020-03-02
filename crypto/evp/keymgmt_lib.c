@@ -214,3 +214,139 @@ void *evp_keymgmt_util_fromdata(EVP_PKEY *target, EVP_KEYMGMT *keymgmt,
 
     return keydata;
 }
+
+int evp_keymgmt_util_has(EVP_PKEY *pk, int selection)
+{
+    /* Check if key is even assigned */
+    if (pk->keymgmt == NULL)
+        return 0;
+
+    return evp_keymgmt_has(pk->keymgmt, pk->keydata, selection);
+}
+
+/*
+ * evp_keymgmt_util_match() doesn't just look at the provider side "origin",
+ * but also in the operation cache to see if there's any common keymgmt that
+ * supplies OP_keymgmt_match.
+ *
+ * evp_keymgmt_util_match() adheres to the return values that EVP_PKEY_cmp()
+ * and EVP_PKEY_cmp_parameters() return, i.e.:
+ *
+ *  1   same key
+ *  0   not same key
+ * -1   not same key type
+ * -2   unsupported operation
+ */
+int evp_keymgmt_util_match(EVP_PKEY *pk1, EVP_PKEY *pk2, int selection)
+{
+    EVP_KEYMGMT *keymgmt1 = NULL, *keymgmt2 = NULL;
+    void *keydata1 = NULL, *keydata2 = NULL;
+
+    if (pk1 == NULL || pk2 == NULL) {
+        if (pk1 == NULL && pk2 == NULL)
+            return 1;
+        return 0;
+    }
+
+    keymgmt1 = pk1->keymgmt;
+    keydata1 = pk1->keydata;
+    keymgmt2 = pk2->keymgmt;
+    keydata2 = pk2->keydata;
+
+    if (keymgmt1 != keymgmt2) {
+        void *tmp_keydata = NULL;
+
+        /* Complex case, where the keymgmt differ */
+        if (keymgmt1 != NULL
+            && keymgmt2 != NULL
+            && !match_type(keymgmt1, keymgmt2)) {
+            ERR_raise(ERR_LIB_EVP, EVP_R_DIFFERENT_KEY_TYPES);
+            return -1;           /* Not the same type */
+        }
+
+        /*
+         * The key types are determined to match, so we try cross export,
+         * but only to keymgmt's that supply a matching function.
+         */
+        if (keymgmt2 != NULL
+            && keymgmt2->match != NULL) {
+            tmp_keydata = evp_keymgmt_util_export_to_provider(pk1, keymgmt2);
+            if (tmp_keydata != NULL) {
+                keymgmt1 = keymgmt2;
+                keydata1 = tmp_keydata;
+            }
+        }
+        if (tmp_keydata == NULL
+            && keymgmt1 != NULL
+            && keymgmt1->match != NULL) {
+            tmp_keydata = evp_keymgmt_util_export_to_provider(pk2, keymgmt1);
+            if (tmp_keydata != NULL) {
+                keymgmt2 = keymgmt1;
+                keydata2 = tmp_keydata;
+            }
+        }
+    }
+
+    /* If we still don't have matching keymgmt implementations, we give up */
+    if (keymgmt1 != keymgmt2)
+        return -2;
+
+    return evp_keymgmt_match(keymgmt1, keydata1, keydata2, selection);
+}
+
+int evp_keymgmt_util_copy(EVP_PKEY *to, EVP_PKEY *from, int selection)
+{
+    /* Save copies of pointers we want to play with without affecting |to| */
+    EVP_KEYMGMT *to_keymgmt = to->keymgmt;
+    void *to_keydata = to->keydata, *alloc_keydata = NULL;
+
+    /* An unassigned key can't be copied */
+    if (from == NULL || from->keymgmt == NULL)
+        return 0;
+
+    /* If |from| doesn't support copying, we fail */
+    if (from->keymgmt->copy == NULL)
+        return 0;
+
+    /* If |to| doesn't have a provider side "origin" yet, create one */
+    if (to_keymgmt == NULL) {
+        to_keydata = alloc_keydata = evp_keymgmt_newdata(from->keymgmt);
+        if (to_keydata == NULL)
+            return 0;
+        to_keymgmt = from->keymgmt;
+    }
+
+    if (to_keymgmt == from->keymgmt) {
+        /* |to| and |from| have the same keymgmt, just copy and be done */
+        if (!evp_keymgmt_copy(to_keymgmt, to_keydata, from->keydata,
+                              selection))
+            return 0;
+    } else if (match_type(to_keymgmt, from->keymgmt)) {
+        struct import_data_st import_data;
+
+        import_data.keymgmt = to_keymgmt;
+        import_data.keydata = to_keydata;
+        import_data.selection = selection;
+
+        if (!evp_keymgmt_export(from->keymgmt, from->keydata, selection,
+                                &try_import, &import_data)) {
+            evp_keymgmt_freedata(to_keymgmt, alloc_keydata);
+            return 0;
+        }
+    } else {
+        ERR_raise(ERR_LIB_EVP, EVP_R_DIFFERENT_KEY_TYPES);
+        return 0;
+    }
+
+    if (to->keymgmt == NULL
+        && !EVP_KEYMGMT_up_ref(to_keymgmt)) {
+        evp_keymgmt_freedata(to_keymgmt, alloc_keydata);
+        return 0;
+    }
+    evp_keymgmt_util_clear_operation_cache(to);
+    to->keymgmt = to_keymgmt;
+    to->keydata = to_keydata;
+    evp_keymgmt_util_cache_keyinfo(to);
+
+    return 1;
+}
