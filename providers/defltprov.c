@@ -385,6 +385,10 @@ static const OSSL_ALGORITHM deflt_signature[] = {
     { "DSA:dsaEncryption", "provider=default", dsa_signature_functions },
 #endif
     { "RSA:rsaEncryption", "provider=default", rsa_signature_functions },
+#ifndef OPENSSL_NO_EC
+    { "ED25519:Ed25519", "provider=default", ed25519_signature_functions },
+    { "ED448:Ed448", "provider=default", ed448_signature_functions },
+#endif
     { NULL, NULL, NULL }
 };
 
@@ -405,6 +409,8 @@ static const OSSL_ALGORITHM deflt_keymgmt[] = {
     { "EC:id-ecPublicKey", "provider=default", ec_keymgmt_functions },
     { "X25519", "provider=default", x25519_keymgmt_functions },
     { "X448", "provider=default", x448_keymgmt_functions },
+    { "ED25519", "provider=default", ed25519_keymgmt_functions },
+    { "ED448", "provider=default", ed448_keymgmt_functions },
 #endif
     { NULL, NULL, NULL }
 };
