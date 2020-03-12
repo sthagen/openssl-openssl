@@ -121,13 +121,13 @@ static void select_serializer(const char *name, void *data)
         return;
 
     if ((s = OSSL_SERIALIZER_fetch(d->libctx, name, d->propquery)) != NULL) {
-        if (d->first == NULL && s->serialize_data != NULL) {
-            d->first = s;
-        } else if (OSSL_SERIALIZER_provider(s) == d->desired_provider
-                   && s->serialize_object != NULL) {
+        if (OSSL_SERIALIZER_provider(s) == d->desired_provider
+                && s->serialize_object != NULL) {
             OSSL_SERIALIZER_free(d->first);
             d->first = NULL;
             d->desired = s;
+        } else if (d->first == NULL && s->serialize_data != NULL) {
+            d->first = s;
         } else {
             OSSL_SERIALIZER_free(s);
         }
@@ -338,12 +338,14 @@ OSSL_SERIALIZER_CTX *OSSL_SERIALIZER_CTX_new_by_EVP_PKEY(const EVP_PKEY *pkey,
         OSSL_SERIALIZER_free(sel_data.first);
         OSSL_SERIALIZER_free(sel_data.desired);
 
-        current_props =
-            ossl_parse_property(libctx, OSSL_SERIALIZER_properties(ser));
-        if (ossl_property_match_count(check, current_props) > 0)
-            selection = OSSL_KEYMGMT_SELECT_ALL_PARAMETERS;
+        if (ser != NULL) {
+            current_props =
+                ossl_parse_property(libctx, OSSL_SERIALIZER_properties(ser));
+            if (ossl_property_match_count(check, current_props) > 0)
+                selection = OSSL_KEYMGMT_SELECT_ALL_PARAMETERS;
+            ossl_property_free(current_props);
+        }
 
-        ossl_property_free(current_props);
         ossl_property_free(check);
     }
 
