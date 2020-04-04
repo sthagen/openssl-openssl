@@ -2152,9 +2152,10 @@ static int tls_process_ske_dhe(SSL *s, PACKET *pkt, EVP_PKEY **pkey)
                  ERR_R_EVP_LIB);
         goto err;
     }
+    dh = NULL;
 
     if (!ssl_security(s, SSL_SECOP_TMP_DH, EVP_PKEY_security_bits(peer_tmp),
-                      0, dh)) {
+                      0, EVP_PKEY_get0_DH(peer_tmp))) {
         SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE, SSL_F_TLS_PROCESS_SKE_DHE,
                  SSL_R_DH_KEY_TOO_SMALL);
         goto err;
@@ -2361,7 +2362,9 @@ MSG_PROCESS_RETURN tls_process_key_exchange(SSL *s, PACKET *pkt)
             goto err;
         }
 
-        if (EVP_DigestVerifyInit(md_ctx, &pctx, md, NULL, pkey) <= 0) {
+        if (EVP_DigestVerifyInit_ex(md_ctx, &pctx,
+                                    md == NULL ? NULL : EVP_MD_name(md),
+                                    s->ctx->propq, pkey, s->ctx->libctx) <= 0) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PROCESS_KEY_EXCHANGE,
                      ERR_R_EVP_LIB);
             goto err;
