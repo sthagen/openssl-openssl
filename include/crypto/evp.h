@@ -557,6 +557,9 @@ struct evp_pkey_st {
     CRYPTO_RWLOCK *lock;
     STACK_OF(X509_ATTRIBUTE) *attributes; /* [ 0 ] */
     int save_parameters;
+#ifndef FIPS_MODE
+    CRYPTO_EX_DATA ex_data;
+#endif
 
     /* == Provider attributes == */
 
@@ -673,6 +676,10 @@ int evp_keymgmt_gen_set_params(const EVP_KEYMGMT *keymgmt, void *genctx,
                                const OSSL_PARAM params[]);
 const OSSL_PARAM *
 evp_keymgmt_gen_settable_params(const EVP_KEYMGMT *keymgmt);
+int evp_keymgmt_gen_get_params(const EVP_KEYMGMT *keymgmt, void *genctx,
+                               OSSL_PARAM params[]);
+const OSSL_PARAM *
+evp_keymgmt_gen_gettable_params(const EVP_KEYMGMT *keymgmt);
 void *evp_keymgmt_gen(const EVP_KEYMGMT *keymgmt, void *genctx,
                       OSSL_CALLBACK *cb, void *cbarg);
 void evp_keymgmt_gen_cleanup(const EVP_KEYMGMT *keymgmt, void *genctx);
@@ -729,4 +736,7 @@ const EVP_MD *evp_get_digestbyname_ex(OPENSSL_CTX *libctx, const char *name);
  */
 int evp_pkey_ctx_set_params_strict(EVP_PKEY_CTX *ctx, OSSL_PARAM *params);
 int evp_pkey_ctx_get_params_strict(EVP_PKEY_CTX *ctx, OSSL_PARAM *params);
+
+EVP_PKEY *evp_pkcs82pkey_int(const PKCS8_PRIV_KEY_INFO *p8, OPENSSL_CTX *libctx,
+                             const char *propq);
 #endif /* !defined(FIPS_MODE) */

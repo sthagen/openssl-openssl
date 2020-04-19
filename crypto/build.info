@@ -71,7 +71,7 @@ $UTIL_COMMON=\
         cryptlib.c params.c params_from_text.c bsearch.c ex_data.c o_str.c \
         ctype.c threads_pthread.c threads_win.c threads_none.c initthread.c \
         context.c sparse_array.c asn1_dsa.c packet.c param_build.c $CPUIDASM \
-        param_build_set.c
+        param_build_set.c der_writer.c
 $UTIL_DEFINE=$CPUIDDEF
 
 SOURCE[../libcrypto]=$UTIL_COMMON \
@@ -80,6 +80,7 @@ SOURCE[../libcrypto]=$UTIL_COMMON \
         o_fopen.c getenv.c o_init.c o_fips.c init.c trace.c provider.c \
         $UPLINKSRC
 SOURCE[../providers/libfips.a]=$UTIL_COMMON
+SOURCE[../providers/liblegacy.a]=$UTIL_COMMON
 
 # Implementations are now spread across several libraries, so the defines
 # need to be applied to all affected libraries and modules.
@@ -87,6 +88,7 @@ DEFINE[../libcrypto]=$UTIL_DEFINE $UPLINKDEF
 DEFINE[../providers/libfips.a]=$UTIL_DEFINE
 DEFINE[../providers/fips]=$UTIL_DEFINE
 DEFINE[../providers/libimplementations.a]=$UTIL_DEFINE
+DEFINE[../providers/liblegacy.a]=$UTIL_DEFINE
 DEFINE[../providers/libcommon.a]=$UTIL_DEFINE
 
 DEPEND[info.o]=buildinf.h

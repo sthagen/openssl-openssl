@@ -14,6 +14,7 @@
 #include "../ssl_local.h"
 #include "statem_local.h"
 #include "internal/cryptlib.h"
+#include "internal/evp.h"
 #include <openssl/buffer.h>
 #include <openssl/objects.h>
 #include <openssl/evp.h>
@@ -957,7 +958,8 @@ static int ssl_add_cert_chain(SSL *s, WPACKET *pkt, CERT_PKEY *cpk)
         chain_store = s->ctx->cert_store;
 
     if (chain_store != NULL) {
-        X509_STORE_CTX *xs_ctx = X509_STORE_CTX_new();
+        X509_STORE_CTX *xs_ctx = X509_STORE_CTX_new_with_libctx(s->ctx->libctx,
+                                                                s->ctx->propq);
 
         if (xs_ctx == NULL) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_ADD_CERT_CHAIN,
@@ -1531,7 +1533,6 @@ static int is_tls13_capable(const SSL *s)
     int i;
 #ifndef OPENSSL_NO_EC
     int curve;
-    EC_KEY *eckey;
 #endif
 
 #ifndef OPENSSL_NO_PSK
@@ -1563,10 +1564,8 @@ static int is_tls13_capable(const SSL *s)
          * more restrictive so check that our sig algs are consistent with this
          * EC cert. See section 4.2.3 of RFC8446.
          */
-        eckey = EVP_PKEY_get0_EC_KEY(s->cert->pkeys[SSL_PKEY_ECC].privatekey);
-        if (eckey == NULL)
-            continue;
-        curve = EC_GROUP_get_curve_name(EC_KEY_get0_group(eckey));
+        curve = evp_pkey_get_EC_KEY_curve_nid(s->cert->pkeys[SSL_PKEY_ECC]
+                                              .privatekey);
         if (tls_check_sigalg_curve(s, curve))
             return 1;
 #else

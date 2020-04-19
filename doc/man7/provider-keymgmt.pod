@@ -22,6 +22,8 @@ provider-keymgmt - The KEYMGMT library E<lt>-E<gt> provider functions
  int OP_keymgmt_gen_set_template(void *genctx, void *template);
  int OP_keymgmt_gen_set_params(void *genctx, const OSSL_PARAM params[]);
  const OSSL_PARAM *OP_keymgmt_gen_settable_params(void *provctx);
+ int OP_keymgmt_gen_get_params(void *genctx, const OSSL_PARAM params[]);
+ const OSSL_PARAM *OP_keymgmt_gen_gettable_params(void *provctx);
  void *OP_keymgmt_gen(void *genctx, OSSL_CALLBACK *cb, void *cbarg);
  void OP_keymgmt_gen_cleanup(void *genctx);
 
@@ -91,6 +93,8 @@ macros in L<openssl-core_numbers.h(7)>, as follows:
  OP_keymgmt_gen_set_template     OSSL_FUNC_KEYMGMT_GEN_SET_TEMPLATE
  OP_keymgmt_gen_set_params       OSSL_FUNC_KEYMGMT_GEN_SET_PARAMS
  OP_keymgmt_gen_settable_params  OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS
+ OP_keymgmt_gen_get_params       OSSL_FUNC_KEYMGMT_GEN_GET_PARAMS
+ OP_keymgmt_gen_gettable_params  OSSL_FUNC_KEYMGMT_GEN_GETTABLE_PARAMS
  OP_keymgmt_gen                  OSSL_FUNC_KEYMGMT_GEN
  OP_keymgmt_gen_cleanup          OSSL_FUNC_KEYMGMT_GEN_CLEANUP
 
@@ -209,6 +213,7 @@ OP_keymgmt_free() should free the passed I<keydata>.
 
 OP_keymgmt_gen_init(), OP_keymgmt_gen_set_template(),
 OP_keymgmt_gen_set_params(), OP_keymgmt_gen_settable_params(),
+OP_keymgmt_gen_get_params(), OP_keymgmt_gen_gettable_params(),
 OP_keymgmt_gen() and OP_keymgmt_gen_cleanup() work together as a more
 elaborate context based key object constructor.
 
@@ -228,6 +233,13 @@ I<params> in the key object generation context I<genctx>.
 
 OP_keymgmt_gen_settable_params() should return a constant array of
 descriptor B<OSSL_PARAM>, for parameters that OP_keymgmt_gen_set_params() 
+can handle.
+
+OP_keymgmt_gen_get_params() should extract information data associated
+with the key object generation context I<genctx>.
+
+OP_keymgmt_gen_gettable_params() should return a constant array of
+descriptor B<OSSL_PARAM>, for parameters that OP_keymgmt_gen_get_params() 
 can handle.
 
 OP_keymgmt_gen() should perform the key object generation itself, and
@@ -315,6 +327,56 @@ OP_keymgmt_copy() should copy data subsets indicated by I<selection>
 from I<keydata_from> to I<keydata_to>.  It is assumed that the caller
 has ensured that I<keydata_to> and I<keydata_from> are both owned by
 the implementation of this function.
+
+=head2 Built-in DSA Key Generation Types
+
+The following Key Generation types are available for the built-in DSA algorithm:
+
+=over 4
+
+=item "pbits" (B<OSSL_PKEY_PARAM_FFC_PBITS>) <unsigned integer>
+
+Sets the DSA size (in bits) of the prime 'p'.
+The value should be 2048 or 3072.
+
+=item "qbits" (B<OSSL_PKEY_PARAM_FFC_QBITS>) <unsigned integer>
+
+Sets the DSA size (in bits) of the prime 'q'.
+The value should be 224 or 256.
+
+=item "type" (B<OSSL_PKEY_PARAM_FFC_TYPE>) <integer>
+
+Sets the type of parameter generation.
+Use 0 for FIPS186-4,  or 1 for legacy FIPS186-2.
+The default is 0.
+
+=item "digest" (B<OSSL_PKEY_PARAM_FFC_DIGEST>)  <utf8_string>
+
+Sets the Digest algorithm to be used as part of the Key Generation Function
+associated with the given Key Generation I<ctx>.
+
+=item "properties" (B<OSSL_PKEY_PARAM_FFC_DIGEST_PROPS>) <utf8_string>
+
+Sets properties to be used upon look up of the implementation for the selected
+Digest algorithm for the Key Generation Function associated with the given key
+Generation I<ctx>.
+
+=item "gindex" (B<OSSL_PKEY_PARAM_FFC_GINDEX>) <integer>
+
+Sets the index to use for canonical generation and verification of the generator g.
+Set this to a positive value to use this mode. This I<index> can then be reused
+during key validation to verify the value of g. If this value is not set then
+g is not verifiable. The default value is -1.
+
+=item "seed" (B<OSSL_PKEY_PARAM_FFC_SEED>) <octet_string>
+
+Sets the I<seed> data to use instead of generating a random seed internally.
+This should be used for testing purposes only. This will either produced fixed
+values for the generated parameters OR it will fail if the seed did not
+generate valid primes.
+
+=back
+
 
 =head2 Built-in RSA Import/Export Types
 

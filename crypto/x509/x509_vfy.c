@@ -104,11 +104,12 @@ static int null_callback(int ok, X509_STORE_CTX *e)
     return ok;
 }
 
-/* Return 1 is a certificate is self signed */
-static int cert_self_signed(X509 *x)
+/* Return 1 is a certificate is self signed, 0 if not, or -1 on error */
+static int cert_self_signed(X509_STORE_CTX *ctx, X509 *x)
 {
-    if (X509_check_purpose(x, -1, 0) != 1)
-        return 0;
+    if (!X509v3_cache_extensions(x, ctx->libctx, ctx->propq))
+        return -1;
+
     if (x->ex_flags & EXFLAG_SS)
         return 1;
     else
@@ -324,14 +325,26 @@ static X509 *find_issuer(X509_STORE_CTX *ctx, STACK_OF(X509) *sk, X509 *x)
 static int check_issued(X509_STORE_CTX *ctx, X509 *x, X509 *issuer)
 {
     int ret;
-    if (x == issuer)
-        return cert_self_signed(x);
-    ret = X509_check_issued(issuer, x);
+    int ss;
+
+    if (x == issuer) {
+        ss = cert_self_signed(ctx, x);
+        if (ss < 0)
+            return 0;
+        return ss;
+    }
+
+    ret = x509_check_issued_int(issuer, x, ctx->libctx, ctx->propq);
     if (ret == X509_V_OK) {
         int i;
         X509 *ch;
+
+        ss = cert_self_signed(ctx, x);
+        if (ss < 0)
+            return 0;
+
         /* Special case: single self signed certificate */
-        if (cert_self_signed(x) && sk_X509_num(ctx->chain) == 1)
+        if (ss > 0 && sk_X509_num(ctx->chain) == 1)
             return 1;
         for (i = 0; i < sk_X509_num(ctx->chain); i++) {
             ch = sk_X509_value(ctx->chain, i);
@@ -508,6 +521,12 @@ static int check_chain_extensions(X509_STORE_CTX *ctx)
             } else
                 ret = 1;
             break;
+        }
+        if ((x->ex_flags & EXFLAG_CA) == 0
+            && x->ex_pathlen != -1
+            && (ctx->param->flags & X509_V_FLAG_X509_STRICT)) {
+            ctx->error = X509_V_ERR_INVALID_EXTENSION;
+            ret = 0;
         }
         if (ret == 0 && !verify_cb_cert(ctx, x, i, X509_V_OK))
             return 0;
@@ -1744,7 +1763,7 @@ static int internal_verify(X509_STORE_CTX *ctx)
                 if (!verify_cb_cert(ctx, xi, xi != xs ? n+1 : n,
                         X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY))
                     return 0;
-            } else if (X509_verify(xs, pkey) <= 0) {
+            } else if (X509_verify_ex(xs, pkey, ctx->libctx, ctx->propq) <= 0) {
                 if (!verify_cb_cert(ctx, xs, n,
                                     X509_V_ERR_CERT_SIGNATURE_FAILURE))
                     return 0;
@@ -2202,16 +2221,34 @@ int X509_STORE_CTX_purpose_inherit(X509_STORE_CTX *ctx, int def_purpose,
     return 1;
 }
 
-X509_STORE_CTX *X509_STORE_CTX_new(void)
+X509_STORE_CTX *X509_STORE_CTX_new_with_libctx(OPENSSL_CTX *libctx,
+                                               const char *propq)
 {
     X509_STORE_CTX *ctx = OPENSSL_zalloc(sizeof(*ctx));
 
     if (ctx == NULL) {
-        X509err(X509_F_X509_STORE_CTX_NEW, ERR_R_MALLOC_FAILURE);
+        X509err(0, ERR_R_MALLOC_FAILURE);
         return NULL;
     }
+
+    ctx->libctx = libctx;
+    if (propq != NULL) {
+        ctx->propq = OPENSSL_strdup(propq);
+        if (ctx->propq == NULL) {
+            OPENSSL_free(ctx);
+            X509err(0, ERR_R_MALLOC_FAILURE);
+            return NULL;
+        }
+    }
+
     return ctx;
 }
+
+X509_STORE_CTX *X509_STORE_CTX_new(void)
+{
+    return X509_STORE_CTX_new_with_libctx(NULL, NULL);
+}
+
 
 void X509_STORE_CTX_free(X509_STORE_CTX *ctx)
 {
@@ -2219,6 +2256,10 @@ void X509_STORE_CTX_free(X509_STORE_CTX *ctx)
         return;
 
     X509_STORE_CTX_cleanup(ctx);
+
+    /* libctx and propq survive X509_STORE_CTX_cleanup() */
+    OPENSSL_free(ctx->propq);
+
     OPENSSL_free(ctx);
 }
 
@@ -2768,7 +2809,7 @@ static int check_dane_pkeys(X509_STORE_CTX *ctx)
         if (t->usage != DANETLS_USAGE_DANE_TA ||
             t->selector != DANETLS_SELECTOR_SPKI ||
             t->mtype != DANETLS_MATCHING_FULL ||
-            X509_verify(cert, t->spki) <= 0)
+            X509_verify_ex(cert, t->spki, ctx->libctx, ctx->propq) <= 0)
             continue;
 
         /* Clear any PKIX-?? matches that failed to extend to a full chain */
@@ -2892,7 +2933,7 @@ static int build_chain(X509_STORE_CTX *ctx)
     SSL_DANE *dane = ctx->dane;
     int num = sk_X509_num(ctx->chain);
     X509 *cert = sk_X509_value(ctx->chain, num - 1);
-    int ss = cert_self_signed(cert);
+    int ss;
     STACK_OF(X509) *sktmp = NULL;
     unsigned int search;
     int may_trusted = 0;
@@ -2905,6 +2946,13 @@ static int build_chain(X509_STORE_CTX *ctx)
 
     /* Our chain starts with a single untrusted element. */
     if (!ossl_assert(num == 1 && ctx->num_untrusted == num))  {
+        X509err(X509_F_BUILD_CHAIN, ERR_R_INTERNAL_ERROR);
+        ctx->error = X509_V_ERR_UNSPECIFIED;
+        return 0;
+    }
+
+    ss = cert_self_signed(ctx, cert);
+    if (ss < 0) {
         X509err(X509_F_BUILD_CHAIN, ERR_R_INTERNAL_ERROR);
         ctx->error = X509_V_ERR_UNSPECIFIED;
         return 0;
@@ -3082,7 +3130,12 @@ static int build_chain(X509_STORE_CTX *ctx)
                         search = 0;
                         continue;
                     }
-                    ss = cert_self_signed(x);
+                    ss = cert_self_signed(ctx, x);
+                    if (ss < 0) {
+                        X509err(X509_F_BUILD_CHAIN, ERR_R_INTERNAL_ERROR);
+                        ctx->error = X509_V_ERR_UNSPECIFIED;
+                        return 0;
+                    }
                 } else if (num == ctx->num_untrusted) {
                     /*
                      * We have a self-signed certificate that has the same
@@ -3194,7 +3247,12 @@ static int build_chain(X509_STORE_CTX *ctx)
 
             X509_up_ref(x = xtmp);
             ++ctx->num_untrusted;
-            ss = cert_self_signed(xtmp);
+            ss = cert_self_signed(ctx, xtmp);
+            if (ss < 0) {
+                X509err(X509_F_BUILD_CHAIN, ERR_R_INTERNAL_ERROR);
+                ctx->error = X509_V_ERR_UNSPECIFIED;
+                return 0;
+            }
 
             /*
              * Check for DANE-TA trust of the topmost untrusted certificate.

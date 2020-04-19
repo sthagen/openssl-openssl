@@ -1760,6 +1760,7 @@ typedef struct sigalg_lookup_st {
 
 typedef struct tls_group_info_st {
     int nid;                    /* Curve NID */
+    const char *keytype;
     int secbits;                /* Bits of security (from SP800-57) */
     uint32_t flags;             /* For group type and applicable TLS versions */
     uint16_t group_id;          /* Group ID */
@@ -2127,6 +2128,8 @@ typedef enum downgrade_en {
 #define TLSEXT_SIGALG_dsa_sha512                                0x0602
 #define TLSEXT_SIGALG_dsa_sha224                                0x0302
 #define TLSEXT_SIGALG_dsa_sha1                                  0x0202
+#define TLSEXT_SIGALG_gostr34102012_256_intrinsic               0x0840
+#define TLSEXT_SIGALG_gostr34102012_512_intrinsic               0x0841
 #define TLSEXT_SIGALG_gostr34102012_256_gostr34112012_256       0xeeee
 #define TLSEXT_SIGALG_gostr34102012_512_gostr34112012_512       0xefef
 #define TLSEXT_SIGALG_gostr34102001_gostr3411                   0xeded

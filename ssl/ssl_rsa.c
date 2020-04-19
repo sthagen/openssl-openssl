@@ -264,12 +264,15 @@ int SSL_use_PrivateKey_file(SSL *ssl, const char *file, int type)
     }
     if (type == SSL_FILETYPE_PEM) {
         j = ERR_R_PEM_LIB;
-        pkey = PEM_read_bio_PrivateKey(in, NULL,
-                                       ssl->default_passwd_callback,
-                                       ssl->default_passwd_callback_userdata);
+        pkey = PEM_read_bio_PrivateKey_ex(in, NULL,
+                                          ssl->default_passwd_callback,
+                                          ssl->default_passwd_callback_userdata,
+                                          ssl->ctx->libctx,
+                                          ssl->ctx->propq);
     } else if (type == SSL_FILETYPE_ASN1) {
         j = ERR_R_ASN1_LIB;
-        pkey = d2i_PrivateKey_bio(in, NULL);
+        pkey = d2i_PrivateKey_ex_bio(in, NULL, ssl->ctx->libctx,
+                                     ssl->ctx->propq);
     } else {
         SSLerr(SSL_F_SSL_USE_PRIVATEKEY_FILE, SSL_R_BAD_SSL_FILETYPE);
         goto end;
@@ -293,7 +296,8 @@ int SSL_use_PrivateKey_ASN1(int type, SSL *ssl, const unsigned char *d,
     EVP_PKEY *pkey;
 
     p = d;
-    if ((pkey = d2i_PrivateKey(type, NULL, &p, (long)len)) == NULL) {
+    if ((pkey = d2i_PrivateKey_ex(type, NULL, &p, (long)len, ssl->ctx->libctx,
+                                  ssl->ctx->propq)) == NULL) {
         SSLerr(SSL_F_SSL_USE_PRIVATEKEY_ASN1, ERR_R_ASN1_LIB);
         return 0;
     }
@@ -338,7 +342,7 @@ static int ssl_set_cert(CERT *c, X509 *x)
         return 0;
     }
 #ifndef OPENSSL_NO_EC
-    if (i == SSL_PKEY_ECC && !EC_KEY_can_sign(EVP_PKEY_get0_EC_KEY(pkey))) {
+    if (i == SSL_PKEY_ECC && !EVP_PKEY_can_sign(pkey)) {
         SSLerr(SSL_F_SSL_SET_CERT, SSL_R_ECC_CERT_NOT_FOR_SIGNING);
         return 0;
     }
@@ -551,12 +555,13 @@ int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type)
     }
     if (type == SSL_FILETYPE_PEM) {
         j = ERR_R_PEM_LIB;
-        pkey = PEM_read_bio_PrivateKey(in, NULL,
+        pkey = PEM_read_bio_PrivateKey_ex(in, NULL,
                                        ctx->default_passwd_callback,
-                                       ctx->default_passwd_callback_userdata);
+                                       ctx->default_passwd_callback_userdata,
+                                       ctx->libctx, ctx->propq);
     } else if (type == SSL_FILETYPE_ASN1) {
         j = ERR_R_ASN1_LIB;
-        pkey = d2i_PrivateKey_bio(in, NULL);
+        pkey = d2i_PrivateKey_ex_bio(in, NULL, ctx->libctx, ctx->propq);
     } else {
         SSLerr(SSL_F_SSL_CTX_USE_PRIVATEKEY_FILE, SSL_R_BAD_SSL_FILETYPE);
         goto end;
@@ -580,7 +585,8 @@ int SSL_CTX_use_PrivateKey_ASN1(int type, SSL_CTX *ctx,
     EVP_PKEY *pkey;
 
     p = d;
-    if ((pkey = d2i_PrivateKey(type, NULL, &p, (long)len)) == NULL) {
+    if ((pkey = d2i_PrivateKey_ex(type, NULL, &p, (long)len, ctx->libctx,
+                                  ctx->propq)) == NULL) {
         SSLerr(SSL_F_SSL_CTX_USE_PRIVATEKEY_ASN1, ERR_R_ASN1_LIB);
         return 0;
     }
@@ -1055,8 +1061,14 @@ static int ssl_set_cert_and_key(SSL *ssl, SSL_CTX *ctx, X509 *x509, EVP_PKEY *pr
     int j;
     int rv;
     CERT *c = ssl != NULL ? ssl->cert : ctx->cert;
+    SSL_CTX *actualctx = ssl == NULL ? ctx : ssl->ctx;
     STACK_OF(X509) *dup_chain = NULL;
     EVP_PKEY *pubkey = NULL;
+
+    if (!X509v3_cache_extensions(x509, actualctx->libctx, actualctx->propq)) {
+        SSLerr(0, ERR_R_X509_LIB);
+        goto out;
+    }
 
     /* Do all security checks before anything else */
     rv = ssl_security_cert(ssl, ctx, x509, 0, 1);

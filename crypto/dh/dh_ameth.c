@@ -24,7 +24,7 @@
 #include "crypto/evp.h"
 #include <openssl/cms.h>
 #include <openssl/core_names.h>
-#include "openssl/param_build.h"
+#include <openssl/param_build.h>
 #include "internal/ffc.h"
 
 /*
@@ -491,7 +491,8 @@ static size_t dh_pkey_dirty_cnt(const EVP_PKEY *pkey)
 }
 
 static int dh_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
-                             EVP_KEYMGMT *to_keymgmt)
+                             EVP_KEYMGMT *to_keymgmt, OPENSSL_CTX *libctx,
+                             const char *propq)
 {
     DH *dh = from->pkey.dh;
     OSSL_PARAM_BLD *tmpl;
@@ -547,17 +548,18 @@ err:
     return rv;
 }
 
-static int dh_pkey_import_from(const OSSL_PARAM params[], void *key)
+static int dh_pkey_import_from(const OSSL_PARAM params[], void *vpctx)
 {
-    EVP_PKEY *pkey = key;
-    DH *dh = DH_new();
+    EVP_PKEY_CTX *pctx = vpctx;
+    EVP_PKEY *pkey = EVP_PKEY_CTX_get0_pkey(pctx);
+    DH *dh = dh_new_with_libctx(pctx->libctx);
 
     if (dh == NULL) {
         ERR_raise(ERR_LIB_DH, ERR_R_MALLOC_FAILURE);
         return 0;
     }
 
-    if (!ffc_fromdata(dh_get0_params(dh), params)
+    if (!ffc_params_fromdata(dh_get0_params(dh), params)
         || !dh_key_fromdata(dh, params)
         || !EVP_PKEY_assign_DH(pkey, dh)) {
         DH_free(dh);

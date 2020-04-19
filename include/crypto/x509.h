@@ -262,6 +262,9 @@ struct x509_store_ctx_st {      /* X509_STORE_CTX */
     SSL_DANE *dane;
     /* signed via bare TA public key, rather than CA certificate */
     int bare_ta_signed;
+
+    OPENSSL_CTX *libctx;
+    char *propq;
 };
 
 /* PKCS#8 private key info structure */
@@ -294,3 +297,7 @@ int x509_set1_time(ASN1_TIME **ptm, const ASN1_TIME *tm);
 int x509_print_ex_brief(BIO *bio, X509 *cert, unsigned long neg_cflags);
 
 void x509_init_sig_info(X509 *x);
+
+
+int x509_check_issued_int(X509 *issuer, X509 *subject, OPENSSL_CTX *libctx,
+                          const char *propq);

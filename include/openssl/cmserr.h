@@ -12,11 +12,6 @@
 # define OPENSSL_CMSERR_H
 # pragma once
 
-# include <openssl/macros.h>
-# ifndef OPENSSL_NO_DEPRECATED_3_0
-#  define HEADER_CMSERR_H
-# endif
-
 # include <openssl/opensslconf.h>
 # include <openssl/symhacks.h>
 
@@ -87,6 +82,7 @@ int ERR_load_CMS_strings(void);
 #   define CMS_F_CMS_RECEIPT_VERIFY                         0
 #   define CMS_F_CMS_RECIPIENTINFO_DECRYPT                  0
 #   define CMS_F_CMS_RECIPIENTINFO_ENCRYPT                  0
+#   define CMS_F_CMS_RECIPIENTINFO_KARI_DECRYPT             0
 #   define CMS_F_CMS_RECIPIENTINFO_KARI_ENCRYPT             0
 #   define CMS_F_CMS_RECIPIENTINFO_KARI_GET0_ALG            0
 #   define CMS_F_CMS_RECIPIENTINFO_KARI_GET0_ORIG_ID        0

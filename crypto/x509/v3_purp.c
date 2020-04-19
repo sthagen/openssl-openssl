@@ -385,12 +385,16 @@ int X509v3_cache_extensions(X509 *x, OPENSSL_CTX *libctx, const char *propq)
         if (bs->ca)
             x->ex_flags |= EXFLAG_CA;
         if (bs->pathlen) {
-            if ((bs->pathlen->type == V_ASN1_NEG_INTEGER)
-                || !bs->ca) {
+            if (bs->pathlen->type == V_ASN1_NEG_INTEGER) {
                 x->ex_flags |= EXFLAG_INVALID;
                 x->ex_pathlen = 0;
-            } else
+            } else {
                 x->ex_pathlen = ASN1_INTEGER_get(bs->pathlen);
+                if (!bs->ca && x->ex_pathlen != 0) {
+                    x->ex_flags |= EXFLAG_INVALID;
+                    x->ex_pathlen = 0;
+                }
+            }
         } else
             x->ex_pathlen = -1;
         BASIC_CONSTRAINTS_free(bs);
@@ -548,9 +552,11 @@ int X509v3_cache_extensions(X509 *x, OPENSSL_CTX *libctx, const char *propq)
  * return codes:
  * 0 not a CA
  * 1 is a CA
- * 2 basicConstraints absent so "maybe" a CA
+ * 2 Only possible in older versions of openSSL when basicConstraints are absent
+ *   new versions will not return this value. May be a CA
  * 3 basicConstraints absent but self signed V1.
  * 4 basicConstraints absent but keyUsage present and keyCertSign asserted.
+ * 5 Netscape specific CA Flags present
  */
 
 static int check_ca(const X509 *x)
@@ -805,14 +811,15 @@ static int no_check(const X509_PURPOSE *xp, const X509 *x, int ca)
  * codes for X509_verify_cert()
  */
 
-int X509_check_issued(X509 *issuer, X509 *subject)
+int x509_check_issued_int(X509 *issuer, X509 *subject, OPENSSL_CTX *libctx,
+                          const char *propq)
 {
     if (X509_NAME_cmp(X509_get_subject_name(issuer),
                       X509_get_issuer_name(subject)))
         return X509_V_ERR_SUBJECT_ISSUER_MISMATCH;
 
-    if (!X509v3_cache_extensions(issuer, NULL, NULL)
-            || !X509v3_cache_extensions(subject, NULL, NULL))
+    if (!X509v3_cache_extensions(issuer, libctx, propq)
+            || !X509v3_cache_extensions(subject, libctx, propq))
         return X509_V_ERR_UNSPECIFIED;
 
     if (subject->akid) {
@@ -845,6 +852,11 @@ int X509_check_issued(X509 *issuer, X509 *subject)
     } else if (ku_reject(issuer, KU_KEY_CERT_SIGN))
         return X509_V_ERR_KEYUSAGE_NO_CERTSIGN;
     return X509_V_OK;
+}
+
+int X509_check_issued(X509 *issuer, X509 *subject)
+{
+    return x509_check_issued_int(issuer, subject, NULL, NULL);
 }
 
 int X509_check_akid(X509 *issuer, AUTHORITY_KEYID *akid)

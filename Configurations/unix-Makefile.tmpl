@@ -983,6 +983,7 @@ generate_crypto_objects:
 				crypto/objects/obj_mac.num \
 				crypto/objects/obj_xref.txt \
 				> crypto/objects/obj_xref.h )
+	( cd $(SRCDIR);	cat crypto/objects/obj_compat.h >> include/openssl/obj_mac.h )
 
 generate_crypto_conf:
 	( cd $(SRCDIR); $(PERL) crypto/conf/keysets.pl \
@@ -1025,6 +1026,7 @@ errors:
        qw( include/internal/dso.h
            include/internal/o_dir.h
            include/internal/err.h
+           include/internal/evp.h
            include/internal/sslconf.h );
    our @cryptoskipheaders = ( @sslheaders,
        qw( include/openssl/conf_api.h

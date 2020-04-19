@@ -291,6 +291,7 @@ CMS_F_CMS_RECEIPTREQUEST_CREATE0:159:CMS_ReceiptRequest_create0
 CMS_F_CMS_RECEIPT_VERIFY:160:cms_Receipt_verify
 CMS_F_CMS_RECIPIENTINFO_DECRYPT:134:CMS_RecipientInfo_decrypt
 CMS_F_CMS_RECIPIENTINFO_ENCRYPT:169:CMS_RecipientInfo_encrypt
+CMS_F_CMS_RECIPIENTINFO_KARI_DECRYPT:188:
 CMS_F_CMS_RECIPIENTINFO_KARI_ENCRYPT:178:cms_RecipientInfo_kari_encrypt
 CMS_F_CMS_RECIPIENTINFO_KARI_GET0_ALG:175:CMS_RecipientInfo_kari_get0_alg
 CMS_F_CMS_RECIPIENTINFO_KARI_GET0_ORIG_ID:173:\
@@ -2088,6 +2089,7 @@ CMP_R_CERTREQMSG_NOT_FOUND:157:certreqmsg not found
 CMP_R_CERTRESPONSE_NOT_FOUND:113:certresponse not found
 CMP_R_CERT_AND_KEY_DO_NOT_MATCH:114:cert and key do not match
 CMP_R_CHECKAFTER_OUT_OF_RANGE:181:checkafter out of range
+CMP_R_CHECKING_PBM_NO_SECRET_AVAILABLE:166:checking pbm no secret available
 CMP_R_ENCOUNTERED_KEYUPDATEWARNING:176:encountered keyupdatewarning
 CMP_R_ENCOUNTERED_WAITING:162:encountered waiting
 CMP_R_ERROR_CALCULATING_PROTECTION:115:error calculating protection
@@ -2120,6 +2122,7 @@ CMP_R_MISSING_KEY_INPUT_FOR_CREATING_PROTECTION:130:\
 CMP_R_MISSING_KEY_USAGE_DIGITALSIGNATURE:142:missing key usage digitalsignature
 CMP_R_MISSING_PRIVATE_KEY:131:missing private key
 CMP_R_MISSING_PROTECTION:143:missing protection
+CMP_R_MISSING_REFERENCE_CERT:168:missing reference cert
 CMP_R_MISSING_SENDER_IDENTIFICATION:111:missing sender identification
 CMP_R_MISSING_TRUST_STORE:144:missing trust store
 CMP_R_MULTIPLE_REQUESTS_NOT_SUPPORTED:161:multiple requests not supported
@@ -2400,6 +2403,7 @@ EC_R_D2I_ECPKPARAMETERS_FAILURE:117:d2i ecpkparameters failure
 EC_R_DECODE_ERROR:142:decode error
 EC_R_DISCRIMINANT_IS_ZERO:118:discriminant is zero
 EC_R_EC_GROUP_NEW_BY_NAME_FAILURE:119:ec group new by name failure
+EC_R_FAILED_MAKING_PUBLIC_KEY:166:failed making public key
 EC_R_FIELD_TOO_LARGE:143:field too large
 EC_R_GF2M_NOT_SUPPORTED:147:gf2m not supported
 EC_R_GROUP2PKPARAMETERS_FAILURE:120:group2pkparameters failure
@@ -2817,6 +2821,7 @@ PROV_R_ILLEGAL_OR_UNSUPPORTED_PADDING_MODE:165:\
 PROV_R_INAVLID_UKM_LENGTH:146:inavlid ukm length
 PROV_R_INVALID_AAD:108:invalid aad
 PROV_R_INVALID_CONSTANT_LENGTH:157:invalid constant length
+PROV_R_INVALID_CURVE:176:invalid curve
 PROV_R_INVALID_CUSTOM_LENGTH:111:invalid custom length
 PROV_R_INVALID_DATA:115:invalid data
 PROV_R_INVALID_DIGEST:122:invalid digest
@@ -2856,6 +2861,7 @@ PROV_R_MISSING_XCGHASH:135:missing xcghash
 PROV_R_NOT_SUPPORTED:136:not supported
 PROV_R_NOT_XOF_OR_INVALID_LENGTH:113:not xof or invalid length
 PROV_R_NO_KEY_SET:114:no key set
+PROV_R_NO_PARAMETERS_SET:177:no parameters set
 PROV_R_OUTPUT_BUFFER_TOO_SMALL:106:output buffer too small
 PROV_R_PSS_SALTLEN_TOO_SMALL:172:pss saltlen too small
 PROV_R_READ_KEY:159:read key
@@ -3009,6 +3015,7 @@ SM2_R_INVALID_ENCODING:104:invalid encoding
 SM2_R_INVALID_FIELD:105:invalid field
 SM2_R_NO_PARAMETERS_SET:109:no parameters set
 SM2_R_USER_ID_TOO_LARGE:106:user id too large
+SSL_R_ALGORITHM_FETCH_FAILED:295:algorithm fetch failed
 SSL_R_APPLICATION_DATA_AFTER_CLOSE_NOTIFY:291:\
 	application data after close notify
 SSL_R_APP_DATA_IN_HANDSHAKE:100:app data in handshake
@@ -3115,7 +3122,6 @@ SSL_R_EXTENSION_NOT_RECEIVED:279:extension not received
 SSL_R_EXTRA_DATA_IN_MESSAGE:153:extra data in message
 SSL_R_EXT_LENGTH_MISMATCH:163:ext length mismatch
 SSL_R_FAILED_TO_INIT_ASYNC:405:failed to init async
-SSL_R_ALGORITHM_FETCH_FAILED:295:algorithm fetch failed
 SSL_R_FRAGMENTED_CLIENT_HELLO:401:fragmented client hello
 SSL_R_GOT_A_FIN_BEFORE_A_CCS:154:got a fin before a ccs
 SSL_R_HTTPS_PROXY_REQUEST:155:https proxy request

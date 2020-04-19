@@ -19,11 +19,11 @@
 #include <openssl/bn.h>
 #include <openssl/cms.h>
 #include <openssl/core_names.h>
+#include <openssl/param_build.h>
 #include "internal/cryptlib.h"
 #include "crypto/asn1.h"
 #include "crypto/dsa.h"
 #include "crypto/evp.h"
-#include "openssl/param_build.h"
 #include "internal/ffc.h"
 #include "dsa_local.h"
 
@@ -520,7 +520,8 @@ static size_t dsa_pkey_dirty_cnt(const EVP_PKEY *pkey)
 }
 
 static int dsa_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
-                              EVP_KEYMGMT *to_keymgmt)
+                              EVP_KEYMGMT *to_keymgmt, OPENSSL_CTX *libctx,
+                              const char *propq)
 {
     DSA *dsa = from->pkey.dsa;
     OSSL_PARAM_BLD *tmpl;
@@ -575,17 +576,18 @@ err:
     return rv;
 }
 
-static int dsa_pkey_import_from(const OSSL_PARAM params[], void *key)
+static int dsa_pkey_import_from(const OSSL_PARAM params[], void *vpctx)
 {
-    EVP_PKEY *pkey = key;
-    DSA *dsa = DSA_new();
+    EVP_PKEY_CTX *pctx = vpctx;
+    EVP_PKEY *pkey = EVP_PKEY_CTX_get0_pkey(pctx);
+    DSA *dsa = dsa_new_with_ctx(pctx->libctx);
 
     if (dsa == NULL) {
         ERR_raise(ERR_LIB_DSA, ERR_R_MALLOC_FAILURE);
         return 0;
     }
 
-    if (!ffc_fromdata(dsa_get0_params(dsa), params)
+    if (!dsa_ffc_params_fromdata(dsa, params)
         || !dsa_key_fromdata(dsa, params)
         || !EVP_PKEY_assign_DSA(pkey, dsa)) {
         DSA_free(dsa);
