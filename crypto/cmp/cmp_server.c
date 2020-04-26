@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -18,6 +18,11 @@
 /* explicit #includes not strictly needed since implied by the above: */
 #include <openssl/cmp.h>
 #include <openssl/err.h>
+
+DEFINE_STACK_OF(OSSL_CRMF_MSG)
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(OSSL_CMP_ITAV)
+DEFINE_STACK_OF(OSSL_CMP_CERTSTATUS)
 
 /* the context for the generic CMP server */
 struct ossl_cmp_srv_ctx_st

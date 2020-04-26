@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -46,7 +46,7 @@ const OPTIONS crl_options[] = {
 #ifndef OPENSSL_NO_MD5
     {"hash_old", OPT_HASH_OLD, '-', "Print old-style (MD5) hash value"},
 #endif
-    {"nameopt", OPT_NAMEOPT, 's', "Various certificate name options"},
+    {"nameopt", OPT_NAMEOPT, 's', "Certificate subject/issuer name printing options"},
     {"", OPT_MD, '-', "Any supported digest"},
 
     OPT_SECTION("CRL"),
@@ -205,7 +205,7 @@ int crl_main(int argc, char **argv)
     if (argc != 0)
         goto opthelp;
 
-    x = load_crl(infile, informat);
+    x = load_crl(infile, informat, "CRL");
     if (x == NULL)
         goto end;
 
@@ -250,7 +250,7 @@ int crl_main(int argc, char **argv)
             BIO_puts(bio_err, "Missing CRL signing key\n");
             goto end;
         }
-        newcrl = load_crl(crldiff, informat);
+        newcrl = load_crl(crldiff, informat, "other CRL");
         if (!newcrl)
             goto end;
         pkey = load_key(keyfile, keyformat, 0, NULL, NULL, "CRL signing key");

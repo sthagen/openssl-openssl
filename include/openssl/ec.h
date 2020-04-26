@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2002-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -511,10 +511,10 @@ int EC_POINT_set_to_infinity(const EC_GROUP *group, EC_POINT *point);
  *  \param  ctx    BN_CTX object (optional)
  *  \return 1 on success and 0 if an error occurred
  */
-int EC_POINT_set_Jprojective_coordinates_GFp(const EC_GROUP *group,
+DEPRECATEDIN_3_0(int EC_POINT_set_Jprojective_coordinates_GFp(const EC_GROUP *group,
                                              EC_POINT *p, const BIGNUM *x,
                                              const BIGNUM *y, const BIGNUM *z,
-                                             BN_CTX *ctx);
+                                             BN_CTX *ctx))
 
 /** Gets the jacobian projective coordinates of a EC_POINT over GFp
  *  \param  group  underlying EC_GROUP object
@@ -525,10 +525,10 @@ int EC_POINT_set_Jprojective_coordinates_GFp(const EC_GROUP *group,
  *  \param  ctx    BN_CTX object (optional)
  *  \return 1 on success and 0 if an error occurred
  */
-int EC_POINT_get_Jprojective_coordinates_GFp(const EC_GROUP *group,
+DEPRECATEDIN_3_0(int EC_POINT_get_Jprojective_coordinates_GFp(const EC_GROUP *group,
                                              const EC_POINT *p, BIGNUM *x,
                                              BIGNUM *y, BIGNUM *z,
-                                             BN_CTX *ctx);
+                                             BN_CTX *ctx))
 
 /** Sets the affine coordinates of an EC_POINT
  *  \param  group  underlying EC_GROUP object

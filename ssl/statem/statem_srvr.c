@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -25,6 +25,10 @@
 #include <openssl/trace.h>
 #include <openssl/core_names.h>
 #include <openssl/asn1t.h>
+
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(SSL_COMP)
+DEFINE_STACK_OF_CONST(SSL_CIPHER)
 
 #define TICKET_NONCE_SIZE       8
 

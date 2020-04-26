@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -12,6 +12,8 @@
 #include "internal/cryptlib.h"
 #include <openssl/asn1.h>
 #include "asn1_local.h"
+
+DEFINE_STACK_OF(ASN1_UTF8STRING)
 
 static int asn1_get_length(const unsigned char **pp, int *inf, long *rl,
                            long max);

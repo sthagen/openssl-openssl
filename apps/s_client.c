@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright 2005 Nokia. All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -55,6 +55,12 @@ typedef unsigned int u_int;
 #  include <sanitizer/msan_interface.h>
 # endif
 #endif
+
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_CRL)
+DEFINE_STACK_OF(X509_NAME)
+DEFINE_STACK_OF(SCT)
+DEFINE_STACK_OF_STRING()
 
 #undef BUFSIZZ
 #define BUFSIZZ 1024*8
@@ -649,14 +655,17 @@ const OPTIONS s_client_options[] = {
     {"fallback_scsv", OPT_FALLBACKSCSV, '-', "Send the fallback SCSV"},
 
     OPT_SECTION("Identity"),
-    {"verify", OPT_VERIFY, 'p', "Turn on peer certificate verification"},
-    {"cert", OPT_CERT, '<', "Certificate file to use, PEM format assumed"},
+    {"cert", OPT_CERT, '<', "Client certificate file to use"},
     {"certform", OPT_CERTFORM, 'F',
-     "Certificate format (PEM or DER) PEM default"},
-    {"nameopt", OPT_NAMEOPT, 's', "Various certificate name options"},
-    {"key", OPT_KEY, 's', "Private key file to use, if not in -cert file"},
+     "Client certificate file format (PEM or DER) PEM default"},
+    {"cert_chain", OPT_CERT_CHAIN, '<',
+     "Client certificate chain file (in PEM format)"},
+    {"build_chain", OPT_BUILD_CHAIN, '-', "Build client certificate chain"},
+    {"key", OPT_KEY, 's', "Private key file to use; default is: -cert file"},
     {"keyform", OPT_KEYFORM, 'E', "Key format (PEM, DER or engine) PEM default"},
     {"pass", OPT_PASS, 's', "Private key file pass phrase source"},
+    {"verify", OPT_VERIFY, 'p', "Turn on peer certificate verification"},
+    {"nameopt", OPT_NAMEOPT, 's', "Certificate subject/issuer name printing options"},
     {"CApath", OPT_CAPATH, '/', "PEM format directory of CA's"},
     {"CAfile", OPT_CAFILE, '<', "PEM format file of CA's"},
     {"CAstore", OPT_CASTORE, ':', "URI to store of CA's"},
@@ -801,8 +810,8 @@ const OPTIONS s_client_options[] = {
     {"verify_return_error", OPT_VERIFY_RET_ERROR, '-',
      "Close connection on verification error"},
     {"verify_quiet", OPT_VERIFY_QUIET, '-', "Restrict verify output to errors"},
-    {"cert_chain", OPT_CERT_CHAIN, '<',
-     "Certificate chain file (in PEM format)"},
+    {"chainCAfile", OPT_CHAINCAFILE, '<',
+     "CA file for certificate chain (PEM format)"},
     {"chainCApath", OPT_CHAINCAPATH, '/',
      "Use dir as certificate store path to build CA certificate chain"},
     {"chainCAstore", OPT_CHAINCASTORE, ':',
@@ -813,9 +822,6 @@ const OPTIONS s_client_options[] = {
      "Use dir as certificate store path to verify CA certificate"},
     {"verifyCAstore", OPT_VERIFYCASTORE, ':',
      "CA store URI for certificate verification"},
-    {"build_chain", OPT_BUILD_CHAIN, '-', "Build certificate chain"},
-    {"chainCAfile", OPT_CHAINCAFILE, '<',
-     "CA file for certificate chain (PEM format)"},
     OPT_X_OPTIONS,
     OPT_PROV_OPTIONS,
 
@@ -1708,18 +1714,14 @@ int s_client_main(int argc, char **argv)
     if (key_file != NULL) {
         key = load_key(key_file, key_format, 0, pass, e,
                        "client certificate private key file");
-        if (key == NULL) {
-            ERR_print_errors(bio_err);
+        if (key == NULL)
             goto end;
-        }
     }
 
     if (cert_file != NULL) {
         cert = load_cert(cert_file, cert_format, "client certificate file");
-        if (cert == NULL) {
-            ERR_print_errors(bio_err);
+        if (cert == NULL)
             goto end;
-        }
     }
 
     if (chain_file != NULL) {
@@ -1730,12 +1732,9 @@ int s_client_main(int argc, char **argv)
 
     if (crl_file != NULL) {
         X509_CRL *crl;
-        crl = load_crl(crl_file, crl_format);
-        if (crl == NULL) {
-            BIO_puts(bio_err, "Error loading CRL\n");
-            ERR_print_errors(bio_err);
+        crl = load_crl(crl_file, crl_format, "CRL");
+        if (crl == NULL)
             goto end;
-        }
         crls = sk_X509_CRL_new_null();
         if (crls == NULL || !sk_X509_CRL_push(crls, crl)) {
             BIO_puts(bio_err, "Error adding CRL\n");

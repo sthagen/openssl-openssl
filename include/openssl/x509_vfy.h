@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -60,9 +60,9 @@ typedef enum {
 #define X509_LU_FAIL    0
 #endif
 
-DEFINE_STACK_OF(X509_LOOKUP)
-DEFINE_STACK_OF(X509_OBJECT)
-DEFINE_STACK_OF(X509_VERIFY_PARAM)
+DEFINE_OR_DECLARE_STACK_OF(X509_LOOKUP)
+DEFINE_OR_DECLARE_STACK_OF(X509_OBJECT)
+DEFINE_OR_DECLARE_STACK_OF(X509_VERIFY_PARAM)
 
 int X509_STORE_set_depth(X509_STORE *store, int depth);
 

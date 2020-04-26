@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -32,6 +32,8 @@
 # include <openssl/dsa.h>
 #endif
 
+DEFINE_STACK_OF(CONF_VALUE)
+DEFINE_STACK_OF_STRING()
 
 #define BITS            "default_bits"
 #define KEYFILE         "default_keyfile"
@@ -113,7 +115,7 @@ const OPTIONS req_options[] = {
     {"config", OPT_CONFIG, '<', "Request template file"},
     {"section", OPT_SECTION, 's', "Config section to use (default \"req\")"},
     {"utf8", OPT_UTF8, '-', "Input characters are UTF8 (default ASCII)"},
-    {"nameopt", OPT_NAMEOPT, 's', "Various certificate name options"},
+    {"nameopt", OPT_NAMEOPT, 's', "Certificate subject/issuer name printing options"},
     {"reqopt", OPT_REQOPT, 's', "Various request text options"},
     {"text", OPT_TEXT, '-', "Text form of request"},
     {"x509", OPT_X509, '-',
@@ -228,7 +230,7 @@ static int duplicated(LHASH_OF(OPENSSL_STRING) *addexts, char *kv)
 int req_main(int argc, char **argv)
 {
     ASN1_INTEGER *serial = NULL;
-    BIO *in = NULL, *out = NULL;
+    BIO *out = NULL;
     ENGINE *e = NULL, *gen_eng = NULL;
     EVP_PKEY *pkey = NULL;
     EVP_PKEY_CTX *genctx = NULL;
@@ -467,7 +469,7 @@ int req_main(int argc, char **argv)
         BIO_printf(bio_err, "Using configuration from %s\n", template);
     if ((req_conf = app_load_config(template)) == NULL)
         goto end;
-    if (addext_bio) {
+    if (addext_bio != NULL) {
         if (verbose)
             BIO_printf(bio_err,
                        "Using additional configuration from command line\n");
@@ -588,12 +590,9 @@ int req_main(int argc, char **argv)
 
     if (keyfile != NULL) {
         pkey = load_key(keyfile, keyform, 0, passin, e, "Private Key");
-        if (pkey == NULL) {
-            /* load_key() has already printed an appropriate message */
+        if (pkey == NULL)
             goto end;
-        } else {
-            app_RAND_load_conf(req_conf, section);
-        }
+        app_RAND_load_conf(req_conf, section);
     }
 
     if (newreq && (pkey == NULL)) {
@@ -713,18 +712,9 @@ int req_main(int argc, char **argv)
     }
 
     if (!newreq) {
-        in = bio_open_default(infile, 'r', informat);
-        if (in == NULL)
+        req = load_csr(infile, informat, "X509 request");
+        if (req == NULL)
             goto end;
-
-        if (informat == FORMAT_ASN1)
-            req = d2i_X509_REQ_bio(in, NULL);
-        else
-            req = PEM_read_bio_X509_REQ(in, NULL, NULL, NULL);
-        if (req == NULL) {
-            BIO_printf(bio_err, "unable to load X509 request\n");
-            goto end;
-        }
     }
 
     if (newreq || x509) {
@@ -990,7 +980,6 @@ int req_main(int argc, char **argv)
     NCONF_free(req_conf);
     NCONF_free(addext_conf);
     BIO_free(addext_bio);
-    BIO_free(in);
     BIO_free_all(out);
     EVP_PKEY_free(pkey);
     EVP_PKEY_CTX_free(genctx);

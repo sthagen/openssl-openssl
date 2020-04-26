@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -196,7 +196,7 @@ DH *DH_get_2048_256(void);
 /* Named parameters, currently RFC7919 and RFC3526 */
 /* TODO(3.0): deprecate DH_new_by_nid() after converting ssl/s3_lib.c */
 DH *DH_new_by_nid(int nid);
-DEPRECATEDIN_3_0(int DH_get_nid(DH *dh))
+DEPRECATEDIN_3_0(int DH_get_nid(const DH *dh))
 
 #  ifndef OPENSSL_NO_CMS
 /* RFC2631 KDF */

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -12,6 +12,12 @@
 #include "cmp_testlib.h"
 
 #include <openssl/x509_vfy.h>
+
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(ASN1_UTF8STRING)
+DEFINE_STACK_OF(X509_EXTENSION)
+DEFINE_STACK_OF(OSSL_CMP_ITAV)
+DEFINE_STACK_OF(POLICYINFO)
 
 typedef struct test_fixture {
     const char *test_case_name;

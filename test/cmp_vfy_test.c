@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -11,6 +11,7 @@
 
 #include "cmp_testlib.h"
 #include "../crypto/crmf/crmf_local.h" /* for manipulating POPO signature */
+DEFINE_STACK_OF(OSSL_CRMF_MSG)
 
 static const char *server_f;
 static const char *client_f;
@@ -109,6 +110,7 @@ static int test_verify_popo(void)
     return result;
 }
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 static int test_verify_popo_bad(void)
 {
     SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
@@ -116,6 +118,7 @@ static int test_verify_popo_bad(void)
     EXECUTE_TEST(execute_verify_popo_test, tear_down);
     return result;
 }
+#endif
 
 static int execute_validate_msg_test(CMP_VFY_TEST_FIXTURE *fixture)
 {
@@ -444,6 +447,7 @@ static void setup_check_received(CMP_VFY_TEST_FIXTURE **fixture, int expected,
     }
 }
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 static int test_MSG_check_received_no_protection_no_cb(void)
 {
     SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
@@ -459,6 +463,7 @@ static int test_MSG_check_received_no_protection_restrictive_cb(void)
     EXECUTE_TEST(execute_MSG_check_received_test, tear_down);
     return result;
 }
+#endif
 
 static int test_MSG_check_received_no_protection_permissive_cb(void)
 {
@@ -484,6 +489,7 @@ static int test_MSG_check_received_check_transaction_id(void)
     return result;
 }
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 static int test_MSG_check_received_check_transaction_id_bad(void)
 {
     SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
@@ -491,6 +497,7 @@ static int test_MSG_check_received_check_transaction_id_bad(void)
     EXECUTE_TEST(execute_MSG_check_received_test, tear_down);
     return result;
 }
+#endif
 
 static int test_MSG_check_received_check_recipient_nonce(void)
 {
@@ -507,6 +514,7 @@ static int test_MSG_check_received_check_recipient_nonce(void)
     return result;
 }
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 static int test_MSG_check_received_check_recipient_nonce_bad(void)
 {
     SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
@@ -514,6 +522,7 @@ static int test_MSG_check_received_check_recipient_nonce_bad(void)
     EXECUTE_TEST(execute_MSG_check_received_test, tear_down);
     return result;
 }
+#endif
 
 void cleanup_tests(void)
 {
@@ -596,7 +605,9 @@ int setup_tests(void)
 
     /* Message validation tests */
     ADD_TEST(test_verify_popo);
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
     ADD_TEST(test_verify_popo_bad);
+#endif
     ADD_TEST(test_validate_msg_signature_trusted_ok);
     ADD_TEST(test_validate_msg_signature_trusted_expired);
     ADD_TEST(test_validate_msg_signature_srvcert_wrong);
@@ -617,13 +628,19 @@ int setup_tests(void)
     ADD_TEST(test_validate_cert_path_expired);
     ADD_TEST(test_validate_cert_path_wrong_anchor);
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
     ADD_TEST(test_MSG_check_received_no_protection_no_cb);
     ADD_TEST(test_MSG_check_received_no_protection_restrictive_cb);
+#endif
     ADD_TEST(test_MSG_check_received_no_protection_permissive_cb);
     ADD_TEST(test_MSG_check_received_check_transaction_id);
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
     ADD_TEST(test_MSG_check_received_check_transaction_id_bad);
+#endif
     ADD_TEST(test_MSG_check_received_check_recipient_nonce);
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
     ADD_TEST(test_MSG_check_received_check_recipient_nonce_bad);
+#endif
 
     return 1;
 

@@ -24,6 +24,14 @@ OpenSSL 3.0
 
 ### Changes between 1.1.1 and 3.0 [xx XXX xxxx] ###
 
+ * Deprecated EC_POINT_set_Jprojective_coordinates_GFp() and
+   EC_POINT_get_Jprojective_coordinates_GFp(). These functions are not widely
+   used and applications should instead use the
+   L<EC_POINT_set_affine_coordinates(3)> and
+   L<EC_POINT_get_affine_coordinates(3)> functions.
+
+   *Billy Bob Brumley*
+
  * Added OSSL_PARAM_BLD to the public interface.  This allows OSSL_PARAM
    arrays to be more easily constructed via a series of utility functions.
    Create a parameter builder using OSSL_PARAM_BLD_new(), add parameters using
@@ -78,6 +86,18 @@ OpenSSL 3.0
    test recipes are created in the build tree for this purpose.
 
    *Richard Levitte*
+
+ * Added an implementation of CMP and CRMF (RFC 4210, RFC 4211 RFC 6712).
+   This adds crypto/cmp/, crpyto/crmf/, and test/cmp_*.
+   See L<OSSL_CMP_exec_IR_ses(3)> as starting point.
+
+   *David von Oheimb*
+
+ * Generalized the HTTP client code from crypto/ocsp/ into crpyto/http/.
+   The legacy OCSP-focused and only partly documented API is retained.
+   See L<OSSL_CMP_MSG_http_perform(3)> etc. for details.
+
+   *David von Oheimb*
 
  * All of the low level RSA functions have been deprecated including:
 
@@ -396,6 +416,11 @@ OpenSSL 3.0
  * Most memory-debug features have been deprecated, and the functionality
    replaced with no-ops.
 
+   *Rich Salz*
+ 
+ * Added documentation for the STACK API. OpenSSL only defines the STACK
+   functions where they are used.
+  
    *Rich Salz*
 
  * Introduced a new method type and API, OSSL_SERIALIZER, to

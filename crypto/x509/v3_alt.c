@@ -13,6 +13,9 @@
 #include <openssl/x509v3.h>
 #include "ext_dat.h"
 
+DEFINE_STACK_OF(CONF_VALUE)
+DEFINE_STACK_OF(GENERAL_NAME)
+
 static GENERAL_NAMES *v2i_subject_alt(X509V3_EXT_METHOD *method,
                                       X509V3_CTX *ctx,
                                       STACK_OF(CONF_VALUE) *nval);
@@ -79,6 +82,7 @@ STACK_OF(CONF_VALUE) *i2v_GENERAL_NAME(X509V3_EXT_METHOD *method,
                                        STACK_OF(CONF_VALUE) *ret)
 {
     unsigned char *p;
+    char othername[256];
     char oline[256], htmp[5];
     int i;
 
@@ -121,7 +125,25 @@ STACK_OF(CONF_VALUE) *i2v_GENERAL_NAME(X509V3_EXT_METHOD *method,
                 return NULL;
             break;
         default:
-            if (!X509V3_add_value("othername", "<unsupported>", &ret))
+            if (OBJ_obj2txt(oline, sizeof(oline), gen->d.otherName->type_id, 0) > 0) 
+                snprintf(othername, sizeof(othername), "othername: %s:", oline);
+            else
+                strncpy(othername, "othername:", sizeof(othername));
+
+            /* check if the value is something printable */
+            if (gen->d.otherName->value->type == V_ASN1_IA5STRING) {
+                if (X509V3_add_value_uchar(othername,
+                             gen->d.otherName->value->value.ia5string->data,
+                             &ret)) 
+                    return ret;
+            }
+            if (gen->d.otherName->value->type == V_ASN1_UTF8STRING) {
+                if (X509V3_add_value_uchar(othername,
+                             gen->d.otherName->value->value.utf8string->data,
+                             &ret)) 
+                    return ret;
+            }
+            if (!X509V3_add_value(othername, "<unsupported>", &ret))
                 return NULL;
             break;
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2019, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -36,8 +36,20 @@ static OSSL_PARAM ossl_param_construct(const char *key, unsigned int data_type,
     res.data_type = data_type;
     res.data = data;
     res.data_size = data_size;
-    res.return_size = 0;
+    res.return_size = OSSL_PARAM_UNMODIFIED;
     return res;
+}
+
+int OSSL_PARAM_modified(const OSSL_PARAM *p)
+{
+    return p != NULL && p->return_size != OSSL_PARAM_UNMODIFIED;
+}
+
+void OSSL_PARAM_set_all_unmodified(OSSL_PARAM *p)
+{
+    if (p != NULL)
+        while (p->key != NULL)
+            p++->return_size = OSSL_PARAM_UNMODIFIED;
 }
 
 int OSSL_PARAM_get_int(const OSSL_PARAM *p, int *val)

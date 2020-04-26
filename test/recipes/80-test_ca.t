@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2016 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -32,12 +32,12 @@ plan tests => 6;
 
      $ENV{OPENSSL_CONFIG} = '-config "'.srctop_file("test", "Uss.cnf").'"';
      skip "failed creating new certificate request", 3
-	 if !ok(run(perlapp(["CA.pl","-newreq"])),
+	 if !ok(run(perlapp(["CA.pl","-newreq",
+                             "-extra-req","-outform DER"])),
 		'creating certificate request');
-
-     $ENV{OPENSSL_CONFIG} = '-rand_serial -config "'.$std_openssl_cnf.'"';
+     $ENV{OPENSSL_CONFIG} = '-rand_serial -inform DER -config "'.$std_openssl_cnf.'"';
      skip "failed to sign certificate request", 2
-	 if !is(yes(cmdstr(perlapp(["CA.pl", "-sign"]))), 0,
+	 if !is(yes(cmdstr(perlapp(["CA.pl", "-sign", "-extra-ca"]))), 0,
 		'signing certificate request');
 
      ok(run(perlapp(["CA.pl", "-verify", "newcert.pem"])),

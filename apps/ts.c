@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -97,8 +97,8 @@ const OPTIONS ts_options[] = {
     {"inkey", OPT_INKEY, 's', "File with private key for reply"},
     {"signer", OPT_SIGNER, 's', "Signer certificate file"},
     {"chain", OPT_CHAIN, '<', "File with signer CA chain"},
-    {"CApath", OPT_CAPATH, '/', "Path to trusted CA files"},
     {"CAfile", OPT_CAFILE, '<', "File with trusted CA certs"},
+    {"CApath", OPT_CAPATH, '/', "Path to trusted CA files"},
     {"CAstore", OPT_CASTORE, ':', "URI to trusted CA store"},
     {"untrusted", OPT_UNTRUSTED, '<', "File with untrusted certs"},
     {"token_in", OPT_TOKEN_IN, '-', "Input is a PKCS#7 file"},

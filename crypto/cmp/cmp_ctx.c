@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -20,7 +20,16 @@
 #include <openssl/crmf.h>
 #include <openssl/err.h>
 
-/* Get current certificate store containing trusted root CA certs */
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_EXTENSION)
+DEFINE_STACK_OF(POLICYINFO)
+DEFINE_STACK_OF(ASN1_UTF8STRING)
+DEFINE_STACK_OF(GENERAL_NAME)
+DEFINE_STACK_OF(OSSL_CMP_ITAV)
+
+/*
+ * Get current certificate store containing trusted root CA certs
+ */
 X509_STORE *OSSL_CMP_CTX_get0_trustedStore(const OSSL_CMP_CTX *ctx)
 {
     if (ctx == NULL) {

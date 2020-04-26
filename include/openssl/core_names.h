@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -207,6 +207,7 @@ extern "C" {
 /* Diffie-Hellman params */
 #define OSSL_PKEY_PARAM_FFC_GROUP    "group"
 #define OSSL_PKEY_PARAM_FFC_GENERATOR "safeprime-generator"
+#define OSSL_PKEY_PARAM_DH_PRIV_LEN   "priv_len"
 
 /* Elliptic Curve Domain Parameters */
 #define OSSL_PKEY_PARAM_EC_NAME      "curve-name"

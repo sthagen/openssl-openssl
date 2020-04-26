@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2001-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -32,6 +32,11 @@
 #include <openssl/bn.h>
 #include <openssl/x509v3.h>
 #include <openssl/rand.h>
+
+DEFINE_STACK_OF(OCSP_CERTID)
+DEFINE_STACK_OF(CONF_VALUE)
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF_STRING()
 
 #ifndef HAVE_FORK
 # if defined(OPENSSL_SYS_VMS) || defined(OPENSSL_SYS_WINDOWS)

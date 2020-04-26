@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -16,6 +16,8 @@
 /* explicit #includes not strictly needed since implied by the above: */
 #include <openssl/cmp.h>
 #include <openssl/crmf.h>
+
+DEFINE_STACK_OF(OSSL_CMP_ITAV)
 
 /* ASN.1 declarations from RFC4210 */
 ASN1_SEQUENCE(OSSL_CMP_REVANNCONTENT) = {

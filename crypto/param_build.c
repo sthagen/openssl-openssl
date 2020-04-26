@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2019, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -312,7 +312,7 @@ static OSSL_PARAM *param_bld_convert(OSSL_PARAM_BLD *bld, OSSL_PARAM *param,
         param[i].key = pd->key;
         param[i].data_type = pd->type;
         param[i].data_size = pd->size;
-        param[i].return_size = 0;
+        param[i].return_size = OSSL_PARAM_UNMODIFIED;
 
         if (pd->secure) {
             p = secure;

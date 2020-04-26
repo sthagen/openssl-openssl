@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2016 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -48,7 +48,7 @@ my @testdata = (
 unless ($no_fips) {
     push @setups, {
         cmd     => app(['openssl', 'fipsinstall',
-                        '-out', bldtop_file('providers', 'fipsinstall.cnf'),
+                        '-out', bldtop_file('providers', 'fipsmodule.cnf'),
                         '-module', bldtop_file('providers', platform->dso('fips')),
                         '-provider_name', 'fips', '-mac_name', 'HMAC',
                         '-macopt', 'digest:SHA256', '-macopt', 'hexkey:00',

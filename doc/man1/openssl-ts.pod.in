@@ -37,7 +37,6 @@ B<-reply>
 [B<-chain> I<certs_file.pem>]
 [B<-tspolicy> I<object_id>]
 [B<-in> I<response.tsr>]
-[B<-untrusted> I<file>]
 [B<-token_in>]
 [B<-out> I<response.tsr>]
 [B<-token_out>]
@@ -52,6 +51,7 @@ B<-verify>
 [B<-queryfile> I<request.tsq>]
 [B<-in> I<response.tsr>]
 [B<-token_in>]
+[B<-untrusted> I<file>]
 [B<-CAfile> I<file>]
 [B<-CApath> I<dir>]
 [B<-CAstore> I<uri>]
@@ -639,7 +639,7 @@ L<ossl_store-file(7)>
 
 =head1 COPYRIGHT
 
-Copyright 2006-2019 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -169,7 +169,8 @@ struct crypto_ex_data_st {
     OPENSSL_CTX *ctx;
     STACK_OF(void) *sk;
 };
-DEFINE_STACK_OF(void)
+
+DEFINE_OR_DECLARE_STACK_OF(void)
 
 /*
  * Per class, we have a STACK of function pointers.

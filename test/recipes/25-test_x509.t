@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2016 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -16,7 +16,7 @@ use OpenSSL::Test qw/:DEFAULT srctop_file/;
 
 setup("test_x509");
 
-plan tests => 10;
+plan tests => 11;
 
 require_ok(srctop_file('test','recipes','tconversion.pl'));
 
@@ -68,4 +68,20 @@ subtest 'x509 -- second x.509 v3 certificate' => sub {
 
 subtest 'x509 -- pathlen' => sub {
     ok(run(test(["v3ext", srctop_file("test/certs", "pathlen.pem")])));
+};
+
+subtest 'x500 -- subjectAltName' => sub {
+     my $fp = srctop_file("test/certs", "fake-gp.pem");
+     my $out = "ext.out";
+     ok(run(app(["openssl", "x509", "-text", "-in", $fp, "-out", $out])));
+     ok(has_doctor_id($out));
+     unlink $out;
+};
+
+sub has_doctor_id { 
+    $_ = shift @_;
+    open(DATA,$_) or return 0;
+    $_= join('',<DATA>); 
+    close(DATA);
+    return m/2.16.528.1.1003.1.3.5.5.2-1-0000006666-Z-12345678-01.015-12345678/;
 }

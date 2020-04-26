@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -101,19 +101,28 @@ ok(!run(app(['openssl', 'fipsinstall', '-out', 'fips.cnf', '-module', $infile,
    "fipsinstall fails when the DRBG CTR result is corrupted");
 
 # corrupt a KAS test
-ok(!run(app(['openssl', 'fipsinstall', '-out', 'fips.conf', '-module', $infile,
-            '-provider_name', 'fips', '-mac_name', 'HMAC',
-            '-macopt', 'digest:SHA256', '-macopt', 'hexkey:00',
-            '-section_name', 'fips_install',
-            '-corrupt_desc', 'DH',
-            '-corrupt_type', 'KAT_KA'])),
-   "fipsinstall fails when the kas result is corrupted");
+SKIP: {
+    skip "Skipping KAS DH corruption test because of no dh in this build", 1
+        if disabled("dh");
+
+    ok(!run(app(['openssl', 'fipsinstall', '-out', 'fips.conf', '-module', $infile,
+                '-provider_name', 'fips', '-mac_name', 'HMAC',
+                '-macopt', 'digest:SHA256', '-macopt', 'hexkey:00',
+                '-section_name', 'fips_install',
+                '-corrupt_desc', 'DH',
+                '-corrupt_type', 'KAT_KA'])),
+       "fipsinstall fails when the kas result is corrupted");
+}
 
 # corrupt a Signature test
-ok(!run(app(['openssl', 'fipsinstall', '-out', 'fips.conf', '-module', $infile,
-            '-provider_name', 'fips', '-mac_name', 'HMAC',
-            '-macopt', 'digest:SHA256', '-macopt', 'hexkey:00',
-            '-section_name', 'fips_install',
-            '-corrupt_desc', 'DSA',
-            '-corrupt_type', 'KAT_Signature'])),
-   "fipsinstall fails when the signature result is corrupted");
+SKIP: {
+    skip "Skipping Signature DSA corruption test because of no dsa in this build", 1
+        if disabled("dsa");
+    ok(!run(app(['openssl', 'fipsinstall', '-out', 'fips.conf', '-module', $infile,
+                '-provider_name', 'fips', '-mac_name', 'HMAC',
+                '-macopt', 'digest:SHA256', '-macopt', 'hexkey:00',
+                '-section_name', 'fips_install',
+                '-corrupt_desc', 'DSA',
+                '-corrupt_type', 'KAT_Signature'])),
+       "fipsinstall fails when the signature result is corrupted");
+}

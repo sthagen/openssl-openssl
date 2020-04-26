@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -27,6 +27,8 @@
 #include <openssl/buffer.h>
 #include <openssl/cmp.h>
 #include <openssl/err.h>
+
+DEFINE_STACK_OF(CONF_VALUE)
 
 /*
  * Send the PKIMessage req and on success return the response, else NULL.

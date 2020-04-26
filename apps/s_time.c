@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -86,7 +86,7 @@ const OPTIONS s_time_options[] = {
     {"www", OPT_WWW, 's', "Fetch specified page from the site"},
 
     OPT_SECTION("Certificate"),
-    {"nameopt", OPT_NAMEOPT, 's', "Various certificate name options"},
+    {"nameopt", OPT_NAMEOPT, 's', "Certificate subject/issuer name printing options"},
     {"cert", OPT_CERT, '<', "Cert file to use, PEM format assumed"},
     {"key", OPT_KEY, '<', "File with key, PEM; default is -cert file"},
     {"cafile", OPT_CAFILE, '<', "PEM format file of CA's"},

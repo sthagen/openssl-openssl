@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -20,6 +20,12 @@
 #include <openssl/x509v3.h>
 
 #include "openssl/cmp_util.h"
+
+DEFINE_STACK_OF(ASN1_UTF8STRING)
+DEFINE_STACK_OF(X509_CRL)
+DEFINE_STACK_OF(OSSL_CMP_CERTRESPONSE)
+DEFINE_STACK_OF(OSSL_CMP_PKISI)
+DEFINE_STACK_OF(OSSL_CRMF_CERTID)
 
 #define IS_CREP(t) ((t) == OSSL_CMP_PKIBODY_IP || (t) == OSSL_CMP_PKIBODY_CP \
                         || (t) == OSSL_CMP_PKIBODY_KUP)

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -19,6 +19,16 @@
 #include <openssl/crmf.h>
 #include <openssl/err.h>
 #include <openssl/x509.h>
+
+DEFINE_STACK_OF(OSSL_CMP_CERTSTATUS)
+DEFINE_STACK_OF(OSSL_CMP_ITAV)
+DEFINE_STACK_OF(GENERAL_NAME)
+DEFINE_STACK_OF(X509_EXTENSION)
+DEFINE_STACK_OF(OSSL_CMP_PKISI)
+DEFINE_STACK_OF(OSSL_CRMF_MSG)
+DEFINE_STACK_OF(OSSL_CMP_CERTRESPONSE)
+DEFINE_STACK_OF(OSSL_CRMF_CERTID)
+DEFINE_STACK_OF(ASN1_UTF8STRING)
 
 OSSL_CMP_PKIHEADER *OSSL_CMP_MSG_get0_header(const OSSL_CMP_MSG *msg)
 {

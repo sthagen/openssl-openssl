@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -73,8 +73,8 @@ static OSSL_METHOD_STORE *get_evp_method_store(OPENSSL_CTX *libctx)
 }
 
 /*
- * To identity the method in the EVP method store, we mix the name identity
- * with the operation identity, with the assumption that we don't have more
+ * To identify the method in the EVP method store, we mix the name identity
+ * with the operation identity, under the assumption that we don't have more
  * than 2^24 names or more than 2^8 operation types.
  *
  * The resulting identity is a 32-bit integer, composed like this:
@@ -83,10 +83,10 @@ static OSSL_METHOD_STORE *get_evp_method_store(OPENSSL_CTX *libctx)
  * |      name identity     | op id  |
  * +------------------------+--------+
  */
-static uint32_t evp_method_id(unsigned int operation_id, int name_id)
+static uint32_t evp_method_id(int name_id, unsigned int operation_id)
 {
-    if (!ossl_assert(name_id < (1 << 24) || operation_id < (1 << 8))
-        || !ossl_assert(name_id > 0 && operation_id > 0))
+    if (!ossl_assert(name_id > 0 && name_id < (1 << 24))
+        || !ossl_assert(operation_id > 0 && operation_id < (1 << 8)))
         return 0;
     return ((name_id << 8) & 0xFFFFFF00) | (operation_id & 0x000000FF);
 }
@@ -116,7 +116,7 @@ static void *get_evp_method_from_store(OPENSSL_CTX *libctx, void *store,
     }
 
     if (name_id == 0
-        || (meth_id = evp_method_id(methdata->operation_id, name_id)) == 0)
+        || (meth_id = evp_method_id(name_id, methdata->operation_id)) == 0)
         return NULL;
 
     if (store == NULL
@@ -154,7 +154,7 @@ static int put_evp_method_in_store(OPENSSL_CTX *libctx, void *store,
 
     if ((namemap = ossl_namemap_stored(libctx)) == NULL
         || (name_id = ossl_namemap_name2num_n(namemap, names, l)) == 0
-        || (meth_id = evp_method_id(operation_id, name_id)) == 0)
+        || (meth_id = evp_method_id(name_id, operation_id)) == 0)
         return 0;
 
     if (store == NULL
@@ -242,7 +242,7 @@ inner_evp_generic_fetch(OPENSSL_CTX *libctx, int operation_id,
      * about 2^8) or too many names (more than about 2^24).  In that case,
      * we can't create any new method.
      */
-    if (name_id != 0 && (meth_id = evp_method_id(operation_id, name_id)) == 0)
+    if (name_id != 0 && (meth_id = evp_method_id(name_id, operation_id)) == 0)
         return NULL;
 
     if (meth_id == 0
@@ -277,7 +277,7 @@ inner_evp_generic_fetch(OPENSSL_CTX *libctx, int operation_id,
              */
             if (name_id == 0)
                 name_id = ossl_namemap_name2num(namemap, name);
-            meth_id = evp_method_id(operation_id, name_id);
+            meth_id = evp_method_id(name_id, operation_id);
             ossl_method_store_cache_set(store, meth_id, properties, method,
                                         up_ref_method, free_method);
         }

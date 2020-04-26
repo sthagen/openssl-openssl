@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -56,6 +56,17 @@ static int WIN32_rename(const char *from, const char *to);
 #endif
 
 #define PASS_SOURCE_SIZE_MAX 4
+
+DEFINE_STACK_OF(CONF)
+DEFINE_STACK_OF(CONF_VALUE)
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_CRL)
+DEFINE_STACK_OF(X509_INFO)
+DEFINE_STACK_OF(X509_EXTENSION)
+DEFINE_STACK_OF(X509_POLICY_NODE)
+DEFINE_STACK_OF(GENERAL_NAME)
+DEFINE_STACK_OF(DIST_POINT)
+DEFINE_STACK_OF_STRING()
 
 typedef struct {
     const char *name;
@@ -410,7 +421,7 @@ static int load_pkcs12(BIO *in, const char *desc,
     int len, ret = 0;
     PKCS12 *p12;
     p12 = d2i_PKCS12_bio(in, NULL);
-    if (p12 == NULL) {
+    if (p12 == NULL && desc != NULL) {
         BIO_printf(bio_err, "Error loading PKCS12 file for %s\n", desc);
         goto die;
     }
@@ -422,7 +433,8 @@ static int load_pkcs12(BIO *in, const char *desc,
             pem_cb = (pem_password_cb *)password_callback;
         len = pem_cb(tpass, PEM_BUFSIZE, 0, cb_data);
         if (len < 0) {
-            BIO_printf(bio_err, "Passphrase callback error for %s\n", desc);
+            BIO_printf(bio_err, "Passphrase callback error for %s\n",
+                                desc != NULL ? desc : "PKCS12 input");
             goto die;
         }
         if (len < PEM_BUFSIZE)
@@ -430,7 +442,7 @@ static int load_pkcs12(BIO *in, const char *desc,
         if (!PKCS12_verify_mac(p12, tpass, len)) {
             BIO_printf(bio_err,
                        "Mac verify error (wrong password?) in PKCS12 file for %s\n",
-                       desc);
+                       desc != NULL ? desc : "PKCS12 input");
             goto die;
         }
         pass = tpass;
@@ -441,7 +453,7 @@ static int load_pkcs12(BIO *in, const char *desc,
     return ret;
 }
 
-X509 *load_cert(const char *file, int format, const char *cert_descrip)
+X509 *load_cert(const char *file, int format, const char *desc)
 {
     X509 *x = NULL;
     BIO *cert;
@@ -468,22 +480,26 @@ X509 *load_cert(const char *file, int format, const char *cert_descrip)
         x = PEM_read_bio_X509_AUX(cert, NULL,
                                   (pem_password_cb *)password_callback, NULL);
     } else if (format == FORMAT_PKCS12) {
-        if (!load_pkcs12(cert, cert_descrip, NULL, NULL, NULL, &x, NULL))
+        if (!load_pkcs12(cert, desc, NULL, NULL, NULL, &x, NULL))
             goto end;
     } else {
-        BIO_printf(bio_err, "bad input format specified for %s\n", cert_descrip);
-        goto end;
+        print_format_error(format,
+#if !defined(OPENSSL_NO_OCSP) && !defined(OPENSSL_NO_SOCK)
+                                   OPT_FMT_HTTP |
+#endif
+                                   OPT_FMT_PEMDER | OPT_FMT_PKCS12);
     }
+
  end:
-    if (x == NULL) {
-        BIO_printf(bio_err, "unable to load certificate\n");
+    if (x == NULL && desc != NULL) {
+        BIO_printf(bio_err, "Unable to load %s\n", desc);
         ERR_print_errors(bio_err);
     }
     BIO_free(cert);
     return x;
 }
 
-X509_CRL *load_crl(const char *infile, int format)
+X509_CRL *load_crl(const char *infile, int format, const char *desc)
 {
     X509_CRL *x = NULL;
     BIO *in = NULL;
@@ -502,23 +518,45 @@ X509_CRL *load_crl(const char *infile, int format)
         x = d2i_X509_CRL_bio(in, NULL);
     } else if (format == FORMAT_PEM) {
         x = PEM_read_bio_X509_CRL(in, NULL, NULL, NULL);
-    } else {
-        BIO_printf(bio_err, "bad input format specified for input crl\n");
-        goto end;
-    }
-    if (x == NULL) {
-        BIO_printf(bio_err, "unable to load CRL\n");
-        ERR_print_errors(bio_err);
-        goto end;
-    }
+    } else
+        print_format_error(format, OPT_FMT_PEMDER);
 
  end:
+    if (x == NULL && desc != NULL) {
+        BIO_printf(bio_err, "Unable to load %s\n", desc);
+        ERR_print_errors(bio_err);
+    }
     BIO_free(in);
     return x;
 }
 
+X509_REQ *load_csr(const char *file, int format, const char *desc)
+{
+    X509_REQ *req = NULL;
+    BIO *in;
+
+    in = bio_open_default(file, 'r', format);
+    if (in == NULL)
+        goto end;
+
+    if (format == FORMAT_ASN1)
+        req = d2i_X509_REQ_bio(in, NULL);
+    else if (format == FORMAT_PEM)
+        req = PEM_read_bio_X509_REQ(in, NULL, NULL, NULL);
+    else
+        print_format_error(format, OPT_FMT_PEMDER);
+
+ end:
+    if (req == NULL && desc != NULL) {
+        BIO_printf(bio_err, "Unable to load %s\n", desc);
+        ERR_print_errors(bio_err);
+    }
+    BIO_free(in);
+    return req;
+}
+
 EVP_PKEY *load_key(const char *file, int format, int maybe_stdin,
-                   const char *pass, ENGINE *e, const char *key_descrip)
+                   const char *pass, ENGINE *e, const char *desc)
 {
     BIO *key = NULL;
     EVP_PKEY *pkey = NULL;
@@ -528,12 +566,12 @@ EVP_PKEY *load_key(const char *file, int format, int maybe_stdin,
     cb_data.prompt_info = file;
 
     if (file == NULL && (!maybe_stdin || format == FORMAT_ENGINE)) {
-        BIO_printf(bio_err, "no keyfile specified\n");
+        BIO_printf(bio_err, "No keyfile specified\n");
         goto end;
     }
     if (format == FORMAT_ENGINE) {
         if (e == NULL) {
-            BIO_printf(bio_err, "no engine specified\n");
+            BIO_printf(bio_err, "No engine specified\n");
         } else {
 #ifndef OPENSSL_NO_ENGINE
             if (ENGINE_init(e)) {
@@ -542,12 +580,12 @@ EVP_PKEY *load_key(const char *file, int format, int maybe_stdin,
                                                &cb_data);
                 ENGINE_finish(e);
             }
-            if (pkey == NULL) {
-                BIO_printf(bio_err, "cannot load %s from engine\n", key_descrip);
+            if (pkey == NULL && desc != NULL) {
+                BIO_printf(bio_err, "Cannot load %s from engine\n", desc);
                 ERR_print_errors(bio_err);
             }
 #else
-            BIO_printf(bio_err, "engines not supported\n");
+            BIO_printf(bio_err, "Engines not supported\n");
 #endif
         }
         goto end;
@@ -565,7 +603,8 @@ EVP_PKEY *load_key(const char *file, int format, int maybe_stdin,
     } else if (format == FORMAT_PEM) {
         pkey = PEM_read_bio_PrivateKey(key, NULL, wrap_password_callback, &cb_data);
     } else if (format == FORMAT_PKCS12) {
-        if (!load_pkcs12(key, key_descrip, wrap_password_callback, &cb_data,
+        if (!load_pkcs12(key, desc,
+                         (pem_password_cb *)password_callback, &cb_data,
                          &pkey, NULL, NULL))
             goto end;
 #if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DSA) && !defined (OPENSSL_NO_RC4)
@@ -575,20 +614,27 @@ EVP_PKEY *load_key(const char *file, int format, int maybe_stdin,
         pkey = b2i_PVK_bio(key, wrap_password_callback, &cb_data);
 #endif
     } else {
-        BIO_printf(bio_err, "bad input format specified for key file\n");
-        goto end;
+        print_format_error(format, OPT_FMT_PEMDER | OPT_FMT_PKCS12
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DSA) && !defined (OPENSSL_NO_RC4)
+                                 | OPT_FMT_MSBLOB | FORMAT_PVK
+#endif
+#ifndef OPENSSL_NO_ENGINE
+                                 | OPT_FMT_ENGINE
+#endif
+                           );
     }
+
  end:
     BIO_free(key);
-    if (pkey == NULL) {
-        BIO_printf(bio_err, "unable to load %s\n", key_descrip);
+    if (pkey == NULL && desc != NULL) {
+        BIO_printf(bio_err, "Unable to load %s\n", desc);
         ERR_print_errors(bio_err);
     }
     return pkey;
 }
 
 EVP_PKEY *load_pubkey(const char *file, int format, int maybe_stdin,
-                      const char *pass, ENGINE *e, const char *key_descrip)
+                      const char *pass, ENGINE *e, const char *desc)
 {
     BIO *key = NULL;
     EVP_PKEY *pkey = NULL;
@@ -598,22 +644,22 @@ EVP_PKEY *load_pubkey(const char *file, int format, int maybe_stdin,
     cb_data.prompt_info = file;
 
     if (file == NULL && (!maybe_stdin || format == FORMAT_ENGINE)) {
-        BIO_printf(bio_err, "no keyfile specified\n");
+        BIO_printf(bio_err, "No keyfile specified\n");
         goto end;
     }
     if (format == FORMAT_ENGINE) {
         if (e == NULL) {
-            BIO_printf(bio_err, "no engine specified\n");
+            BIO_printf(bio_err, "No engine specified\n");
         } else {
 #ifndef OPENSSL_NO_ENGINE
             pkey = ENGINE_load_public_key(e, file, (UI_METHOD *)get_ui_method(),
                                           &cb_data);
-            if (pkey == NULL) {
-                BIO_printf(bio_err, "cannot load %s from engine\n", key_descrip);
+            if (pkey == NULL && desc != NULL) {
+                BIO_printf(bio_err, "Cannot load %s from engine\n", desc);
                 ERR_print_errors(bio_err);
             }
 #else
-            BIO_printf(bio_err, "engines not supported\n");
+            BIO_printf(bio_err, "Engines not supported\n");
 #endif
         }
         goto end;
@@ -666,11 +712,19 @@ EVP_PKEY *load_pubkey(const char *file, int format, int maybe_stdin,
     } else if (format == FORMAT_MSBLOB) {
         pkey = b2i_PublicKey_bio(key);
 #endif
+    } else {
+        print_format_error(format, OPT_FMT_PEMDER
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DSA)
+                                 | OPT_FMT_MSBLOB
+#endif
+                           );
     }
  end:
     BIO_free(key);
-    if (pkey == NULL)
-        BIO_printf(bio_err, "unable to load %s\n", key_descrip);
+    if (pkey == NULL && desc != NULL) {
+        BIO_printf(bio_err, "Unable to load %s\n", desc);
+        ERR_print_errors(bio_err);
+    }
     return pkey;
 }
 
@@ -690,7 +744,7 @@ static int load_certs_crls(const char *file, int format,
     cb_data.prompt_info = file;
 
     if (format != FORMAT_PEM) {
-        BIO_printf(bio_err, "bad input format specified for %s\n", desc);
+        BIO_printf(bio_err, "Bad input format specified for %s\n", desc);
         return 0;
     }
 
@@ -749,9 +803,11 @@ static int load_certs_crls(const char *file, int format,
             sk_X509_CRL_pop_free(*pcrls, X509_CRL_free);
             *pcrls = NULL;
         }
-        BIO_printf(bio_err, "unable to load %s\n",
-                   pcerts ? "certificates" : "CRLs");
-        ERR_print_errors(bio_err);
+        if (desc != NULL) {
+            BIO_printf(bio_err, "Unable to load %s for %s\n",
+                       pcerts ? "certificates" : "CRLs", desc);
+            ERR_print_errors(bio_err);
+        }
     }
     return rv;
 }
@@ -1083,6 +1139,7 @@ X509_STORE *setup_verify(const char *CAfile, int noCAfile,
     ERR_clear_error();
     return store;
  end:
+    ERR_print_errors(bio_err);
     X509_STORE_free(store);
     return NULL;
 }
@@ -1110,13 +1167,13 @@ ENGINE *setup_engine(const char *engine, int debug)
 #ifndef OPENSSL_NO_ENGINE
     if (engine != NULL) {
         if (strcmp(engine, "auto") == 0) {
-            BIO_printf(bio_err, "enabling auto ENGINE support\n");
+            BIO_printf(bio_err, "Enabling auto ENGINE support\n");
             ENGINE_register_all_complete();
             return NULL;
         }
         if ((e = ENGINE_by_id(engine)) == NULL
             && (e = try_load_engine(engine)) == NULL) {
-            BIO_printf(bio_err, "invalid engine \"%s\"\n", engine);
+            BIO_printf(bio_err, "Invalid engine \"%s\"\n", engine);
             ERR_print_errors(bio_err);
             return NULL;
         }
@@ -1126,13 +1183,13 @@ ENGINE *setup_engine(const char *engine, int debug)
         ENGINE_ctrl_cmd(e, "SET_USER_INTERFACE", 0, (void *)get_ui_method(),
                         0, 1);
         if (!ENGINE_set_default(e, ENGINE_METHOD_ALL)) {
-            BIO_printf(bio_err, "can't use that engine\n");
+            BIO_printf(bio_err, "Cannot use engine \"%s\"\n", ENGINE_get_id(e));
             ERR_print_errors(bio_err);
             ENGINE_free(e);
             return NULL;
         }
 
-        BIO_printf(bio_err, "engine \"%s\" set.\n", ENGINE_get_id(e));
+        BIO_printf(bio_err, "Engine \"%s\" set.\n", ENGINE_get_id(e));
     }
 #endif
     return e;
@@ -1211,14 +1268,13 @@ BIGNUM *load_serial(const char *serialfile, int create, ASN1_INTEGER **retai)
             BIO_printf(bio_err, "Out of memory\n");
     } else {
         if (!a2i_ASN1_INTEGER(in, ai, buf, 1024)) {
-            BIO_printf(bio_err, "unable to load number from %s\n",
+            BIO_printf(bio_err, "Unable to load number from %s\n",
                        serialfile);
             goto err;
         }
         ret = ASN1_INTEGER_to_BN(ai, NULL);
         if (ret == NULL) {
-            BIO_printf(bio_err,
-                       "error converting number from bin to BIGNUM\n");
+            BIO_printf(bio_err, "Error converting number from bin to BIGNUM\n");
             goto err;
         }
     }
@@ -1228,6 +1284,7 @@ BIGNUM *load_serial(const char *serialfile, int create, ASN1_INTEGER **retai)
         ai = NULL;
     }
  err:
+    ERR_print_errors(bio_err);
     BIO_free(in);
     ASN1_INTEGER_free(ai);
     return ret;
@@ -1247,7 +1304,7 @@ int save_serial(const char *serialfile, const char *suffix, const BIGNUM *serial
     else
         j = strlen(serialfile) + strlen(suffix) + 1;
     if (j >= BSIZE) {
-        BIO_printf(bio_err, "file name too long\n");
+        BIO_printf(bio_err, "File name too long\n");
         goto err;
     }
 
@@ -1262,7 +1319,6 @@ int save_serial(const char *serialfile, const char *suffix, const BIGNUM *serial
     }
     out = BIO_new_file(buf[0], "w");
     if (out == NULL) {
-        ERR_print_errors(bio_err);
         goto err;
     }
 
@@ -1278,6 +1334,8 @@ int save_serial(const char *serialfile, const char *suffix, const BIGNUM *serial
         ai = NULL;
     }
  err:
+    if (!ret)
+        ERR_print_errors(bio_err);
     BIO_free_all(out);
     ASN1_INTEGER_free(ai);
     return ret;
@@ -1294,7 +1352,7 @@ int rotate_serial(const char *serialfile, const char *new_suffix,
     if (i > j)
         j = i;
     if (j + 1 >= BSIZE) {
-        BIO_printf(bio_err, "file name too long\n");
+        BIO_printf(bio_err, "File name too long\n");
         goto err;
     }
 #ifndef OPENSSL_SYS_VMS
@@ -1310,19 +1368,20 @@ int rotate_serial(const char *serialfile, const char *new_suffix,
 #endif
         ) {
         BIO_printf(bio_err,
-                   "unable to rename %s to %s\n", serialfile, buf[1]);
+                   "Unable to rename %s to %s\n", serialfile, buf[1]);
         perror("reason");
         goto err;
     }
     if (rename(buf[0], serialfile) < 0) {
         BIO_printf(bio_err,
-                   "unable to rename %s to %s\n", buf[0], serialfile);
+                   "Unable to rename %s to %s\n", buf[0], serialfile);
         perror("reason");
         rename(buf[1], serialfile);
         goto err;
     }
     return 1;
  err:
+    ERR_print_errors(bio_err);
     return 0;
 }
 
@@ -1363,17 +1422,14 @@ CA_DB *load_index(const char *dbfile, DB_ATTR *db_attr)
 #endif
 
     in = BIO_new_file(dbfile, "r");
-    if (in == NULL) {
-        ERR_print_errors(bio_err);
+    if (in == NULL)
         goto err;
-    }
 
 #ifndef OPENSSL_NO_POSIX_IO
     BIO_get_fp(in, &dbfp);
     if (fstat(fileno(dbfp), &dbst) == -1) {
         ERR_raise_data(ERR_LIB_SYS, errno,
                        "calling fstat(%s)", dbfile);
-        ERR_print_errors(bio_err);
         goto err;
     }
 #endif
@@ -1410,6 +1466,7 @@ CA_DB *load_index(const char *dbfile, DB_ATTR *db_attr)
 #endif
 
  err:
+    ERR_print_errors(bio_err);
     NCONF_free(dbattr_conf);
     TXT_DB_free(tmpdb);
     BIO_free_all(in);
@@ -1425,20 +1482,23 @@ int index_index(CA_DB *db)
                              LHASH_HASH_FN(index_serial),
                              LHASH_COMP_FN(index_serial))) {
         BIO_printf(bio_err,
-                   "error creating serial number index:(%ld,%ld,%ld)\n",
+                   "Error creating serial number index:(%ld,%ld,%ld)\n",
                    db->db->error, db->db->arg1, db->db->arg2);
-        return 0;
+        goto err;
     }
 
     if (db->attributes.unique_subject
         && !TXT_DB_create_index(db->db, DB_name, index_name_qual,
                                 LHASH_HASH_FN(index_name),
                                 LHASH_COMP_FN(index_name))) {
-        BIO_printf(bio_err, "error creating name index:(%ld,%ld,%ld)\n",
+        BIO_printf(bio_err, "Error creating name index:(%ld,%ld,%ld)\n",
                    db->db->error, db->db->arg1, db->db->arg2);
-        return 0;
+        goto err;
     }
     return 1;
+ err:
+    ERR_print_errors(bio_err);
+    return 0;
 }
 
 int save_index(const char *dbfile, const char *suffix, CA_DB *db)
@@ -1449,7 +1509,7 @@ int save_index(const char *dbfile, const char *suffix, CA_DB *db)
 
     j = strlen(dbfile) + strlen(suffix);
     if (j + 6 >= BSIZE) {
-        BIO_printf(bio_err, "file name too long\n");
+        BIO_printf(bio_err, "File name too long\n");
         goto err;
     }
 #ifndef OPENSSL_SYS_VMS
@@ -1464,7 +1524,7 @@ int save_index(const char *dbfile, const char *suffix, CA_DB *db)
     out = BIO_new_file(buf[0], "w");
     if (out == NULL) {
         perror(dbfile);
-        BIO_printf(bio_err, "unable to open '%s'\n", dbfile);
+        BIO_printf(bio_err, "Unable to open '%s'\n", dbfile);
         goto err;
     }
     j = TXT_DB_write(out, db->db);
@@ -1475,7 +1535,7 @@ int save_index(const char *dbfile, const char *suffix, CA_DB *db)
     out = BIO_new_file(buf[1], "w");
     if (out == NULL) {
         perror(buf[2]);
-        BIO_printf(bio_err, "unable to open '%s'\n", buf[2]);
+        BIO_printf(bio_err, "Unable to open '%s'\n", buf[2]);
         goto err;
     }
     BIO_printf(out, "unique_subject = %s\n",
@@ -1484,6 +1544,7 @@ int save_index(const char *dbfile, const char *suffix, CA_DB *db)
 
     return 1;
  err:
+    ERR_print_errors(bio_err);
     return 0;
 }
 
@@ -1498,7 +1559,7 @@ int rotate_index(const char *dbfile, const char *new_suffix,
     if (i > j)
         j = i;
     if (j + 6 >= BSIZE) {
-        BIO_printf(bio_err, "file name too long\n");
+        BIO_printf(bio_err, "File name too long\n");
         goto err;
     }
 #ifndef OPENSSL_SYS_VMS
@@ -1519,12 +1580,12 @@ int rotate_index(const char *dbfile, const char *new_suffix,
         && errno != ENOTDIR
 #endif
         ) {
-        BIO_printf(bio_err, "unable to rename %s to %s\n", dbfile, buf[1]);
+        BIO_printf(bio_err, "Unable to rename %s to %s\n", dbfile, buf[1]);
         perror("reason");
         goto err;
     }
     if (rename(buf[0], dbfile) < 0) {
-        BIO_printf(bio_err, "unable to rename %s to %s\n", buf[0], dbfile);
+        BIO_printf(bio_err, "Unable to rename %s to %s\n", buf[0], dbfile);
         perror("reason");
         rename(buf[1], dbfile);
         goto err;
@@ -1534,14 +1595,14 @@ int rotate_index(const char *dbfile, const char *new_suffix,
         && errno != ENOTDIR
 #endif
         ) {
-        BIO_printf(bio_err, "unable to rename %s to %s\n", buf[4], buf[3]);
+        BIO_printf(bio_err, "Unable to rename %s to %s\n", buf[4], buf[3]);
         perror("reason");
         rename(dbfile, buf[0]);
         rename(buf[1], dbfile);
         goto err;
     }
     if (rename(buf[2], buf[4]) < 0) {
-        BIO_printf(bio_err, "unable to rename %s to %s\n", buf[2], buf[4]);
+        BIO_printf(bio_err, "Unable to rename %s to %s\n", buf[2], buf[4]);
         perror("reason");
         rename(buf[3], buf[4]);
         rename(dbfile, buf[0]);
@@ -1550,6 +1611,7 @@ int rotate_index(const char *dbfile, const char *new_suffix,
     }
     return 1;
  err:
+    ERR_print_errors(bio_err);
     return 0;
 }
 
@@ -1640,7 +1702,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
             }
             if (*cp == '\\' && *++cp == '\0') {
                 BIO_printf(bio_err,
-                           "%s: escape character at end of string\n",
+                           "%s: Escape character at end of string\n",
                            opt_getprog());
                 goto err;
             }
@@ -1889,15 +1951,14 @@ static X509_CRL *load_crl_crldp(STACK_OF(DIST_POINT) *crldp)
         DIST_POINT *dp = sk_DIST_POINT_value(crldp, i);
         urlptr = get_dp_url(dp);
         if (urlptr)
-            return load_crl(urlptr, FORMAT_HTTP);
+            return load_crl(urlptr, FORMAT_HTTP, "CRL via CDP");
     }
     return NULL;
 }
 
 /*
- * Example of downloading CRLs from CRLDP: not usable for real world as it
- * always downloads, doesn't support non-blocking I/O and doesn't cache
- * anything.
+ * Example of downloading CRLs from CRLDP:
+ * not usable for real world as it always downloads and doesn't cache anything.
  */
 
 static STACK_OF(X509_CRL) *crls_http_cb(const X509_STORE_CTX *ctx,

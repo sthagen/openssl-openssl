@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -411,4 +411,50 @@ void *evp_keymgmt_util_gen(EVP_PKEY *target, EVP_KEYMGMT *keymgmt,
     }
 
     return keydata;
+}
+
+/*
+ * Returns the same numbers as EVP_PKEY_get_default_digest_name()
+ * When the string from the EVP_KEYMGMT implementation is "", we use
+ * SN_undef, since that corresponds to what EVP_PKEY_get_default_nid()
+ * returns for no digest.
+ */
+int evp_keymgmt_util_get_deflt_digest_name(EVP_KEYMGMT *keymgmt,
+                                           void *keydata,
+                                           char *mdname, size_t mdname_sz)
+{
+    OSSL_PARAM params[3];
+    char mddefault[100] = "";
+    char mdmandatory[100] = "";
+    char *result = NULL;
+    int rv = -2;
+
+    params[0] =
+        OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_DEFAULT_DIGEST,
+                                         mddefault, sizeof(mddefault));
+    params[1] =
+        OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_MANDATORY_DIGEST,
+                                         mdmandatory,
+                                         sizeof(mdmandatory));
+    params[2] = OSSL_PARAM_construct_end();
+
+    if (!evp_keymgmt_get_params(keymgmt, keydata, params))
+        return 0;
+
+    if (OSSL_PARAM_modified(params + 1)) {
+        if (params[1].return_size <= 1) /* Only a NUL byte */
+            result = SN_undef;
+        else
+            result = mdmandatory;
+        rv = 2;
+    } else if (OSSL_PARAM_modified(params)) {
+        if (params[0].return_size <= 1) /* Only a NUL byte */
+            result = SN_undef;
+        else
+            result = mddefault;
+        rv = 1;
+    }
+    if (rv > 0)
+        OPENSSL_strlcpy(mdname, result, mdname_sz);
+    return rv;
 }

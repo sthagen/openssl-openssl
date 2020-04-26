@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -11,6 +11,8 @@
 #include "internal/cryptlib.h"
 #include "crypto/x509.h"
 #include "x509_local.h"
+
+DEFINE_STACK_OF_STRING()
 
 /* Generic object loader, given expected type and criterion */
 static int cache_objects(X509_LOOKUP *lctx, const char *uri,

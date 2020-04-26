@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -15,6 +15,10 @@
 #include <openssl/cmperr.h>
 #include <openssl/err.h> /* should be implied by cmperr.h */
 #include <openssl/x509v3.h>
+
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_OBJECT)
+DEFINE_STACK_OF(ASN1_UTF8STRING)
 
 /*
  * use trace API for CMP-specific logging, prefixed by "CMP " and severity
@@ -114,8 +118,9 @@ const char *ossl_cmp_log_parse_metadata(const char *buf,
  */
 static const char *improve_location_name(const char *func, const char *fallback)
 {
-    if (!ossl_assert(fallback != NULL))
-        return NULL;
+    if (fallback == NULL)
+        return func == NULL ? UNKNOWN_FUNC : func;
+
     return func == NULL || *func == '\0' || strcmp(func, UNKNOWN_FUNC) == 0
         ? fallback : func;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -36,6 +36,10 @@
 #include "internal/nelem.h"
 #include "internal/ktls.h"
 #include "../ssl/ssl_local.h"
+
+DEFINE_STACK_OF(OCSP_RESPID)
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_NAME)
 
 static OPENSSL_CTX *libctx = NULL;
 static OSSL_PROVIDER *defctxnull = NULL;
@@ -5517,6 +5521,8 @@ static int test_pha_key_update(void)
 #if !defined(OPENSSL_NO_SRP) && !defined(OPENSSL_NO_TLS1_2)
 
 static SRP_VBASE *vbase = NULL;
+
+DEFINE_STACK_OF(SRP_user_pwd)
 
 static int ssl_srp_cb(SSL *s, int *ad, void *arg)
 {

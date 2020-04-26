@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -25,6 +25,10 @@
 #include "internal/evp.h"
 #include "ssl_local.h"
 #include <openssl/ct.h>
+
+DEFINE_STACK_OF_CONST(SSL_CIPHER)
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_NAME)
 
 static const SIGALG_LOOKUP *find_sig_alg(SSL *s, X509 *x, EVP_PKEY *pkey);
 static int tls12_sigalg_allowed(const SSL *s, int op, const SIGALG_LOOKUP *lu);
@@ -173,6 +177,15 @@ static const TLS_GROUP_INFO nid_list[] = {
     {EVP_PKEY_X25519, "X25519", 128, TLS_GROUP_CURVE_CUSTOM, 0x001D}, /* X25519 (29) */
     {EVP_PKEY_X448, "X448", 224, TLS_GROUP_CURVE_CUSTOM, 0x001E}, /* X448 (30) */
 # endif /* OPENSSL_NO_EC */
+# ifndef OPENSSL_NO_GOST
+    {NID_id_tc26_gost_3410_2012_256_paramSetA, "GOST_2012_256", 112, TLS_GROUP_CURVE_PRIME, 0x0022}, /* GC256A (34) */
+    {NID_id_tc26_gost_3410_2012_256_paramSetB, "GOST_2012_256", 112, TLS_GROUP_CURVE_PRIME, 0x0023}, /* GC256B (35) */
+    {NID_id_tc26_gost_3410_2012_256_paramSetC, "GOST_2012_256", 112, TLS_GROUP_CURVE_PRIME, 0x0024}, /* GC256C (36) */
+    {NID_id_tc26_gost_3410_2012_256_paramSetD, "GOST_2012_256", 112, TLS_GROUP_CURVE_PRIME, 0x0025}, /* GC256D (37) */
+    {NID_id_tc26_gost_3410_2012_512_paramSetA, "GOST_2012_512", 112, TLS_GROUP_CURVE_PRIME, 0x0026}, /* GC512A (38) */
+    {NID_id_tc26_gost_3410_2012_512_paramSetB, "GOST_2012_512", 112, TLS_GROUP_CURVE_PRIME, 0x0027}, /* GC512B (39) */
+    {NID_id_tc26_gost_3410_2012_512_paramSetC, "GOST_2012_512", 112, TLS_GROUP_CURVE_PRIME, 0x0028}, /* GC512C (40) */
+# endif /* OPENSSL_NO_GOST */
 # ifndef OPENSSL_NO_DH
     /* Security bit values for FFDHE groups are updated as per RFC 7919 */
     {NID_ffdhe2048, "DH", 103, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0100}, /* ffdhe2048 (0x0100) */
@@ -201,6 +214,15 @@ static const uint16_t supported_groups_default[] = {
     30,                      /* X448 (30) */
     25,                      /* secp521r1 (25) */
     24,                      /* secp384r1 (24) */
+# endif
+# ifndef OPENSSL_NO_GOST
+    34,                      /* GC256A (34) */
+    35,                      /* GC256B (35) */
+    36,                      /* GC256C (36) */
+    37,                      /* GC256D (37) */
+    38,                      /* GC512A (38) */
+    39,                      /* GC512B (39) */
+    40,                      /* GC512C (40) */
 # endif
 # ifndef OPENSSL_NO_DH
     0x100,                   /* ffdhe2048 (0x100) */
@@ -2259,7 +2281,7 @@ static int tls1_check_sig_alg(SSL *s, X509 *x, int default_nid)
         sigalg = use_pc_sigalgs
                  ? tls1_lookup_sigalg(s->s3.tmp.peer_cert_sigalgs[i])
                  : s->shared_sigalgs[i];
-        if (sig_nid == sigalg->sigandhash)
+        if (sigalg != NULL && sig_nid == sigalg->sigandhash)
             return 1;
     }
     return 0;

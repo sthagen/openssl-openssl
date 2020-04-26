@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2004-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2004, EdelKey Project. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -24,6 +24,10 @@
 
 # define SRP_RANDOM_SALT_LEN 20
 # define MAX_LEN 2500
+
+DEFINE_STACK_OF(SRP_user_pwd)
+DEFINE_STACK_OF(SRP_gN_cache)
+DEFINE_STACK_OF(SRP_gN)
 
 /*
  * Note that SRP uses its own variant of base 64 encoding. A different base64

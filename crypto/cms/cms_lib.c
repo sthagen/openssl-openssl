@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2008-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -15,6 +15,10 @@
 #include <openssl/asn1.h>
 #include <openssl/cms.h>
 #include "cms_local.h"
+
+DEFINE_STACK_OF(CMS_RevocationInfoChoice)
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_CRL)
 
 IMPLEMENT_ASN1_FUNCTIONS(CMS_ContentInfo)
 IMPLEMENT_ASN1_PRINT_FUNCTION(CMS_ContentInfo)

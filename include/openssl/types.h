@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2001-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -60,7 +60,9 @@ typedef int ASN1_BOOLEAN;
 typedef int ASN1_NULL;
 # endif
 
+typedef struct asn1_type_st ASN1_TYPE;
 typedef struct asn1_object_st ASN1_OBJECT;
+typedef struct asn1_string_table_st ASN1_STRING_TABLE;
 
 typedef struct ASN1_ITEM_st ASN1_ITEM;
 typedef struct asn1_pctx_st ASN1_PCTX;

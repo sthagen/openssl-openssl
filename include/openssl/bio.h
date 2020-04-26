@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -286,7 +286,7 @@ int BIO_method_type(const BIO *b);
 typedef int BIO_info_cb(BIO *, int, int);
 typedef BIO_info_cb bio_info_cb;  /* backward compatibility */
 
-DEFINE_STACK_OF(BIO)
+DEFINE_OR_DECLARE_STACK_OF(BIO)
 
 /* Prefix and suffix callback in ASN1 BIO */
 typedef int asn1_ps_func (BIO *b, unsigned char **pbuf, int *plen,

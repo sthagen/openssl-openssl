@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the OpenSSL license (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -15,6 +15,8 @@
 #include <openssl/pem.h>
 
 #include "testutil.h"
+
+DEFINE_STACK_OF(X509)
 
 static X509 *cert = NULL;
 static EVP_PKEY *privkey = NULL;
