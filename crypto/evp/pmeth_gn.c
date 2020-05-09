@@ -93,8 +93,10 @@ static int gen_init(EVP_PKEY_CTX *ctx, int operation)
 #endif
 
  end:
-    if (ret <= 0 && ctx != NULL)
+    if (ret <= 0 && ctx != NULL) {
+        evp_pkey_ctx_free_old_ops(ctx);
         ctx->operation = EVP_PKEY_OP_UNDEFINED;
+    }
     return ret;
 
  not_supported:
@@ -210,8 +212,9 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
     {
         char curve_name[OSSL_MAX_NAME_SIZE] = "";
 
-        if (EVP_PKEY_CTX_get_ec_paramgen_curve_name(ctx, curve_name,
-                                                    sizeof(curve_name)) < 1
+        if (!EVP_PKEY_get_utf8_string_param(*ppkey, OSSL_PKEY_PARAM_EC_NAME,
+                                            curve_name, sizeof(curve_name),
+                                            NULL)
             || strcmp(curve_name, "SM2") != 0)
             goto end;
     }

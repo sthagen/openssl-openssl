@@ -1481,7 +1481,7 @@ static SSL_SESSION *get_session_cb(SSL *ssl, const unsigned char *id, int len,
 }
 
 static int execute_test_session(int maxprot, int use_int_cache,
-                                int use_ext_cache)
+                                int use_ext_cache, long s_options)
 {
     SSL_CTX *sctx = NULL, *cctx = NULL;
     SSL *serverssl1 = NULL, *clientssl1 = NULL;
@@ -1522,6 +1522,10 @@ static int execute_test_session(int maxprot, int use_int_cache,
         SSL_CTX_set_session_cache_mode(cctx,
                                        SSL_SESS_CACHE_CLIENT
                                        | SSL_SESS_CACHE_NO_INTERNAL_STORE);
+    }
+
+    if (s_options) {
+        SSL_CTX_set_options(sctx, s_options);
     }
 
     if (!TEST_true(create_ssl_objects(sctx, cctx, &serverssl1, &clientssl1,
@@ -1768,12 +1772,12 @@ static int execute_test_session(int maxprot, int use_int_cache,
 static int test_session_with_only_int_cache(void)
 {
 #ifndef OPENSSL_NO_TLS1_3
-    if (!execute_test_session(TLS1_3_VERSION, 1, 0))
+    if (!execute_test_session(TLS1_3_VERSION, 1, 0, 0))
         return 0;
 #endif
 
 #ifndef OPENSSL_NO_TLS1_2
-    return execute_test_session(TLS1_2_VERSION, 1, 0);
+    return execute_test_session(TLS1_2_VERSION, 1, 0, 0);
 #else
     return 1;
 #endif
@@ -1782,12 +1786,12 @@ static int test_session_with_only_int_cache(void)
 static int test_session_with_only_ext_cache(void)
 {
 #ifndef OPENSSL_NO_TLS1_3
-    if (!execute_test_session(TLS1_3_VERSION, 0, 1))
+    if (!execute_test_session(TLS1_3_VERSION, 0, 1, 0))
         return 0;
 #endif
 
 #ifndef OPENSSL_NO_TLS1_2
-    return execute_test_session(TLS1_2_VERSION, 0, 1);
+    return execute_test_session(TLS1_2_VERSION, 0, 1, 0);
 #else
     return 1;
 #endif
@@ -1796,16 +1800,31 @@ static int test_session_with_only_ext_cache(void)
 static int test_session_with_both_cache(void)
 {
 #ifndef OPENSSL_NO_TLS1_3
-    if (!execute_test_session(TLS1_3_VERSION, 1, 1))
+    if (!execute_test_session(TLS1_3_VERSION, 1, 1, 0))
         return 0;
 #endif
 
 #ifndef OPENSSL_NO_TLS1_2
-    return execute_test_session(TLS1_2_VERSION, 1, 1);
+    return execute_test_session(TLS1_2_VERSION, 1, 1, 0);
 #else
     return 1;
 #endif
 }
+
+static int test_session_wo_ca_names(void)
+{
+#ifndef OPENSSL_NO_TLS1_3
+    if (!execute_test_session(TLS1_3_VERSION, 1, 0, SSL_OP_DISABLE_TLSEXT_CA_NAMES))
+        return 0;
+#endif
+
+#ifndef OPENSSL_NO_TLS1_2
+    return execute_test_session(TLS1_2_VERSION, 1, 0, SSL_OP_DISABLE_TLSEXT_CA_NAMES);
+#else
+    return 1;
+#endif
+}
+
 
 #ifndef OPENSSL_NO_TLS1_3
 static SSL_SESSION *sesscache[6];
@@ -6208,6 +6227,7 @@ static struct {
     const char *srvrciphers;
     const char *srvrtls13ciphers;
     const char *shared;
+    const char *fipsshared;
 } shared_ciphers_data[] = {
 /*
  * We can't establish a connection (even in TLSv1.1) with these ciphersuites if
@@ -6220,14 +6240,29 @@ static struct {
         NULL,
         "AES256-SHA:DHE-RSA-AES128-SHA",
         NULL,
+        "AES256-SHA",
         "AES256-SHA"
     },
+# if !defined(OPENSSL_NO_CHACHA) \
+     && !defined(OPENSSL_NO_POLY1305) \
+     && !defined(OPENSSL_NO_EC)
+    {
+        TLS1_2_VERSION,
+        "AES128-SHA:ECDHE-RSA-CHACHA20-POLY1305",
+        NULL,
+        "AES128-SHA:ECDHE-RSA-CHACHA20-POLY1305",
+        NULL,
+        "AES128-SHA:ECDHE-RSA-CHACHA20-POLY1305",
+        "AES128-SHA"
+    },
+# endif
     {
         TLS1_2_VERSION,
         "AES128-SHA:DHE-RSA-AES128-SHA:AES256-SHA",
         NULL,
         "AES128-SHA:DHE-RSA-AES256-SHA:AES256-SHA",
         NULL,
+        "AES128-SHA:AES256-SHA",
         "AES128-SHA:AES256-SHA"
     },
     {
@@ -6236,6 +6271,7 @@ static struct {
         NULL,
         "AES128-SHA:DHE-RSA-AES128-SHA",
         NULL,
+        "AES128-SHA",
         "AES128-SHA"
     },
 #endif
@@ -6252,7 +6288,8 @@ static struct {
         "AES256-SHA:AES128-SHA256",
         NULL,
         "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:"
-        "TLS_AES_128_GCM_SHA256:AES256-SHA"
+        "TLS_AES_128_GCM_SHA256:AES256-SHA",
+        "TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256:AES256-SHA"
     },
 #endif
 #ifndef OPENSSL_NO_TLS1_3
@@ -6262,17 +6299,39 @@ static struct {
         "TLS_AES_256_GCM_SHA384",
         "AES256-SHA",
         "TLS_AES_256_GCM_SHA384",
+        "TLS_AES_256_GCM_SHA384",
         "TLS_AES_256_GCM_SHA384"
     },
 #endif
 };
 
-static int test_ssl_get_shared_ciphers(int tst)
+static int int_test_ssl_get_shared_ciphers(int tst, int clnt)
 {
     SSL_CTX *cctx = NULL, *sctx = NULL;
     SSL *clientssl = NULL, *serverssl = NULL;
     int testresult = 0;
     char buf[1024];
+    OPENSSL_CTX *tmplibctx = OPENSSL_CTX_new();
+
+    if (!TEST_ptr(tmplibctx))
+        goto end;
+
+    /*
+     * Regardless of whether we're testing with the FIPS provider loaded into
+     * libctx, we want one peer to always use the full set of ciphersuites
+     * available. Therefore we use a separate libctx with the default provider
+     * loaded into it. We run the same tests twice - once with the client side
+     * having the full set of ciphersuites and once with the server side.
+     */
+    if (clnt) {
+        cctx = SSL_CTX_new_with_libctx(tmplibctx, NULL, TLS_client_method());
+        if (!TEST_ptr(cctx))
+            goto end;
+    } else {
+        sctx = SSL_CTX_new_with_libctx(tmplibctx, NULL, TLS_server_method());
+        if (!TEST_ptr(sctx))
+            goto end;
+    }
 
     if (!TEST_true(create_ssl_ctx_pair(libctx, TLS_server_method(),
                                        TLS_client_method(),
@@ -6301,7 +6360,11 @@ static int test_ssl_get_shared_ciphers(int tst)
         goto end;
 
     if (!TEST_ptr(SSL_get_shared_ciphers(serverssl, buf, sizeof(buf)))
-            || !TEST_int_eq(strcmp(buf, shared_ciphers_data[tst].shared), 0)) {
+            || !TEST_int_eq(strcmp(buf,
+                                   is_fips
+                                   ? shared_ciphers_data[tst].fipsshared
+                                   : shared_ciphers_data[tst].shared),
+                                   0)) {
         TEST_info("Shared ciphers are: %s\n", buf);
         goto end;
     }
@@ -6313,9 +6376,17 @@ static int test_ssl_get_shared_ciphers(int tst)
     SSL_free(clientssl);
     SSL_CTX_free(sctx);
     SSL_CTX_free(cctx);
+    OPENSSL_CTX_free(tmplibctx);
 
     return testresult;
 }
+
+static int test_ssl_get_shared_ciphers(int tst)
+{
+    return int_test_ssl_get_shared_ciphers(tst, 0)
+           && int_test_ssl_get_shared_ciphers(tst, 1);
+}
+
 
 static const char *appdata = "Hello World";
 static int gen_tick_called, dec_tick_called, tick_key_cb_called;
@@ -7533,6 +7604,7 @@ int setup_tests(void)
     ADD_TEST(test_session_with_only_int_cache);
     ADD_TEST(test_session_with_only_ext_cache);
     ADD_TEST(test_session_with_both_cache);
+    ADD_TEST(test_session_wo_ca_names);
 #ifndef OPENSSL_NO_TLS1_3
     ADD_ALL_TESTS(test_stateful_tickets, 3);
     ADD_ALL_TESTS(test_stateless_tickets, 3);
