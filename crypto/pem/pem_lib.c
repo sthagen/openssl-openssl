@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -824,7 +824,7 @@ static int get_header_and_data(BIO *bp, BIO **header, BIO **data, char *name,
         flags_mask = ~0u;
         len = BIO_gets(bp, linebuf, LINESIZE);
         if (len <= 0) {
-            PEMerr(PEM_F_GET_HEADER_AND_DATA, PEM_R_SHORT_HEADER);
+            PEMerr(PEM_F_GET_HEADER_AND_DATA, PEM_R_BAD_END_LINE);
             goto err;
         }
 

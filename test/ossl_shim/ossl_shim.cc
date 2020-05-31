@@ -370,8 +370,10 @@ static int NewSessionCallback(SSL *ssl, SSL_SESSION *session) {
 }
 
 static int TicketKeyCallback(SSL *ssl, uint8_t *key_name, uint8_t *iv,
-                             EVP_CIPHER_CTX *ctx, HMAC_CTX *hmac_ctx,
+                             EVP_CIPHER_CTX *ctx, EVP_MAC_CTX *hmac_ctx,
                              int encrypt) {
+  OSSL_PARAM params[3], *p = params;
+
   if (!encrypt) {
     if (GetTestState(ssl)->ticket_decrypt_done) {
       fprintf(stderr, "TicketKeyCallback called after completion.\n");
@@ -391,8 +393,14 @@ static int TicketKeyCallback(SSL *ssl, uint8_t *key_name, uint8_t *iv,
     return 0;
   }
 
-  if (!HMAC_Init_ex(hmac_ctx, kZeros, sizeof(kZeros), EVP_sha256(), NULL) ||
-      !EVP_CipherInit_ex(ctx, EVP_aes_128_cbc(), NULL, kZeros, iv, encrypt)) {
+  *p++ = OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_DIGEST, "SHA256", 0);
+  *p++ = OSSL_PARAM_construct_octet_string(OSSL_MAC_PARAM_KEY, kZeros,
+                                           sizeof(kZeros));
+  *p = OSSL_PARAM_construct_end();
+
+  if (!EVP_CipherInit_ex(ctx, EVP_aes_128_cbc(), NULL, kZeros, iv, encrypt)
+      || !EVP_MAC_init(hmac_ctx)
+      || !EVP_MAC_CTX_set_params(hmac_ctx, params)) {
     return -1;
   }
 
@@ -625,7 +633,7 @@ static bssl::UniquePtr<SSL_CTX> SetupCtx(const TestConfig *config) {
   SSL_CTX_sess_set_new_cb(ssl_ctx.get(), NewSessionCallback);
 
   if (config->use_ticket_callback) {
-    SSL_CTX_set_tlsext_ticket_key_cb(ssl_ctx.get(), TicketKeyCallback);
+    SSL_CTX_set_tlsext_ticket_key_evp_cb(ssl_ctx.get(), TicketKeyCallback);
   }
 
   if (config->enable_client_custom_extension &&

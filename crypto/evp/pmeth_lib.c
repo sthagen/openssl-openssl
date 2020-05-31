@@ -137,6 +137,40 @@ EVP_PKEY_METHOD *EVP_PKEY_meth_new(int id, int flags)
 }
 #endif /* FIPS_MODULE */
 
+static int is_legacy_alg(int id, const char *keytype)
+{
+#ifndef FIPS_MODULE
+    /* Certain EVP_PKEY keytypes are only available in legacy form */
+    if (id == -1) {
+        id = OBJ_sn2nid(keytype);
+        if (id == NID_undef)
+            id = OBJ_ln2nid(keytype);
+        if (id == NID_undef)
+            return  0;
+    }
+    switch (id) {
+    /*
+     * TODO(3.0): Remove SM2 and DHX when they are converted to have provider
+     * support
+     */
+    case EVP_PKEY_SM2:
+    case EVP_PKEY_DHX:
+    case EVP_PKEY_SCRYPT:
+    case EVP_PKEY_TLS1_PRF:
+    case EVP_PKEY_HKDF:
+    case EVP_PKEY_CMAC:
+    case EVP_PKEY_HMAC:
+    case EVP_PKEY_SIPHASH:
+    case EVP_PKEY_POLY1305:
+        return 1;
+    default:
+        return 0;
+    }
+#else
+    return 0;
+#endif
+}
+
 static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
                                  EVP_PKEY *pkey, ENGINE *e,
                                  const char *keytype, const char *propquery,
@@ -155,10 +189,10 @@ static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
         goto common;
 
     /*
-     * If the key doesn't contain anything legacy, then it must be provided,
-     * so we extract the necessary information and use that.
+     * If the internal key is provided, we extract the keytype from its
+     * keymgmt and skip over the legacy code.
      */
-    if (pkey != NULL && pkey->type == EVP_PKEY_NONE) {
+    if (pkey != NULL && evp_pkey_is_provided(pkey)) {
         /* If we have an engine, something went wrong somewhere... */
         if (!ossl_assert(e == NULL))
             return NULL;
@@ -228,10 +262,20 @@ static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
      * implementation.
      */
     if (e == NULL && keytype != NULL) {
-        /* This could fail so ignore errors */
-        ERR_set_mark();
+        int legacy = is_legacy_alg(id, keytype);
+
+        if (legacy) {
+            /* This could fail so ignore errors */
+            ERR_set_mark();
+        }
+
         keymgmt = EVP_KEYMGMT_fetch(libctx, keytype, propquery);
-        ERR_pop_to_mark();
+        if (legacy) {
+            ERR_pop_to_mark();
+        } else if (keymgmt == NULL) {
+            EVPerr(EVP_F_INT_CTX_NEW, EVP_R_FETCH_FAILED);
+            return NULL;
+        }
     }
 
     ret = OPENSSL_zalloc(sizeof(*ret));
@@ -1017,6 +1061,12 @@ static int legacy_ctrl_str_to_param(EVP_PKEY_CTX *ctx, const char *name,
         name = OSSL_PKEY_PARAM_RSA_E;
     else if (strcmp(name, "rsa_keygen_primes") == 0)
         name = OSSL_PKEY_PARAM_RSA_PRIMES;
+    else if (strcmp(name, "rsa_pss_keygen_md") == 0)
+        name = OSSL_PKEY_PARAM_RSA_DIGEST;
+    else if (strcmp(name, "rsa_pss_keygen_mgf1_md") == 0)
+        name = OSSL_PKEY_PARAM_RSA_MGF1_DIGEST;
+    else if (strcmp(name, "rsa_pss_keygen_saltlen") == 0)
+        name = OSSL_PKEY_PARAM_RSA_PSS_SALTLEN;
 # ifndef OPENSSL_NO_DSA
     else if (strcmp(name, "dsa_paramgen_bits") == 0)
         name = OSSL_PKEY_PARAM_FFC_PBITS;
@@ -1027,7 +1077,7 @@ static int legacy_ctrl_str_to_param(EVP_PKEY_CTX *ctx, const char *name,
 # endif
 # ifndef OPENSSL_NO_DH
     else if (strcmp(name, "dh_paramgen_generator") == 0)
-        name = OSSL_PKEY_PARAM_FFC_GENERATOR;
+        name = OSSL_PKEY_PARAM_DH_GENERATOR;
     else if (strcmp(name, "dh_paramgen_prime_len") == 0)
         name = OSSL_PKEY_PARAM_FFC_PBITS;
     else if (strcmp(name, "dh_paramgen_subprime_len") == 0)
@@ -1036,9 +1086,9 @@ static int legacy_ctrl_str_to_param(EVP_PKEY_CTX *ctx, const char *name,
         name = OSSL_PKEY_PARAM_FFC_TYPE;
         value = dh_gen_type_id2name(atoi(value));
     } else if (strcmp(name, "dh_param") == 0)
-        name = OSSL_PKEY_PARAM_FFC_GROUP;
+        name = OSSL_PKEY_PARAM_DH_GROUP;
     else if (strcmp(name, "dh_rfc5114") == 0) {
-        name = OSSL_PKEY_PARAM_FFC_GROUP;
+        name = OSSL_PKEY_PARAM_DH_GROUP;
         value = ffc_named_group_from_uid(atoi(value));
     } else if (strcmp(name, "dh_pad") == 0)
         name = OSSL_EXCHANGE_PARAM_PAD;
@@ -1066,7 +1116,8 @@ static int legacy_ctrl_str_to_param(EVP_PKEY_CTX *ctx, const char *name,
         if (!OSSL_PARAM_allocate_from_text(&params[0], settable, name, value,
                                            strlen(value), &exists)) {
             if (!exists) {
-                ERR_raise(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED);
+                ERR_raise_data(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED,
+                               "name=%s,value=%s", name, value);
                 return -2;
             }
             return 0;

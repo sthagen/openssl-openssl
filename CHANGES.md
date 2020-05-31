@@ -23,12 +23,45 @@ OpenSSL 3.0
 
 ### Changes between 1.1.1 and 3.0 [xx XXX xxxx]
 
-*  Removed FIPS_mode() and FIPS_mode_set(). These functions are legacy API's
+ * Add CAdES-BES signature verification support, mostly derived
+   from ESSCertIDv2 TS (RFC 5816) contribution by Marek Klein.
+
+   *Filipe Raimundo da Silva*
+
+ * Add CAdES-BES signature scheme and attributes support (RFC 5126) to CMS API.
+
+   *Antonio Iacono*
+
+ * Deprecated EC_POINT_make_affine() and EC_POINTs_make_affine(). These
+   functions are not widely used and now OpenSSL automatically perform this
+   conversion when needed.
+
+   *Billy Bob Brumley*
+
+ * Deprecated EC_GROUP_precompute_mult(), EC_GROUP_have_precompute_mult(), and
+   EC_KEY_precompute_mult(). These functions are not widely used and
+   applications should instead switch to named curves which OpenSSL has
+   hardcoded lookup tables for.
+
+   *Billy Bob Brumley*
+
+ * Deprecated EC_POINTs_mul(). This function is not widely used and applications
+   should instead use the L<EC_POINT_mul(3)> function.
+
+   *Billy Bob Brumley*
+
+ * Removed FIPS_mode() and FIPS_mode_set(). These functions are legacy API's
    that are not applicable to the new provider model. Applications should
    instead use EVP_default_properties_is_fips_enabled() and
    EVP_default_properties_enable_fips().
 
    *Shane Lontis*
+
+ * The SSL option SSL_OP_IGNORE_UNEXPECTED_EOF is introduced. If that option
+   is set, an unexpected EOF is ignored, it pretends a close notify was received
+   instead and so the returned error becomes SSL_ERROR_ZERO_RETURN.
+
+   *Dmitry Belyavskiy*
 
  * Deprecated EC_POINT_set_Jprojective_coordinates_GFp() and
    EC_POINT_get_Jprojective_coordinates_GFp(). These functions are not widely
@@ -93,10 +126,10 @@ OpenSSL 3.0
    *Richard Levitte*
 
  * Added an implementation of CMP and CRMF (RFC 4210, RFC 4211 RFC 6712).
-   This adds crypto/cmp/, crpyto/crmf/, and test/cmp_*.
-   See L<OSSL_CMP_exec_IR_ses(3)> as starting point.
+   This adds crypto/cmp/, crpyto/crmf/, apps/cmp.c, and test/cmp_*.
+   See L<openssl-cmp(1)> and L<OSSL_CMP_exec_IR_ses(3)> as starting points.
 
-   *David von Oheimb*
+   *David von Oheimb, Martin Peylo*
 
  * Generalized the HTTP client code from crypto/ocsp/ into crpyto/http/.
    The legacy OCSP-focused and only partly documented API is retained.
@@ -6001,40 +6034,40 @@ OpenSSL 1.0.1
 
    *Steve Henson*
 
- *) Correct Bignum squaring. Bignum squaring (BN_sqr) may produce incorrect
-    results on some platforms, including x86_64. This bug occurs at random
-    with a very low probability, and is not known to be exploitable in any
-    way, though its exact impact is difficult to determine. Thanks to Pieter
-    Wuille (Blockstream) who reported this issue and also suggested an initial
-    fix. Further analysis was conducted by the OpenSSL development team and
-    Adam Langley of Google. The final fix was developed by Andy Polyakov of
-    the OpenSSL core team.
-    [CVE-2014-3570][]
+ * Correct Bignum squaring. Bignum squaring (BN_sqr) may produce incorrect
+   results on some platforms, including x86_64. This bug occurs at random
+   with a very low probability, and is not known to be exploitable in any
+   way, though its exact impact is difficult to determine. Thanks to Pieter
+   Wuille (Blockstream) who reported this issue and also suggested an initial
+   fix. Further analysis was conducted by the OpenSSL development team and
+   Adam Langley of Google. The final fix was developed by Andy Polyakov of
+   the OpenSSL core team.
+   [CVE-2014-3570][]
 
    *Andy Polyakov*
 
- *) Do not resume sessions on the server if the negotiated protocol
-    version does not match the session's version. Resuming with a different
-    version, while not strictly forbidden by the RFC, is of questionable
-    sanity and breaks all known clients.
+ * Do not resume sessions on the server if the negotiated protocol
+   version does not match the session's version. Resuming with a different
+   version, while not strictly forbidden by the RFC, is of questionable
+   sanity and breaks all known clients.
 
    *David Benjamin, Emilia Käsper*
 
- *) Tighten handling of the ChangeCipherSpec (CCS) message: reject
-    early CCS messages during renegotiation. (Note that because
-    renegotiation is encrypted, this early CCS was not exploitable.)
+ * Tighten handling of the ChangeCipherSpec (CCS) message: reject
+   early CCS messages during renegotiation. (Note that because
+   renegotiation is encrypted, this early CCS was not exploitable.)
 
    *Emilia Käsper*
 
- *) Tighten client-side session ticket handling during renegotiation:
-    ensure that the client only accepts a session ticket if the server sends
-    the extension anew in the ServerHello. Previously, a TLS client would
-    reuse the old extension state and thus accept a session ticket if one was
-    announced in the initial ServerHello.
+ * Tighten client-side session ticket handling during renegotiation:
+   ensure that the client only accepts a session ticket if the server sends
+   the extension anew in the ServerHello. Previously, a TLS client would
+   reuse the old extension state and thus accept a session ticket if one was
+   announced in the initial ServerHello.
 
-    Similarly, ensure that the client requires a session ticket if one
-    was advertised in the ServerHello. Previously, a TLS client would
-    ignore a missing NewSessionTicket message.
+   Similarly, ensure that the client requires a session ticket if one
+   was advertised in the ServerHello. Previously, a TLS client would
+   ignore a missing NewSessionTicket message.
 
    *Emilia Käsper*
 
@@ -7020,19 +7053,19 @@ OpenSSL 1.0.0
 
    *Steve Henson*
 
- *) Correct Bignum squaring. Bignum squaring (BN_sqr) may produce incorrect
-    results on some platforms, including x86_64. This bug occurs at random
-    with a very low probability, and is not known to be exploitable in any
-    way, though its exact impact is difficult to determine. Thanks to Pieter
-    Wuille (Blockstream) who reported this issue and also suggested an initial
-    fix. Further analysis was conducted by the OpenSSL development team and
-    Adam Langley of Google. The final fix was developed by Andy Polyakov of
-    the OpenSSL core team.
-    [CVE-2014-3570][]
+ * Correct Bignum squaring. Bignum squaring (BN_sqr) may produce incorrect
+   results on some platforms, including x86_64. This bug occurs at random
+   with a very low probability, and is not known to be exploitable in any
+   way, though its exact impact is difficult to determine. Thanks to Pieter
+   Wuille (Blockstream) who reported this issue and also suggested an initial
+   fix. Further analysis was conducted by the OpenSSL development team and
+   Adam Langley of Google. The final fix was developed by Andy Polyakov of
+   the OpenSSL core team.
+   [CVE-2014-3570][]
 
-    *Andy Polyakov*
+   *Andy Polyakov*
 
- *) Fix various certificate fingerprint issues.
+ * Fix various certificate fingerprint issues.
 
    By using non-DER or invalid encodings outside the signed portion of a
    certificate the fingerprint can be changed without breaking the signature.

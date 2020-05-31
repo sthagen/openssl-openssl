@@ -72,6 +72,8 @@
 # define EVP_PKEY_ED25519 NID_ED25519
 # define EVP_PKEY_X448 NID_X448
 # define EVP_PKEY_ED448 NID_ED448
+/* Special indicator that the object is uniquely provider side */
+# define EVP_PKEY_KEYMGMT -1
 
 #ifdef  __cplusplus
 extern "C" {
@@ -153,6 +155,7 @@ int (*EVP_MD_meth_get_ctrl(const EVP_MD *md))(EVP_MD_CTX *ctx, int cmd,
 #  define EVP_MD_CTRL_DIGALGID                    0x1
 #  define EVP_MD_CTRL_MICALG                      0x2
 #  define EVP_MD_CTRL_XOF_LEN                     0x3
+#  define EVP_MD_CTRL_TLSTREE                     0x4
 
 /* Minimum Algorithm specific ctrl value */
 
@@ -382,6 +385,8 @@ int (*EVP_CIPHER_meth_get_ctrl(const EVP_CIPHER *cipher))(EVP_CIPHER_CTX *,
 # define         EVP_CTRL_PROCESS_UNPROTECTED            0x28
 /* Get the supplementary wrap cipher */
 #define          EVP_CTRL_GET_WRAP_CIPHER                0x29
+/* TLSTREE key diversification */
+#define          EVP_CTRL_TLSTREE                        0x2A
 
 /* Padding modes */
 #define EVP_PADDING_PKCS7       1
@@ -437,7 +442,7 @@ typedef int (EVP_PBE_KEYGEN) (EVP_CIPHER_CTX *ctx, const char *pass,
 
 # ifndef OPENSSL_NO_RSA
 #  define EVP_PKEY_assign_RSA(pkey,rsa) EVP_PKEY_assign((pkey),EVP_PKEY_RSA,\
-                                        (rsa))
+                                                        (rsa))
 # endif
 
 # ifndef OPENSSL_NO_DSA
@@ -1186,9 +1191,15 @@ EVP_PKEY *d2i_KeyParams_bio(int type, EVP_PKEY **a, BIO *in);
 int EVP_PKEY_copy_parameters(EVP_PKEY *to, const EVP_PKEY *from);
 int EVP_PKEY_missing_parameters(const EVP_PKEY *pkey);
 int EVP_PKEY_save_parameters(EVP_PKEY *pkey, int mode);
+#ifndef OPENSSL_NO_DEPRECATED_3_0
 int EVP_PKEY_cmp_parameters(const EVP_PKEY *a, const EVP_PKEY *b);
+#endif
+int EVP_PKEY_parameters_eq(const EVP_PKEY *a, const EVP_PKEY *b);
 
+#ifndef OPENSSL_NO_DEPRECATED_3_0
 int EVP_PKEY_cmp(const EVP_PKEY *a, const EVP_PKEY *b);
+#endif
+int EVP_PKEY_eq(const EVP_PKEY *a, const EVP_PKEY *b);
 
 int EVP_PKEY_print_public(BIO *out, const EVP_PKEY *pkey,
                           int indent, ASN1_PCTX *pctx);
@@ -1301,7 +1312,7 @@ void EVP_PKEY_asn1_copy(EVP_PKEY_ASN1_METHOD *dst,
 void EVP_PKEY_asn1_free(EVP_PKEY_ASN1_METHOD *ameth);
 void EVP_PKEY_asn1_set_public(EVP_PKEY_ASN1_METHOD *ameth,
                               int (*pub_decode) (EVP_PKEY *pk,
-                                                 X509_PUBKEY *pub),
+                                                 const X509_PUBKEY *pub),
                               int (*pub_encode) (X509_PUBKEY *pub,
                                                  const EVP_PKEY *pk),
                               int (*pub_cmp) (const EVP_PKEY *a,

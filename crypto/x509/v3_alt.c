@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2017 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -128,7 +128,7 @@ STACK_OF(CONF_VALUE) *i2v_GENERAL_NAME(X509V3_EXT_METHOD *method,
                 BIO_snprintf(othername, sizeof(othername), "othername: %s:",
                              oline);
             else
-                strncpy(othername, "othername:", sizeof(othername));
+                OPENSSL_strlcpy(othername, "othername:", sizeof(othername));
 
             /* check if the value is something printable */
             if (gen->d.otherName->value->type == V_ASN1_IA5STRING) {

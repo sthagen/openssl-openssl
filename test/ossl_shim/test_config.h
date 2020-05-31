@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include <openssl/configuration.h>
+
 
 struct TestConfig {
   int port = 0;

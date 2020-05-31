@@ -71,6 +71,13 @@ struct ossl_provider_st {
     OSSL_provider_get_params_fn *get_params;
     OSSL_provider_query_operation_fn *query_operation;
 
+    /*
+     * Cache of bit to indicate of query_operation() has been called on
+     * a specific operation or not.
+     */
+    unsigned char *operation_bits;
+    size_t operation_bits_sz;
+
     /* Provider side data */
     void *provctx;
 };
@@ -317,6 +324,9 @@ void ossl_provider_free(OSSL_PROVIDER *prov)
             }
 # endif
 #endif
+            OPENSSL_free(prov->operation_bits);
+            prov->operation_bits = NULL;
+            prov->operation_bits_sz = 0;
             prov->flag_initialized = 0;
         }
 
@@ -418,6 +428,7 @@ int OSSL_PROVIDER_set_default_search_path(OPENSSL_CTX *libctx, const char *path)
 static int provider_activate(OSSL_PROVIDER *prov)
 {
     const OSSL_DISPATCH *provider_dispatch = NULL;
+    void *tmp_provctx = NULL;    /* safety measure */
 #ifndef OPENSSL_NO_ERR
 # ifndef FIPS_MODULE
     OSSL_provider_get_reason_strings_fn *p_get_reason_strings = NULL;
@@ -487,8 +498,8 @@ static int provider_activate(OSSL_PROVIDER *prov)
 
     /* Call the initialise function for the provider. */
     if (prov->init_function == NULL
-        || !prov->init_function(prov, core_dispatch, &provider_dispatch,
-                                &prov->provctx)) {
+        || !prov->init_function((OSSL_CORE_HANDLE *)prov, core_dispatch,
+                                &provider_dispatch, &tmp_provctx)) {
         ERR_raise_data(ERR_LIB_CRYPTO, ERR_R_INIT_FAIL, NULL,
                        "name=%s", prov->name);
 #ifndef FIPS_MODULE
@@ -497,6 +508,7 @@ static int provider_activate(OSSL_PROVIDER *prov)
 #endif
         return 0;
     }
+    prov->provctx = tmp_provctx;
 
     for (; provider_dispatch->function_id != 0; provider_dispatch++) {
         switch (provider_dispatch->function_id) {
@@ -780,6 +792,42 @@ const OSSL_ALGORITHM *ossl_provider_query_operation(const OSSL_PROVIDER *prov,
     return prov->query_operation(prov->provctx, operation_id, no_cache);
 }
 
+int ossl_provider_set_operation_bit(OSSL_PROVIDER *provider, size_t bitnum)
+{
+    size_t byte = bitnum / 8;
+    unsigned char bit = (1 << (bitnum % 8)) & 0xFF;
+
+    if (provider->operation_bits_sz <= byte) {
+        provider->operation_bits = OPENSSL_realloc(provider->operation_bits,
+                                                   byte + 1);
+        if (provider->operation_bits == NULL) {
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+            return 0;
+        }
+        memset(provider->operation_bits + provider->operation_bits_sz,
+               '\0', byte + 1 - provider->operation_bits_sz);
+    }
+    provider->operation_bits[byte] |= bit;
+    return 1;
+}
+
+int ossl_provider_test_operation_bit(OSSL_PROVIDER *provider, size_t bitnum,
+                                     int *result)
+{
+    size_t byte = bitnum / 8;
+    unsigned char bit = (1 << (bitnum % 8)) & 0xFF;
+
+    if (!ossl_assert(result != NULL)) {
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+
+    *result = 0;
+    if (provider->operation_bits_sz > byte)
+        *result = ((provider->operation_bits[byte] & bit) != 0);
+    return 1;
+}
+
 /*-
  * Core functions for the provider
  * ===============================
@@ -793,8 +841,13 @@ const OSSL_ALGORITHM *ossl_provider_query_operation(const OSSL_PROVIDER *prov,
  * never knows.
  */
 static const OSSL_PARAM param_types[] = {
-    OSSL_PARAM_DEFN("openssl-version", OSSL_PARAM_UTF8_PTR, NULL, 0),
-    OSSL_PARAM_DEFN("provider-name", OSSL_PARAM_UTF8_PTR, NULL, 0),
+    OSSL_PARAM_DEFN(OSSL_PROV_PARAM_CORE_VERSION, OSSL_PARAM_UTF8_PTR, NULL, 0),
+    OSSL_PARAM_DEFN(OSSL_PROV_PARAM_CORE_PROV_NAME, OSSL_PARAM_UTF8_PTR,
+                    NULL, 0),
+#ifndef FIPS_MODULE
+    OSSL_PARAM_DEFN(OSSL_PROV_PARAM_CORE_MODULE_FILENAME, OSSL_PARAM_UTF8_PTR,
+                    NULL, 0),
+#endif
     OSSL_PARAM_END
 };
 
@@ -816,23 +869,29 @@ static OSSL_core_clear_last_error_mark_fn core_clear_last_error_mark;
 static OSSL_core_pop_error_to_mark_fn core_pop_error_to_mark;
 #endif
 
-static const OSSL_PARAM *core_gettable_params(const OSSL_PROVIDER *prov)
+static const OSSL_PARAM *core_gettable_params(const OSSL_CORE_HANDLE *handle)
 {
     return param_types;
 }
 
-static int core_get_params(const OSSL_PROVIDER *prov, OSSL_PARAM params[])
+static int core_get_params(const OSSL_CORE_HANDLE *handle, OSSL_PARAM params[])
 {
     int i;
     OSSL_PARAM *p;
+    /*
+     * We created this object originally and we know it is actually an
+     * OSSL_PROVIDER *, so the cast is safe
+     */
+    OSSL_PROVIDER *prov = (OSSL_PROVIDER *)handle;
 
-    if ((p = OSSL_PARAM_locate(params, "openssl-version")) != NULL)
+    if ((p = OSSL_PARAM_locate(params, OSSL_PROV_PARAM_CORE_VERSION)) != NULL)
         OSSL_PARAM_set_utf8_ptr(p, OPENSSL_VERSION_STR);
-    if ((p = OSSL_PARAM_locate(params, "provider-name")) != NULL)
+    if ((p = OSSL_PARAM_locate(params, OSSL_PROV_PARAM_CORE_PROV_NAME)) != NULL)
         OSSL_PARAM_set_utf8_ptr(p, prov->name);
 
 #ifndef FIPS_MODULE
-    if ((p = OSSL_PARAM_locate(params, OSSL_PROV_PARAM_MODULE_FILENAME)) != NULL)
+    if ((p = OSSL_PARAM_locate(params,
+                               OSSL_PROV_PARAM_CORE_MODULE_FILENAME)) != NULL)
         OSSL_PARAM_set_utf8_ptr(p, ossl_provider_module_path(prov));
 #endif
 
@@ -848,14 +907,26 @@ static int core_get_params(const OSSL_PROVIDER *prov, OSSL_PARAM params[])
     return 1;
 }
 
-static OPENSSL_CTX *core_get_libctx(const OSSL_PROVIDER *prov)
+static OPENSSL_CORE_CTX *core_get_libctx(const OSSL_CORE_HANDLE *handle)
 {
-    return ossl_provider_library_context(prov);
+    /*
+     * We created this object originally and we know it is actually an
+     * OSSL_PROVIDER *, so the cast is safe
+     */
+    OSSL_PROVIDER *prov = (OSSL_PROVIDER *)handle;
+
+    return (OPENSSL_CORE_CTX *)ossl_provider_library_context(prov);
 }
 
-static int core_thread_start(const OSSL_PROVIDER *prov,
+static int core_thread_start(const OSSL_CORE_HANDLE *handle,
                              OSSL_thread_stop_handler_fn handfn)
 {
+    /*
+     * We created this object originally and we know it is actually an
+     * OSSL_PROVIDER *, so the cast is safe
+     */
+    OSSL_PROVIDER *prov = (OSSL_PROVIDER *)handle;
+
     return ossl_init_thread_start(prov, prov->provctx, handfn);
 }
 
@@ -866,26 +937,32 @@ static int core_thread_start(const OSSL_PROVIDER *prov,
  */
 #ifndef FIPS_MODULE
 /*
- * TODO(3.0) These error functions should use |prov| to select the proper
+ * TODO(3.0) These error functions should use |handle| to select the proper
  * library context to report in the correct error stack, at least if error
  * stacks become tied to the library context.
  * We cannot currently do that since there's no support for it in the
  * ERR subsystem.
  */
-static void core_new_error(const OSSL_PROVIDER *prov)
+static void core_new_error(const OSSL_CORE_HANDLE *handle)
 {
     ERR_new();
 }
 
-static void core_set_error_debug(const OSSL_PROVIDER *prov,
+static void core_set_error_debug(const OSSL_CORE_HANDLE *handle,
                                  const char *file, int line, const char *func)
 {
     ERR_set_debug(file, line, func);
 }
 
-static void core_vset_error(const OSSL_PROVIDER *prov,
+static void core_vset_error(const OSSL_CORE_HANDLE *handle,
                             uint32_t reason, const char *fmt, va_list args)
 {
+    /*
+     * We created this object originally and we know it is actually an
+     * OSSL_PROVIDER *, so the cast is safe
+     */
+    OSSL_PROVIDER *prov = (OSSL_PROVIDER *)handle;
+
     /*
      * If the uppermost 8 bits are non-zero, it's an OpenSSL library
      * error and will be treated as such.  Otherwise, it's a new style
@@ -898,17 +975,17 @@ static void core_vset_error(const OSSL_PROVIDER *prov,
     }
 }
 
-static int core_set_error_mark(const OSSL_PROVIDER *prov)
+static int core_set_error_mark(const OSSL_CORE_HANDLE *handle)
 {
     return ERR_set_mark();
 }
 
-static int core_clear_last_error_mark(const OSSL_PROVIDER *prov)
+static int core_clear_last_error_mark(const OSSL_CORE_HANDLE *handle)
 {
     return ERR_clear_last_mark();
 }
 
-static int core_pop_error_to_mark(const OSSL_PROVIDER *prov)
+static int core_pop_error_to_mark(const OSSL_CORE_HANDLE *handle)
 {
     return ERR_pop_to_mark();
 }
@@ -934,6 +1011,7 @@ static const OSSL_DISPATCH core_dispatch_[] = {
     { OSSL_FUNC_BIO_NEW_FILE, (void (*)(void))BIO_new_file },
     { OSSL_FUNC_BIO_NEW_MEMBUF, (void (*)(void))BIO_new_mem_buf },
     { OSSL_FUNC_BIO_READ_EX, (void (*)(void))BIO_read_ex },
+    { OSSL_FUNC_BIO_WRITE_EX, (void (*)(void))BIO_write_ex },
     { OSSL_FUNC_BIO_FREE, (void (*)(void))BIO_free },
     { OSSL_FUNC_BIO_VPRINTF, (void (*)(void))BIO_vprintf },
     { OSSL_FUNC_BIO_VSNPRINTF, (void (*)(void))BIO_vsnprintf },

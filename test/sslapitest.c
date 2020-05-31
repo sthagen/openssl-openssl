@@ -2755,8 +2755,11 @@ static unsigned int psk_server_cb(SSL *ssl, const char *identity,
 #define MSG6    "test"
 #define MSG7    "message."
 
-#define TLS13_AES_256_GCM_SHA384_BYTES  ((const unsigned char *)"\x13\x02")
 #define TLS13_AES_128_GCM_SHA256_BYTES  ((const unsigned char *)"\x13\x01")
+#define TLS13_AES_256_GCM_SHA384_BYTES  ((const unsigned char *)"\x13\x02")
+#define TLS13_CHACHA20_POLY1305_SHA256_BYTES ((const unsigned char *)"\x13\x03")
+#define TLS13_AES_128_CCM_SHA256_BYTES ((const unsigned char *)"\x13\x04")
+#define TLS13_AES_128_CCM_8_SHA256_BYTES ((const unsigned char *)"\x13\05")
 
 
 static SSL_SESSION *create_a_psk(SSL *ssl)
@@ -3682,6 +3685,113 @@ static int test_early_data_psk(int idx)
     SSL_SESSION_free(clientpsk);
     SSL_SESSION_free(serverpsk);
     clientpsk = serverpsk = NULL;
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+    return testresult;
+}
+
+/*
+ * Test TLSv1.3 PSK can be used to send early_data with all 5 ciphersuites
+ * idx == 0: Test with TLS1_3_RFC_AES_128_GCM_SHA256
+ * idx == 1: Test with TLS1_3_RFC_AES_256_GCM_SHA384
+ * idx == 2: Test with TLS1_3_RFC_CHACHA20_POLY1305_SHA256,
+ * idx == 3: Test with TLS1_3_RFC_AES_128_CCM_SHA256
+ * idx == 4: Test with TLS1_3_RFC_AES_128_CCM_8_SHA256
+ */
+static int test_early_data_psk_with_all_ciphers(int idx)
+{
+    SSL_CTX *cctx = NULL, *sctx = NULL;
+    SSL *clientssl = NULL, *serverssl = NULL;
+    int testresult = 0;
+    SSL_SESSION *sess = NULL;
+    unsigned char buf[20];
+    size_t readbytes, written;
+    const SSL_CIPHER *cipher;
+    const char *cipher_str[] = {
+        TLS1_3_RFC_AES_128_GCM_SHA256,
+        TLS1_3_RFC_AES_256_GCM_SHA384,
+# if !defined(OPENSSL_NO_CHACHA) && !defined(OPENSSL_NO_POLY1305)
+        TLS1_3_RFC_CHACHA20_POLY1305_SHA256,
+# else
+        NULL,
+# endif
+        TLS1_3_RFC_AES_128_CCM_SHA256,
+        TLS1_3_RFC_AES_128_CCM_8_SHA256
+    };
+    const unsigned char *cipher_bytes[] = {
+        TLS13_AES_128_GCM_SHA256_BYTES,
+        TLS13_AES_256_GCM_SHA384_BYTES,
+# if !defined(OPENSSL_NO_CHACHA) && !defined(OPENSSL_NO_POLY1305)
+        TLS13_CHACHA20_POLY1305_SHA256_BYTES,
+# else
+        NULL,
+# endif
+        TLS13_AES_128_CCM_SHA256_BYTES,
+        TLS13_AES_128_CCM_8_SHA256_BYTES
+    };
+
+    if (cipher_str[idx] == NULL)
+        return 1;
+    /* Skip ChaCha20Poly1305 as currently FIPS module does not support it */
+    if (idx == 2 && is_fips == 1)
+        return 1;
+
+    /* We always set this up with a final parameter of "2" for PSK */
+    if (!TEST_true(setupearly_data_test(&cctx, &sctx, &clientssl,
+                                        &serverssl, &sess, 2)))
+        goto end;
+
+    if (!TEST_true(SSL_set_ciphersuites(clientssl, cipher_str[idx]))
+            || !TEST_true(SSL_set_ciphersuites(serverssl, cipher_str[idx])))
+        goto end;
+
+    /*
+     * 'setupearly_data_test' creates only one instance of SSL_SESSION
+     * and assigns to both client and server with incremented reference
+     * and the same instance is updated in 'sess'.
+     * So updating ciphersuite in 'sess' which will get reflected in
+     * PSK handshake using psk use sess and find sess cb.
+     */
+    cipher = SSL_CIPHER_find(clientssl, cipher_bytes[idx]);
+    if (!TEST_ptr(cipher) || !TEST_true(SSL_SESSION_set_cipher(sess, cipher)))
+        goto end;
+
+    SSL_set_connect_state(clientssl);
+    if (!TEST_true(SSL_write_early_data(clientssl, MSG1, strlen(MSG1),
+                                        &written)))
+        goto end;
+
+    if (!TEST_int_eq(SSL_read_early_data(serverssl, buf, sizeof(buf),
+                                         &readbytes),
+                                         SSL_READ_EARLY_DATA_SUCCESS)
+            || !TEST_mem_eq(buf, readbytes, MSG1, strlen(MSG1))
+            || !TEST_int_eq(SSL_get_early_data_status(serverssl),
+                                                      SSL_EARLY_DATA_ACCEPTED)
+            || !TEST_int_eq(SSL_connect(clientssl), 1)
+            || !TEST_int_eq(SSL_accept(serverssl), 1))
+        goto end;
+
+    /* Send some normal data from client to server */
+    if (!TEST_true(SSL_write_ex(clientssl, MSG2, strlen(MSG2), &written))
+            || !TEST_size_t_eq(written, strlen(MSG2)))
+        goto end;
+
+    if (!TEST_true(SSL_read_ex(serverssl, buf, sizeof(buf), &readbytes))
+            || !TEST_mem_eq(buf, readbytes, MSG2, strlen(MSG2)))
+        goto end;
+
+    testresult = 1;
+ end:
+    SSL_SESSION_free(sess);
+    SSL_SESSION_free(clientpsk);
+    SSL_SESSION_free(serverpsk);
+    clientpsk = serverpsk = NULL;
+    if (clientssl != NULL)
+        SSL_shutdown(clientssl);
+    if (serverssl != NULL)
+        SSL_shutdown(serverssl);
     SSL_free(serverssl);
     SSL_free(clientssl);
     SSL_CTX_free(sctx);
@@ -6673,6 +6783,61 @@ static int test_ticket_callbacks(int tst)
 }
 
 /*
+ * Test incorrect shutdown.
+ * Test 0: client does not shutdown properly,
+ *         server does not set SSL_OP_IGNORE_UNEXPECTED_EOF,
+ *         server should get SSL_ERROR_SSL
+ * Test 1: client does not shutdown properly,
+ *         server sets SSL_OP_IGNORE_UNEXPECTED_EOF,
+ *         server should get SSL_ERROR_ZERO_RETURN
+ */
+static int test_incorrect_shutdown(int tst)
+{
+    SSL_CTX *cctx = NULL, *sctx = NULL;
+    SSL *clientssl = NULL, *serverssl = NULL;
+    int testresult = 0;
+    char buf[80];
+    BIO *c2s;
+
+    if (!TEST_true(create_ssl_ctx_pair(libctx, TLS_server_method(),
+                                       TLS_client_method(), 0, 0,
+                                       &sctx, &cctx, cert, privkey)))
+        goto end;
+
+    if (tst == 1)
+        SSL_CTX_set_options(sctx, SSL_OP_IGNORE_UNEXPECTED_EOF);
+
+    if (!TEST_true(create_ssl_objects(sctx, cctx, &serverssl, &clientssl,
+                                            NULL, NULL)))
+        goto end;
+
+    if (!TEST_true(create_ssl_connection(serverssl, clientssl,
+                                              SSL_ERROR_NONE)))
+        goto end;
+
+    c2s = SSL_get_rbio(serverssl);
+    BIO_set_mem_eof_return(c2s, 0);
+
+    if (!TEST_false(SSL_read(serverssl, buf, sizeof(buf))))
+        goto end;
+
+    if (tst == 0 && !TEST_int_eq(SSL_get_error(serverssl, 0), SSL_ERROR_SSL) )
+        goto end;
+    if (tst == 1 && !TEST_int_eq(SSL_get_error(serverssl, 0), SSL_ERROR_ZERO_RETURN) )
+        goto end;
+
+    testresult = 1;
+
+ end:
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+
+    return testresult;
+}
+
+/*
  * Test bi-directional shutdown.
  * Test 0: TLSv1.2
  * Test 1: TLSv1.2, server continues to read/write after client shutdown
@@ -7641,6 +7806,7 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_early_data_skip_abort, 3);
     ADD_ALL_TESTS(test_early_data_not_sent, 3);
     ADD_ALL_TESTS(test_early_data_psk, 8);
+    ADD_ALL_TESTS(test_early_data_psk_with_all_ciphers, 5);
     ADD_ALL_TESTS(test_early_data_not_expected, 3);
 # ifndef OPENSSL_NO_TLS1_2
     ADD_ALL_TESTS(test_early_data_tls1_2, 3);
@@ -7685,6 +7851,7 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_ssl_get_shared_ciphers, OSSL_NELEM(shared_ciphers_data));
     ADD_ALL_TESTS(test_ticket_callbacks, 16);
     ADD_ALL_TESTS(test_shutdown, 7);
+    ADD_ALL_TESTS(test_incorrect_shutdown, 2);
     ADD_ALL_TESTS(test_cert_cb, 6);
     ADD_ALL_TESTS(test_client_cert_cb, 2);
     ADD_ALL_TESTS(test_ca_names, 3);

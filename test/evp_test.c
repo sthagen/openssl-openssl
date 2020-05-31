@@ -2404,7 +2404,7 @@ static int keypair_test_run(EVP_TEST *t)
         goto end;
     }
 
-    if ((rv = EVP_PKEY_cmp(pair->privk, pair->pubk)) != 1 ) {
+    if ((rv = EVP_PKEY_eq(pair->privk, pair->pubk)) != 1 ) {
         if ( 0 == rv ) {
             t->err = "KEYPAIR_MISMATCH";
         } else if ( -1 == rv ) {
@@ -2995,7 +2995,8 @@ static int key_unsupported(void)
     long err = ERR_peek_error();
 
     if (ERR_GET_LIB(err) == ERR_LIB_EVP
-            && ERR_GET_REASON(err) == EVP_R_UNSUPPORTED_ALGORITHM) {
+            && (ERR_GET_REASON(err) == EVP_R_UNSUPPORTED_ALGORITHM
+                || ERR_GET_REASON(err) == EVP_R_FETCH_FAILED)) {
         ERR_clear_error();
         return 1;
     }
