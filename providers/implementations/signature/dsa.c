@@ -16,7 +16,7 @@
 #include <string.h>
 
 #include <openssl/crypto.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/err.h>
 #include <openssl/dsa.h>
@@ -33,27 +33,27 @@
 #include "crypto/dsa.h"
 #include "prov/der_dsa.h"
 
-static OSSL_OP_signature_newctx_fn dsa_newctx;
-static OSSL_OP_signature_sign_init_fn dsa_signature_init;
-static OSSL_OP_signature_verify_init_fn dsa_signature_init;
-static OSSL_OP_signature_sign_fn dsa_sign;
-static OSSL_OP_signature_verify_fn dsa_verify;
-static OSSL_OP_signature_digest_sign_init_fn dsa_digest_signverify_init;
-static OSSL_OP_signature_digest_sign_update_fn dsa_digest_signverify_update;
-static OSSL_OP_signature_digest_sign_final_fn dsa_digest_sign_final;
-static OSSL_OP_signature_digest_verify_init_fn dsa_digest_signverify_init;
-static OSSL_OP_signature_digest_verify_update_fn dsa_digest_signverify_update;
-static OSSL_OP_signature_digest_verify_final_fn dsa_digest_verify_final;
-static OSSL_OP_signature_freectx_fn dsa_freectx;
-static OSSL_OP_signature_dupctx_fn dsa_dupctx;
-static OSSL_OP_signature_get_ctx_params_fn dsa_get_ctx_params;
-static OSSL_OP_signature_gettable_ctx_params_fn dsa_gettable_ctx_params;
-static OSSL_OP_signature_set_ctx_params_fn dsa_set_ctx_params;
-static OSSL_OP_signature_settable_ctx_params_fn dsa_settable_ctx_params;
-static OSSL_OP_signature_get_ctx_md_params_fn dsa_get_ctx_md_params;
-static OSSL_OP_signature_gettable_ctx_md_params_fn dsa_gettable_ctx_md_params;
-static OSSL_OP_signature_set_ctx_md_params_fn dsa_set_ctx_md_params;
-static OSSL_OP_signature_settable_ctx_md_params_fn dsa_settable_ctx_md_params;
+static OSSL_FUNC_signature_newctx_fn dsa_newctx;
+static OSSL_FUNC_signature_sign_init_fn dsa_signature_init;
+static OSSL_FUNC_signature_verify_init_fn dsa_signature_init;
+static OSSL_FUNC_signature_sign_fn dsa_sign;
+static OSSL_FUNC_signature_verify_fn dsa_verify;
+static OSSL_FUNC_signature_digest_sign_init_fn dsa_digest_signverify_init;
+static OSSL_FUNC_signature_digest_sign_update_fn dsa_digest_signverify_update;
+static OSSL_FUNC_signature_digest_sign_final_fn dsa_digest_sign_final;
+static OSSL_FUNC_signature_digest_verify_init_fn dsa_digest_signverify_init;
+static OSSL_FUNC_signature_digest_verify_update_fn dsa_digest_signverify_update;
+static OSSL_FUNC_signature_digest_verify_final_fn dsa_digest_verify_final;
+static OSSL_FUNC_signature_freectx_fn dsa_freectx;
+static OSSL_FUNC_signature_dupctx_fn dsa_dupctx;
+static OSSL_FUNC_signature_get_ctx_params_fn dsa_get_ctx_params;
+static OSSL_FUNC_signature_gettable_ctx_params_fn dsa_gettable_ctx_params;
+static OSSL_FUNC_signature_set_ctx_params_fn dsa_set_ctx_params;
+static OSSL_FUNC_signature_settable_ctx_params_fn dsa_settable_ctx_params;
+static OSSL_FUNC_signature_get_ctx_md_params_fn dsa_get_ctx_md_params;
+static OSSL_FUNC_signature_gettable_ctx_md_params_fn dsa_gettable_ctx_md_params;
+static OSSL_FUNC_signature_set_ctx_md_params_fn dsa_set_ctx_md_params;
+static OSSL_FUNC_signature_settable_ctx_md_params_fn dsa_settable_ctx_md_params;
 
 /*
  * What's passed as an actual key is defined by the KEYMGMT interface.
@@ -338,13 +338,17 @@ int dsa_digest_verify_final(void *vpdsactx, const unsigned char *sig,
 
 static void dsa_freectx(void *vpdsactx)
 {
-    PROV_DSA_CTX *pdsactx = (PROV_DSA_CTX *)vpdsactx;
+    PROV_DSA_CTX *ctx = (PROV_DSA_CTX *)vpdsactx;
 
-    DSA_free(pdsactx->dsa);
-    EVP_MD_CTX_free(pdsactx->mdctx);
-    EVP_MD_free(pdsactx->md);
-
-    OPENSSL_free(pdsactx);
+    OPENSSL_free(ctx->propq);
+    EVP_MD_CTX_free(ctx->mdctx);
+    EVP_MD_free(ctx->md);
+    ctx->propq = NULL;
+    ctx->mdctx = NULL;
+    ctx->md = NULL;
+    ctx->mdsize = 0;
+    DSA_free(ctx->dsa);
+    OPENSSL_free(ctx);
 }
 
 static void *dsa_dupctx(void *vpdsactx)

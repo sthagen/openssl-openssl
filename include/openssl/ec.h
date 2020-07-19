@@ -47,7 +47,9 @@ typedef enum {
     POINT_CONVERSION_HYBRID = 6
 } point_conversion_form_t;
 
+#  ifndef OPENSSL_NO_DEPRECATED_3_0
 typedef struct ec_method_st EC_METHOD;
+#  endif
 typedef struct ec_group_st EC_GROUP;
 typedef struct ec_point_st EC_POINT;
 typedef struct ecpk_parameters_st ECPKPARAMETERS;
@@ -61,33 +63,33 @@ typedef struct ec_parameters_st ECPARAMETERS;
  *  optimized methods.
  *  \return  EC_METHOD object
  */
-const EC_METHOD *EC_GFp_simple_method(void);
+DEPRECATEDIN_3_0(const EC_METHOD *EC_GFp_simple_method(void))
 
 /** Returns GFp methods using montgomery multiplication.
  *  \return  EC_METHOD object
  */
-const EC_METHOD *EC_GFp_mont_method(void);
+DEPRECATEDIN_3_0(const EC_METHOD *EC_GFp_mont_method(void))
 
 /** Returns GFp methods using optimized methods for NIST recommended curves
  *  \return  EC_METHOD object
  */
-const EC_METHOD *EC_GFp_nist_method(void);
+DEPRECATEDIN_3_0(const EC_METHOD *EC_GFp_nist_method(void))
 
 #  ifndef OPENSSL_NO_EC_NISTP_64_GCC_128
 /** Returns 64-bit optimized methods for nistp224
  *  \return  EC_METHOD object
  */
-const EC_METHOD *EC_GFp_nistp224_method(void);
+DEPRECATEDIN_3_0(const EC_METHOD *EC_GFp_nistp224_method(void))
 
 /** Returns 64-bit optimized methods for nistp256
  *  \return  EC_METHOD object
  */
-const EC_METHOD *EC_GFp_nistp256_method(void);
+DEPRECATEDIN_3_0(const EC_METHOD *EC_GFp_nistp256_method(void))
 
 /** Returns 64-bit optimized methods for nistp521
  *  \return  EC_METHOD object
  */
-const EC_METHOD *EC_GFp_nistp521_method(void);
+DEPRECATEDIN_3_0(const EC_METHOD *EC_GFp_nistp521_method(void))
 #  endif
 
 #  ifndef OPENSSL_NO_EC2M
@@ -98,7 +100,7 @@ const EC_METHOD *EC_GFp_nistp521_method(void);
 /** Returns the basic GF2m ec method
  *  \return  EC_METHOD object
  */
-const EC_METHOD *EC_GF2m_simple_method(void);
+DEPRECATEDIN_3_0(const EC_METHOD *EC_GF2m_simple_method(void))
 
 #  endif
 
@@ -108,20 +110,10 @@ const EC_METHOD *EC_GF2m_simple_method(void);
 
 /**
  *  Creates a new EC_GROUP object
- *  \param   libctx The associated library context or NULL for the default
- *                  library context
  *  \param   meth   EC_METHOD to use
  *  \return  newly created EC_GROUP object or NULL in case of an error.
  */
-EC_GROUP *EC_GROUP_new_ex(OPENSSL_CTX *libctx, const EC_METHOD *meth);
-
-/**
- *  Creates a new EC_GROUP object. Same as EC_GROUP_new_ex with NULL for the
- *  library context.
- *  \param   meth   EC_METHOD to use
- *  \return  newly created EC_GROUP object or NULL in case of an error.
- */
-EC_GROUP *EC_GROUP_new(const EC_METHOD *meth);
+DEPRECATEDIN_3_0(EC_GROUP *EC_GROUP_new(const EC_METHOD *meth))
 
 /** Frees a EC_GROUP object
  *  \param  group  EC_GROUP object to be freed.
@@ -151,13 +143,13 @@ EC_GROUP *EC_GROUP_dup(const EC_GROUP *src);
  *  \param  group  EC_GROUP object
  *  \return EC_METHOD used in this EC_GROUP object.
  */
-const EC_METHOD *EC_GROUP_method_of(const EC_GROUP *group);
+DEPRECATEDIN_3_0(const EC_METHOD *EC_GROUP_method_of(const EC_GROUP *group))
 
 /** Returns the field type of the EC_METHOD.
  *  \param  meth  EC_METHOD object
  *  \return NID of the underlying field type OID.
  */
-int EC_METHOD_get_field_type(const EC_METHOD *meth);
+DEPRECATEDIN_3_0(int EC_METHOD_get_field_type(const EC_METHOD *meth))
 
 /** Sets the generator and its order/cofactor of a EC_GROUP object.
  *  \param  group      EC_GROUP object
@@ -234,6 +226,12 @@ int EC_GROUP_get_curve_name(const EC_GROUP *group);
  *  \return the group field
  */
 const BIGNUM *EC_GROUP_get0_field(const EC_GROUP *group);
+
+/** Returns the field type of the EC_GROUP.
+ *  \param  group  EC_GROUP object
+ *  \return NID of the underlying field type OID.
+ */
+int EC_GROUP_get_field_type(const EC_GROUP *group);
 
 void EC_GROUP_set_asn1_flag(EC_GROUP *group, int flag);
 int EC_GROUP_get_asn1_flag(const EC_GROUP *group);
@@ -385,15 +383,18 @@ EC_GROUP *EC_GROUP_new_curve_GF2m(const BIGNUM *p, const BIGNUM *a,
  * Creates a EC_GROUP object with a curve specified by a NID
  *  \param  libctx The associated library context or NULL for the default
  *                 context
+ *  \param  propq  A property query string
  *  \param  nid    NID of the OID of the curve name
  *  \return newly created EC_GROUP object with specified curve or NULL
  *          if an error occurred
  */
-EC_GROUP *EC_GROUP_new_by_curve_name_ex(OPENSSL_CTX *libctx, int nid);
+EC_GROUP *EC_GROUP_new_by_curve_name_with_libctx(OPENSSL_CTX *libctx,
+                                                 const char *propq, int nid);
 
 /**
  * Creates a EC_GROUP object with a curve specified by a NID. Same as
- * EC_GROUP_new_by_curve_name_ex but the libctx is always NULL.
+ * EC_GROUP_new_by_curve_name_with_libctx but the libctx and propq are always
+ * NULL.
  *  \param  nid    NID of the OID of the curve name
  *  \return newly created EC_GROUP object with specified curve or NULL
  *          if an error occurred
@@ -493,7 +494,7 @@ EC_POINT *EC_POINT_dup(const EC_POINT *src, const EC_GROUP *group);
  *  \param  point  EC_POINT object
  *  \return the EC_METHOD used
  */
-const EC_METHOD *EC_POINT_method_of(const EC_POINT *point);
+DEPRECATEDIN_3_0(const EC_METHOD *EC_POINT_method_of(const EC_POINT *point))
 
 /** Sets a point to infinity (neutral element)
  *  \param  group  underlying EC_GROUP object
@@ -866,11 +867,11 @@ int ECPKParameters_print_fp(FILE *fp, const EC_GROUP *x, int off);
  *               which case the default library context is used.
  *  \return EC_KEY object or NULL if an error occurred.
  */
-EC_KEY *EC_KEY_new_ex(OPENSSL_CTX *ctx);
+EC_KEY *EC_KEY_new_with_libctx(OPENSSL_CTX *ctx, const char *propq);
 
 /**
- *  Creates a new EC_KEY object. Same as calling EC_KEY_new_ex with a NULL
- *  library context
+ *  Creates a new EC_KEY object. Same as calling EC_KEY_new_with_libctx with a
+ *  NULL library context
  *  \return EC_KEY object or NULL if an error occurred.
  */
 EC_KEY *EC_KEY_new(void);
@@ -884,17 +885,19 @@ void EC_KEY_clear_flags(EC_KEY *key, int flags);
 /**
  *  Creates a new EC_KEY object using a named curve as underlying
  *  EC_GROUP object.
- *  \param  ctx  The library context for to use for this EC_KEY. May be NULL in
- *               which case the default library context is used.
- *  \param  nid  NID of the named curve.
+ *  \param  ctx   The library context for to use for this EC_KEY. May be NULL in
+ *                which case the default library context is used.
+ *  \param  propq Any property query string
+ *  \param  nid   NID of the named curve.
  *  \return EC_KEY object or NULL if an error occurred.
  */
-EC_KEY *EC_KEY_new_by_curve_name_ex(OPENSSL_CTX *ctx, int nid);
+EC_KEY *EC_KEY_new_by_curve_name_with_libctx(OPENSSL_CTX *ctx, const char *propq,
+                                             int nid);
 
 /**
  *  Creates a new EC_KEY object using a named curve as underlying
  *  EC_GROUP object. Same as calling EC_KEY_new_by_curve_name_ex with a NULL
- *  library context.
+ *  library context and property query string.
  *  \param  nid  NID of the named curve.
  *  \return EC_KEY object or NULL if an error occurred.
  */
@@ -1452,10 +1455,6 @@ DEPRECATEDIN_3_0(void EC_KEY_METHOD_get_verify
 #   endif
 #  endif
 
-int EVP_PKEY_CTX_set_ec_paramgen_curve_name(EVP_PKEY_CTX *ctx,
-                                            const char *name);
-int EVP_PKEY_CTX_get_ec_paramgen_curve_name(EVP_PKEY_CTX *ctx,
-                                            char *name, size_t namelen);
 int EVP_PKEY_CTX_set_ec_paramgen_curve_nid(EVP_PKEY_CTX *ctx, int nid);
 
 #  define EVP_PKEY_CTX_set_ec_param_enc(ctx, flag) \

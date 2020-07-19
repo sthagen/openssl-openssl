@@ -14,7 +14,7 @@
 #include "internal/deprecated.h"
 
 #include <openssl/crypto.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/evp.h>
@@ -24,8 +24,8 @@
 #include "prov/implementations.h"
 #include "crypto/sha.h"
 
-static OSSL_OP_digest_set_ctx_params_fn sha1_set_ctx_params;
-static OSSL_OP_digest_settable_ctx_params_fn sha1_settable_ctx_params;
+static OSSL_FUNC_digest_set_ctx_params_fn sha1_set_ctx_params;
+static OSSL_FUNC_digest_settable_ctx_params_fn sha1_settable_ctx_params;
 
 static const OSSL_PARAM known_sha1_settable_ctx_params[] = {
     {OSSL_DIGEST_PARAM_SSL3_MS, OSSL_PARAM_OCTET_STRING, NULL, 0, 0},

@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use some engine deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include "e_os.h"
 #include <string.h>
 #include <sys/stat.h>
@@ -36,7 +39,7 @@
 DEFINE_STACK_OF(X509)
 
 #ifdef _WIN32
-# define stat    _stat
+# define stat _stat
 #endif
 
 #ifndef S_ISDIR
@@ -219,7 +222,6 @@ static OSSL_STORE_INFO *try_decode_PKCS12(const char *pem_name,
     if (ctx == NULL) {
         /* Initial parsing */
         PKCS12 *p12;
-        int ok = 0;
 
         if (pem_name != NULL)
             /* No match, there is no PEM PKCS12 tag */
@@ -256,37 +258,46 @@ static OSSL_STORE_INFO *try_decode_PKCS12(const char *pem_name,
                 OSSL_STORE_INFO *osi_pkey = NULL;
                 OSSL_STORE_INFO *osi_cert = NULL;
                 OSSL_STORE_INFO *osi_ca = NULL;
+                int ok = 1;
 
-                if ((ctx = sk_OSSL_STORE_INFO_new_null()) != NULL
-                    && (osi_pkey = OSSL_STORE_INFO_new_PKEY(pkey)) != NULL
-                    && sk_OSSL_STORE_INFO_push(ctx, osi_pkey) != 0
-                    && (osi_cert = OSSL_STORE_INFO_new_CERT(cert)) != NULL
-                    && sk_OSSL_STORE_INFO_push(ctx, osi_cert) != 0) {
-                    ok = 1;
-                    osi_pkey = NULL;
-                    osi_cert = NULL;
-
-                    while(sk_X509_num(chain) > 0) {
+                if ((ctx = sk_OSSL_STORE_INFO_new_null()) != NULL) {
+                    if (pkey != NULL) {
+                        if ((osi_pkey = OSSL_STORE_INFO_new_PKEY(pkey)) != NULL
+                            /* clearing pkey here avoids case distinctions */
+                            && (pkey = NULL) == NULL
+                            && sk_OSSL_STORE_INFO_push(ctx, osi_pkey) != 0)
+                            osi_pkey = NULL;
+                        else
+                            ok = 0;
+                    }
+                    if (ok && cert != NULL) {
+                        if ((osi_cert = OSSL_STORE_INFO_new_CERT(cert)) != NULL
+                            /* clearing cert here avoids case distinctions */
+                            && (cert = NULL) == NULL
+                            && sk_OSSL_STORE_INFO_push(ctx, osi_cert) != 0)
+                            osi_cert = NULL;
+                        else
+                            ok = 0;
+                    }
+                    while (ok && sk_X509_num(chain) > 0) {
                         X509 *ca = sk_X509_value(chain, 0);
 
-                        if ((osi_ca = OSSL_STORE_INFO_new_CERT(ca)) == NULL
-                            || sk_OSSL_STORE_INFO_push(ctx, osi_ca) == 0) {
+                        if ((osi_ca = OSSL_STORE_INFO_new_CERT(ca)) != NULL
+                            && sk_X509_shift(chain) != NULL
+                            && sk_OSSL_STORE_INFO_push(ctx, osi_ca) != 0)
+                            osi_ca = NULL;
+                        else
                             ok = 0;
-                            break;
-                        }
-                        osi_ca = NULL;
-                        (void)sk_X509_shift(chain);
                     }
                 }
-                sk_X509_free(chain);
+                EVP_PKEY_free(pkey);
+                X509_free(cert);
+                sk_X509_pop_free(chain, X509_free);
+                OSSL_STORE_INFO_free(osi_pkey);
+                OSSL_STORE_INFO_free(osi_cert);
+                OSSL_STORE_INFO_free(osi_ca);
                 if (!ok) {
-                    OSSL_STORE_INFO_free(osi_ca);
-                    OSSL_STORE_INFO_free(osi_cert);
-                    OSSL_STORE_INFO_free(osi_pkey);
                     sk_OSSL_STORE_INFO_pop_free(ctx, OSSL_STORE_INFO_free);
-                    EVP_PKEY_free(pkey);
-                    X509_free(cert);
-                    sk_X509_pop_free(chain, X509_free);
                     ctx = NULL;
                 }
                 *pctx = ctx;
@@ -294,15 +305,12 @@ static OSSL_STORE_INFO *try_decode_PKCS12(const char *pem_name,
         }
      p12_end:
         PKCS12_free(p12);
-        if (!ok)
+        if (ctx == NULL)
             return NULL;
     }
 
-    if (ctx != NULL) {
-        *matchcount = 1;
-        store_info = sk_OSSL_STORE_INFO_shift(ctx);
-    }
-
+    *matchcount = 1;
+    store_info = sk_OSSL_STORE_INFO_shift(ctx);
     return store_info;
 }
 
@@ -326,7 +334,7 @@ static FILE_HANDLER PKCS12_handler = {
     try_decode_PKCS12,
     eof_PKCS12,
     destroy_ctx_PKCS12,
-    1                            /* repeatable */
+    1 /* repeatable */
 };
 
 /*
@@ -772,7 +780,7 @@ struct ossl_store_loader_ctx_st {
 #define FILE_FLAG_ATTACHED       (1<<1)
     unsigned int flags;
     union {
-        struct {                 /* Used with is_raw and is_pem */
+        struct { /* Used with is_raw and is_pem */
             BIO *file;
 
             /*
@@ -782,7 +790,7 @@ struct ossl_store_loader_ctx_st {
             const FILE_HANDLER *last_handler;
             void *last_handler_ctx;
         } file;
-        struct {                 /* Used with is_dir */
+        struct { /* Used with is_dir */
             OPENSSL_DIR_CTX *ctx;
             int end_reached;
 
@@ -1316,10 +1324,10 @@ static int ends_with_dirsep(const char *uri)
 {
     if (*uri != '\0')
         uri += strlen(uri) - 1;
-#if defined __VMS
+#if defined(__VMS)
     if (*uri == ']' || *uri == '>' || *uri == ':')
         return 1;
-#elif defined _WIN32
+#elif defined(_WIN32)
     if (*uri == '\\')
         return 1;
 #endif
@@ -1394,7 +1402,7 @@ static int file_name_check(OSSL_STORE_LOADER_CTX *ctx, const char *name)
     while (ossl_isdigit(*p))
         p++;
 
-# ifdef __VMS
+#ifdef __VMS
     /*
      * One extra step here, check for a possible generation number.
      */
@@ -1402,7 +1410,7 @@ static int file_name_check(OSSL_STORE_LOADER_CTX *ctx, const char *name)
         for (p++; *p != '\0'; p++)
             if (!ossl_isdigit(*p))
                 break;
-# endif
+#endif
 
     /*
      * If we've reached the end of the string at this point, we've successfully
@@ -1540,8 +1548,10 @@ static OSSL_STORE_INFO *file_load(OSSL_STORE_LOADER_CTX *ctx,
         } while (matchcount == 0 && !file_eof(ctx) && !file_error(ctx));
 
         /* We bail out on ambiguity */
-        if (matchcount > 1)
+        if (matchcount > 1) {
+            OSSL_STORE_INFO_free(result);
             return NULL;
+        }
 
         if (result != NULL
             && ctx->expected_type != 0

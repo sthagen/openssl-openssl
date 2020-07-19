@@ -715,21 +715,6 @@ int tls_parse_ctos_key_share(SSL *s, PACKET *pkt, unsigned int context, X509 *x,
             return 0;
         }
 
-        /*
-         * TODO(3.0) Remove this when EVP_PKEY_get1_tls_encodedpoint()
-         * knows how to get a key from an encoded point with the help of
-         * a OSSL_SERIALIZER deserializer.  We know that EVP_PKEY_get0()
-         * downgrades an EVP_PKEY to contain a legacy key.
-         *
-         * THIS IS TEMPORARY
-         */
-        EVP_PKEY_get0(s->s3.peer_tmp);
-        if (EVP_PKEY_id(s->s3.peer_tmp) == EVP_PKEY_NONE) {
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PARSE_CTOS_KEY_SHARE,
-                     ERR_R_INTERNAL_ERROR);
-            return 0;
-        }
-
         s->s3.group_id = group_id;
 
         if (!EVP_PKEY_set1_tls_encodedpoint(s->s3.peer_tmp,
@@ -1439,6 +1424,7 @@ EXT_RETURN tls_construct_stoc_supported_groups(SSL *s, WPACKET *pkt,
 {
     const uint16_t *groups;
     size_t numgroups, i, first = 1;
+    int version;
 
     /* s->s3.group_id is non zero if we accepted a key_share */
     if (s->s3.group_id == 0)
@@ -1453,10 +1439,11 @@ EXT_RETURN tls_construct_stoc_supported_groups(SSL *s, WPACKET *pkt,
     }
 
     /* Copy group ID if supported */
+    version = SSL_version(s);
     for (i = 0; i < numgroups; i++) {
         uint16_t group = groups[i];
 
-        if (tls_valid_group(s, group, SSL_version(s))
+        if (tls_valid_group(s, group, version, version)
                 && tls_group_allowed(s, group, SSL_SECOP_CURVE_SUPPORTED)) {
             if (first) {
                 /*
@@ -1754,21 +1741,6 @@ EXT_RETURN tls_construct_stoc_key_share(SSL *s, WPACKET *pkt,
     if (skey == NULL) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_STOC_KEY_SHARE,
                  ERR_R_MALLOC_FAILURE);
-        return EXT_RETURN_FAIL;
-    }
-
-    /*
-     * TODO(3.0) Remove this when EVP_PKEY_get1_tls_encodedpoint()
-     * knows how to get a key from an encoded point with the help of
-     * a OSSL_SERIALIZER deserializer.  We know that EVP_PKEY_get0()
-     * downgrades an EVP_PKEY to contain a legacy key.
-     *
-     * THIS IS TEMPORARY
-     */
-    EVP_PKEY_get0(skey);
-    if (EVP_PKEY_id(skey) == EVP_PKEY_NONE) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_STOC_KEY_SHARE,
-                 ERR_R_INTERNAL_ERROR);
         return EXT_RETURN_FAIL;
     }
 

@@ -22,14 +22,14 @@
 # include "prov/provider_util.h"
 
 /* See RFC 4253, Section 7.2 */
-static OSSL_OP_kdf_newctx_fn kdf_sshkdf_new;
-static OSSL_OP_kdf_freectx_fn kdf_sshkdf_free;
-static OSSL_OP_kdf_reset_fn kdf_sshkdf_reset;
-static OSSL_OP_kdf_derive_fn kdf_sshkdf_derive;
-static OSSL_OP_kdf_settable_ctx_params_fn kdf_sshkdf_settable_ctx_params;
-static OSSL_OP_kdf_set_ctx_params_fn kdf_sshkdf_set_ctx_params;
-static OSSL_OP_kdf_gettable_ctx_params_fn kdf_sshkdf_gettable_ctx_params;
-static OSSL_OP_kdf_get_ctx_params_fn kdf_sshkdf_get_ctx_params;
+static OSSL_FUNC_kdf_newctx_fn kdf_sshkdf_new;
+static OSSL_FUNC_kdf_freectx_fn kdf_sshkdf_free;
+static OSSL_FUNC_kdf_reset_fn kdf_sshkdf_reset;
+static OSSL_FUNC_kdf_derive_fn kdf_sshkdf_derive;
+static OSSL_FUNC_kdf_settable_ctx_params_fn kdf_sshkdf_settable_ctx_params;
+static OSSL_FUNC_kdf_set_ctx_params_fn kdf_sshkdf_set_ctx_params;
+static OSSL_FUNC_kdf_gettable_ctx_params_fn kdf_sshkdf_gettable_ctx_params;
+static OSSL_FUNC_kdf_get_ctx_params_fn kdf_sshkdf_get_ctx_params;
 
 static int SSHKDF(const EVP_MD *evp_md,
                   const unsigned char *key, size_t key_len,
@@ -72,12 +72,14 @@ static void kdf_sshkdf_free(void *vctx)
 static void kdf_sshkdf_reset(void *vctx)
 {
     KDF_SSHKDF *ctx = (KDF_SSHKDF *)vctx;
+    void *provctx = ctx->provctx;
 
     ossl_prov_digest_reset(&ctx->digest);
     OPENSSL_clear_free(ctx->key, ctx->key_len);
     OPENSSL_clear_free(ctx->xcghash, ctx->xcghash_len);
     OPENSSL_clear_free(ctx->session_id, ctx->session_id_len);
     memset(ctx, 0, sizeof(*ctx));
+    ctx->provctx = provctx;
 }
 
 static int sshkdf_set_membuf(unsigned char **dst, size_t *dst_len,

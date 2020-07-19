@@ -30,15 +30,15 @@ PROV_CIPHER_FUNC(int, ocb_cipher, (PROV_AES_OCB_CTX *ctx,
                                    const unsigned char *in, unsigned char *out,
                                    size_t nextblock));
 /* forward declarations */
-static OSSL_OP_cipher_encrypt_init_fn aes_ocb_einit;
-static OSSL_OP_cipher_decrypt_init_fn aes_ocb_dinit;
-static OSSL_OP_cipher_update_fn aes_ocb_block_update;
-static OSSL_OP_cipher_final_fn aes_ocb_block_final;
-static OSSL_OP_cipher_cipher_fn aes_ocb_cipher;
-static OSSL_OP_cipher_freectx_fn aes_ocb_freectx;
-static OSSL_OP_cipher_dupctx_fn aes_ocb_dupctx;
-static OSSL_OP_cipher_get_ctx_params_fn aes_ocb_get_ctx_params;
-static OSSL_OP_cipher_set_ctx_params_fn aes_ocb_set_ctx_params;
+static OSSL_FUNC_cipher_encrypt_init_fn aes_ocb_einit;
+static OSSL_FUNC_cipher_decrypt_init_fn aes_ocb_dinit;
+static OSSL_FUNC_cipher_update_fn aes_ocb_block_update;
+static OSSL_FUNC_cipher_final_fn aes_ocb_block_final;
+static OSSL_FUNC_cipher_cipher_fn aes_ocb_cipher;
+static OSSL_FUNC_cipher_freectx_fn aes_ocb_freectx;
+static OSSL_FUNC_cipher_dupctx_fn aes_ocb_dupctx;
+static OSSL_FUNC_cipher_get_ctx_params_fn aes_ocb_get_ctx_params;
+static OSSL_FUNC_cipher_set_ctx_params_fn aes_ocb_set_ctx_params;
 
 /*
  * The following methods could be moved into PROV_AES_OCB_HW if
@@ -305,6 +305,7 @@ static void aes_ocb_freectx(void *vctx)
 
     if (ctx != NULL) {
         aes_generic_ocb_cleanup(ctx);
+        cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
         OPENSSL_clear_free(ctx,  sizeof(*ctx));
     }
 }
@@ -401,11 +402,12 @@ static int aes_ocb_get_ctx_params(void *vctx, OSSL_PARAM params[])
 
     p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IV);
     if (p != NULL) {
-        if (ctx->base.ivlen != p->data_size) {
+        if (ctx->base.ivlen > p->data_size) {
             ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_IV_LENGTH);
             return 0;
         }
-        if (!OSSL_PARAM_set_octet_string(p, ctx->base.oiv, ctx->base.ivlen)) {
+        if (!OSSL_PARAM_set_octet_string(p, ctx->base.oiv, ctx->base.ivlen)
+            && !OSSL_PARAM_set_octet_ptr(p, &ctx->base.oiv, ctx->base.ivlen)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
             return 0;
         }
@@ -469,13 +471,13 @@ static int aes_ocb_cipher(void *vctx, unsigned char *out, size_t *outl,
 }
 
 #define IMPLEMENT_cipher(mode, UCMODE, flags, kbits, blkbits, ivbits)          \
-static OSSL_OP_cipher_get_params_fn aes_##kbits##_##mode##_get_params;         \
+static OSSL_FUNC_cipher_get_params_fn aes_##kbits##_##mode##_get_params;       \
 static int aes_##kbits##_##mode##_get_params(OSSL_PARAM params[])              \
 {                                                                              \
     return cipher_generic_get_params(params, EVP_CIPH_##UCMODE##_MODE,         \
                                      flags, kbits, blkbits, ivbits);           \
 }                                                                              \
-static OSSL_OP_cipher_newctx_fn aes_##kbits##_##mode##_newctx;                 \
+static OSSL_FUNC_cipher_newctx_fn aes_##kbits##_##mode##_newctx;               \
 static void *aes_##kbits##_##mode##_newctx(void *provctx)                      \
 {                                                                              \
     return aes_##mode##_newctx(provctx, kbits, blkbits, ivbits,                \

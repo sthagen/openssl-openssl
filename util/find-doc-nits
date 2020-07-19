@@ -551,6 +551,7 @@ sub functionname_check {
 
 # This is from http://man7.org/linux/man-pages/man7/man-pages.7.html
 my %preferred_words = (
+    'a.k.a.'        => 'aka',
     'bitmask'       => 'bit mask',
     'builtin'       => 'built-in',
    #'epoch'         => 'Epoch', # handled specially, below
@@ -865,21 +866,14 @@ sub checkmacros {
 sub printem ($) {
     my $type = shift;
     my $count = 0;
-    my %seen;
 
-    foreach my $func ( grep { $_ eq $type } sort keys %state ) {
-        $func .= '(3)';         # We know they're all in section 3
-
-        # Skip functions known to be missing
-        next if $opt_v && defined $name_map{$func} && $name_map{$func} eq '';
-
-        # Skip known names
-        next if defined $name_map{$func} || defined $seen{$func};
+    foreach my $func ( grep { $state{$_} eq $type } sort keys %state ) {
+        next if defined $name_map{$func}
+            || defined $missing{$func};
 
         err("$type:", "function $func undocumented")
             if $opt_d || $opt_e;
         $count++;
-        $seen{$func} = 1;
     }
     err("# $count lib$type names are not documented")
         if $count > 0;
@@ -901,12 +895,12 @@ sub collectnames {
     }
     foreach my $name ( @{$podinfo{names}} ) {
         next if $name eq "";
-        err($id, "'$name' contains white space")
+        err($id, "'$name' contains whitespace")
             if $name =~ /\s/;
         my $name_sec = "$name($section)";
         if ( !defined $name_map{$name_sec} ) {
             $name_map{$name_sec} = $filename;
-            $state{$name_sec} =
+            $state{$name_sec} //=
                 ( $filename =~ /\/internal\// ? 'internal' : 'public' )
                 if $is_generic;
         } elsif ( $filename eq $name_map{$name_sec} ) {
@@ -1087,7 +1081,7 @@ if ( $opt_o ) {
     loadmissing('util/missingmacro111.txt', 'crypto');
     loadmissing('util/missingcrypto111.txt', 'crypto');
     loadmissing('util/missingssl111.txt', 'ssl');
-} else {
+} elsif ( !$opt_u ) {
     loadmissing('util/missingmacro.txt', 'crypto');
     loadmissing('util/missingcrypto.txt', 'crypto');
     loadmissing('util/missingssl.txt', 'ssl');

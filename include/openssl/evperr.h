@@ -72,8 +72,6 @@ int ERR_load_EVP_strings(void);
 #  define EVP_F_EVP_KEYEXCH_FROM_DISPATCH                  0
 #  define EVP_F_EVP_MAC_CTRL                               0
 #  define EVP_F_EVP_MAC_CTRL_STR                           0
-#  define EVP_F_EVP_MAC_CTX_DUP                            0
-#  define EVP_F_EVP_MAC_CTX_NEW                            0
 #  define EVP_F_EVP_MAC_INIT                               0
 #  define EVP_F_EVP_MD_BLOCK_SIZE                          0
 #  define EVP_F_EVP_MD_CTX_COPY_EX                         0
@@ -178,6 +176,7 @@ int ERR_load_EVP_strings(void);
 # define EVP_R_CTRL_OPERATION_NOT_IMPLEMENTED             133
 # define EVP_R_DATA_NOT_MULTIPLE_OF_BLOCK_LENGTH          138
 # define EVP_R_DECODE_ERROR                               114
+# define EVP_R_DEFAULT_QUERY_PARSE_ERROR                  210
 # define EVP_R_DIFFERENT_KEY_TYPES                        101
 # define EVP_R_DIFFERENT_PARAMETERS                       153
 # define EVP_R_ERROR_LOADING_SECTION                      165
@@ -192,6 +191,7 @@ int ERR_load_EVP_strings(void);
 # define EVP_R_FETCH_FAILED                               202
 # define EVP_R_FINAL_ERROR                                188
 # define EVP_R_FIPS_MODE_NOT_SUPPORTED                    167
+# define EVP_R_GENERATE_ERROR                             214
 # define EVP_R_GET_RAW_KEY_FAILED                         182
 # define EVP_R_ILLEGAL_SCRYPT_PARAMETERS                  171
 # define EVP_R_INACCESSIBLE_DOMAIN_PARAMETERS             204
@@ -204,12 +204,14 @@ int ERR_load_EVP_strings(void);
 # define EVP_R_INVALID_IV_LENGTH                          194
 # define EVP_R_INVALID_KEY                                163
 # define EVP_R_INVALID_KEY_LENGTH                         130
+# define EVP_R_INVALID_NULL_ALGORITHM                     218
 # define EVP_R_INVALID_OPERATION                          148
 # define EVP_R_INVALID_PROVIDER_FUNCTIONS                 193
 # define EVP_R_INVALID_SALT_LENGTH                        186
 # define EVP_R_KEYGEN_FAILURE                             120
 # define EVP_R_KEYMGMT_EXPORT_FAILURE                     205
 # define EVP_R_KEY_SETUP_FAILED                           180
+# define EVP_R_LOCKING_NOT_SUPPORTED                      213
 # define EVP_R_MEMORY_LIMIT_EXCEEDED                      172
 # define EVP_R_MESSAGE_DIGEST_IS_NULL                     159
 # define EVP_R_METHOD_NOT_SUPPORTED                       144
@@ -237,6 +239,11 @@ int ERR_load_EVP_strings(void);
 # define EVP_R_PUBLIC_KEY_NOT_RSA                         106
 # define EVP_R_SET_DEFAULT_PROPERTY_FAILURE               209
 # define EVP_R_TOO_MANY_RECORDS                           183
+# define EVP_R_UNABLE_TO_ENABLE_PARENT_LOCKING            212
+# define EVP_R_UNABLE_TO_GET_MAXIMUM_REQUEST_SIZE         215
+# define EVP_R_UNABLE_TO_GET_RANDOM_STRENGTH              216
+# define EVP_R_UNABLE_TO_LOCK_CONTEXT                     211
+# define EVP_R_UNABLE_TO_SET_CALLBACKS                    217
 # define EVP_R_UNKNOWN_CIPHER                             160
 # define EVP_R_UNKNOWN_DIGEST                             161
 # define EVP_R_UNKNOWN_KEY_TYPE                           207

@@ -24,6 +24,7 @@
 /include/crypto/*_conf.h
 /include/openssl/configuration.h
 /include/openssl/opensslv.h
+/include/openssl/fipskey.h
 
 # Auto generated doc files
 doc/man1/openssl-*.pod
@@ -69,6 +70,7 @@ providers/common/include/prov/der_digests.h
 /test/rsa_complex
 /test/confdump
 /test/bio_prefix_text
+/test/evp_extra_test2
 
 # Certain files that get created by tests on the fly
 /test-runs

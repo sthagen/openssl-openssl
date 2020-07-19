@@ -8,7 +8,7 @@
  */
 
 #include <openssl/crypto.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include "crypto/cryptlib.h"
 #include "prov/providercommon.h"
 #include "internal/thread_once.h"
@@ -26,7 +26,7 @@
  * by calling "c_thread_start" which is a function pointer created during
  * provider initialisation (i.e. OSSL_init_provider).
  */
-extern OSSL_core_thread_start_fn *c_thread_start;
+extern OSSL_FUNC_core_thread_start_fn *c_thread_start;
 #endif
 
 typedef struct thread_event_handler_st THREAD_EVENT_HANDLER;

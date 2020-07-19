@@ -19,13 +19,14 @@
 #include "cipher_idea.h"
 #include "prov/implementations.h"
 
-static OSSL_OP_cipher_freectx_fn idea_freectx;
-static OSSL_OP_cipher_dupctx_fn idea_dupctx;
+static OSSL_FUNC_cipher_freectx_fn idea_freectx;
+static OSSL_FUNC_cipher_dupctx_fn idea_dupctx;
 
 static void idea_freectx(void *vctx)
 {
     PROV_IDEA_CTX *ctx = (PROV_IDEA_CTX *)vctx;
 
+    cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
     OPENSSL_clear_free(ctx,  sizeof(*ctx));
 }
 

@@ -8,6 +8,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use some engine deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include "e_os.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -1319,22 +1322,42 @@ int s_client_main(int argc, char **argv)
         case OPT_SSL3:
             min_version = SSL3_VERSION;
             max_version = SSL3_VERSION;
+            socket_type = SOCK_STREAM;
+#ifndef OPENSSL_NO_DTLS
+            isdtls = 0;
+#endif
             break;
         case OPT_TLS1_3:
             min_version = TLS1_3_VERSION;
             max_version = TLS1_3_VERSION;
+            socket_type = SOCK_STREAM;
+#ifndef OPENSSL_NO_DTLS
+            isdtls = 0;
+#endif
             break;
         case OPT_TLS1_2:
             min_version = TLS1_2_VERSION;
             max_version = TLS1_2_VERSION;
+            socket_type = SOCK_STREAM;
+#ifndef OPENSSL_NO_DTLS
+            isdtls = 0;
+#endif
             break;
         case OPT_TLS1_1:
             min_version = TLS1_1_VERSION;
             max_version = TLS1_1_VERSION;
+            socket_type = SOCK_STREAM;
+#ifndef OPENSSL_NO_DTLS
+            isdtls = 0;
+#endif
             break;
         case OPT_TLS1:
             min_version = TLS1_VERSION;
             max_version = TLS1_VERSION;
+            socket_type = SOCK_STREAM;
+#ifndef OPENSSL_NO_DTLS
+            isdtls = 0;
+#endif
             break;
         case OPT_DTLS:
 #ifndef OPENSSL_NO_DTLS
@@ -3221,7 +3244,7 @@ static void print_stuff(BIO *bio, SSL *s, int full)
         }
 
         BIO_printf(bio, "---\n");
-        peer = SSL_get_peer_certificate(s);
+        peer = SSL_get0_peer_certificate(s);
         if (peer != NULL) {
             BIO_printf(bio, "Server certificate\n");
 
@@ -3401,7 +3424,6 @@ static void print_stuff(BIO *bio, SSL *s, int full)
         OPENSSL_free(exportedkeymat);
     }
     BIO_printf(bio, "---\n");
-    X509_free(peer);
     /* flush, or debugging output gets mixed with http response */
     (void)BIO_flush(bio);
 }

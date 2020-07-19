@@ -15,7 +15,7 @@
 
 #include <string.h> /* memcpy */
 #include <openssl/crypto.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/dsa.h>
 #include <openssl/params.h>
@@ -30,27 +30,27 @@
 #include "crypto/ec.h"
 #include "prov/der_ec.h"
 
-static OSSL_OP_signature_newctx_fn ecdsa_newctx;
-static OSSL_OP_signature_sign_init_fn ecdsa_signature_init;
-static OSSL_OP_signature_verify_init_fn ecdsa_signature_init;
-static OSSL_OP_signature_sign_fn ecdsa_sign;
-static OSSL_OP_signature_verify_fn ecdsa_verify;
-static OSSL_OP_signature_digest_sign_init_fn ecdsa_digest_signverify_init;
-static OSSL_OP_signature_digest_sign_update_fn ecdsa_digest_signverify_update;
-static OSSL_OP_signature_digest_sign_final_fn ecdsa_digest_sign_final;
-static OSSL_OP_signature_digest_verify_init_fn ecdsa_digest_signverify_init;
-static OSSL_OP_signature_digest_verify_update_fn ecdsa_digest_signverify_update;
-static OSSL_OP_signature_digest_verify_final_fn ecdsa_digest_verify_final;
-static OSSL_OP_signature_freectx_fn ecdsa_freectx;
-static OSSL_OP_signature_dupctx_fn ecdsa_dupctx;
-static OSSL_OP_signature_get_ctx_params_fn ecdsa_get_ctx_params;
-static OSSL_OP_signature_gettable_ctx_params_fn ecdsa_gettable_ctx_params;
-static OSSL_OP_signature_set_ctx_params_fn ecdsa_set_ctx_params;
-static OSSL_OP_signature_settable_ctx_params_fn ecdsa_settable_ctx_params;
-static OSSL_OP_signature_get_ctx_md_params_fn ecdsa_get_ctx_md_params;
-static OSSL_OP_signature_gettable_ctx_md_params_fn ecdsa_gettable_ctx_md_params;
-static OSSL_OP_signature_set_ctx_md_params_fn ecdsa_set_ctx_md_params;
-static OSSL_OP_signature_settable_ctx_md_params_fn ecdsa_settable_ctx_md_params;
+static OSSL_FUNC_signature_newctx_fn ecdsa_newctx;
+static OSSL_FUNC_signature_sign_init_fn ecdsa_signature_init;
+static OSSL_FUNC_signature_verify_init_fn ecdsa_signature_init;
+static OSSL_FUNC_signature_sign_fn ecdsa_sign;
+static OSSL_FUNC_signature_verify_fn ecdsa_verify;
+static OSSL_FUNC_signature_digest_sign_init_fn ecdsa_digest_signverify_init;
+static OSSL_FUNC_signature_digest_sign_update_fn ecdsa_digest_signverify_update;
+static OSSL_FUNC_signature_digest_sign_final_fn ecdsa_digest_sign_final;
+static OSSL_FUNC_signature_digest_verify_init_fn ecdsa_digest_signverify_init;
+static OSSL_FUNC_signature_digest_verify_update_fn ecdsa_digest_signverify_update;
+static OSSL_FUNC_signature_digest_verify_final_fn ecdsa_digest_verify_final;
+static OSSL_FUNC_signature_freectx_fn ecdsa_freectx;
+static OSSL_FUNC_signature_dupctx_fn ecdsa_dupctx;
+static OSSL_FUNC_signature_get_ctx_params_fn ecdsa_get_ctx_params;
+static OSSL_FUNC_signature_gettable_ctx_params_fn ecdsa_gettable_ctx_params;
+static OSSL_FUNC_signature_set_ctx_params_fn ecdsa_set_ctx_params;
+static OSSL_FUNC_signature_settable_ctx_params_fn ecdsa_settable_ctx_params;
+static OSSL_FUNC_signature_get_ctx_md_params_fn ecdsa_get_ctx_md_params;
+static OSSL_FUNC_signature_gettable_ctx_md_params_fn ecdsa_gettable_ctx_md_params;
+static OSSL_FUNC_signature_set_ctx_md_params_fn ecdsa_set_ctx_md_params;
+static OSSL_FUNC_signature_settable_ctx_md_params_fn ecdsa_settable_ctx_md_params;
 
 /*
  * What's passed as an actual key is defined by the KEYMGMT interface.
@@ -73,14 +73,6 @@ typedef struct {
     EVP_MD *md;
     EVP_MD_CTX *mdctx;
     /*
-     * This indicates that KAT (CAVS) test is running. Externally an app will
-     * override the random callback such that the generated private key and k
-     * are known.
-     * Normal operation will loop to choose a new k if the signature is not
-     * valid - but for this mode of operation it forces a failure instead.
-     */
-    unsigned int kattest;
-    /*
      * Internally used to cache the results of calling the EC group
      * sign_setup() methods which are then passed to the sign operation.
      * This is used by CAVS failure tests to terminate a loop if the signature
@@ -89,6 +81,16 @@ typedef struct {
      */
     BIGNUM *kinv;
     BIGNUM *r;
+#if defined(FIPS_MODULE) && !defined(OPENSSL_NO_ACVP_TESTS)
+    /*
+     * This indicates that KAT (CAVS) test is running. Externally an app will
+     * override the random callback such that the generated private key and k
+     * are known.
+     * Normal operation will loop to choose a new k if the signature is not
+     * valid - but for this mode of operation it forces a failure instead.
+     */
+    unsigned int kattest;
+#endif
 } PROV_ECDSA_CTX;
 
 static void *ecdsa_newctx(void *provctx, const char *propq)
@@ -131,8 +133,10 @@ static int ecdsa_sign(void *vctx, unsigned char *sig, size_t *siglen,
         return 1;
     }
 
+#if defined(FIPS_MODULE) && !defined(OPENSSL_NO_ACVP_TESTS)
     if (ctx->kattest && !ECDSA_sign_setup(ctx->ec, NULL, &ctx->kinv, &ctx->r))
         return 0;
+#endif
 
     if (sigsize < (size_t)ecsize)
         return 0;
@@ -201,8 +205,10 @@ static int get_md_nid(const EVP_MD *md)
 
 static void free_md(PROV_ECDSA_CTX *ctx)
 {
+    OPENSSL_free(ctx->propq);
     EVP_MD_CTX_free(ctx->mdctx);
     EVP_MD_free(ctx->md);
+    ctx->propq = NULL;
     ctx->mdctx = NULL;
     ctx->md = NULL;
     ctx->mdsize = 0;
@@ -414,10 +420,11 @@ static int ecdsa_set_ctx_params(void *vctx, const OSSL_PARAM params[])
          */
         return 1;
     }
-
+#if defined(FIPS_MODULE) && !defined(OPENSSL_NO_ACVP_TESTS)
     p = OSSL_PARAM_locate_const(params, OSSL_SIGNATURE_PARAM_KAT);
     if (p != NULL && !OSSL_PARAM_get_uint(p, &ctx->kattest))
         return 0;
+#endif
 
     p = OSSL_PARAM_locate_const(params, OSSL_SIGNATURE_PARAM_DIGEST_SIZE);
     if (p != NULL && !OSSL_PARAM_get_size_t(p, &ctx->mdsize))

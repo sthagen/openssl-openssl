@@ -10,7 +10,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <openssl/core.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/params.h>
 #include <openssl/err.h>
@@ -38,15 +38,15 @@
  * Forward declarations to ensure that interface functions are correctly
  * defined.
  */
-static OSSL_provider_teardown_fn fips_teardown;
-static OSSL_provider_gettable_params_fn fips_gettable_params;
-static OSSL_provider_get_params_fn fips_get_params;
-static OSSL_provider_query_operation_fn fips_query;
+static OSSL_FUNC_provider_teardown_fn fips_teardown;
+static OSSL_FUNC_provider_gettable_params_fn fips_gettable_params;
+static OSSL_FUNC_provider_get_params_fn fips_get_params;
+static OSSL_FUNC_provider_query_operation_fn fips_query;
 
 #define ALGC(NAMES, FUNC, CHECK) { { NAMES, "provider=fips,fips=yes", FUNC }, CHECK }
 #define ALG(NAMES, FUNC) ALGC(NAMES, FUNC, NULL)
 
-extern OSSL_core_thread_start_fn *c_thread_start;
+extern OSSL_FUNC_core_thread_start_fn *c_thread_start;
 
 /*
  * TODO(3.0): Should these be stored in the provider side provctx? Could they
@@ -58,27 +58,27 @@ extern OSSL_core_thread_start_fn *c_thread_start;
 static SELF_TEST_POST_PARAMS selftest_params;
 
 /* Functions provided by the core */
-static OSSL_core_gettable_params_fn *c_gettable_params;
-static OSSL_core_get_params_fn *c_get_params;
-OSSL_core_thread_start_fn *c_thread_start;
-static OSSL_core_new_error_fn *c_new_error;
-static OSSL_core_set_error_debug_fn *c_set_error_debug;
-static OSSL_core_vset_error_fn *c_vset_error;
-static OSSL_core_set_error_mark_fn *c_set_error_mark;
-static OSSL_core_clear_last_error_mark_fn *c_clear_last_error_mark;
-static OSSL_core_pop_error_to_mark_fn *c_pop_error_to_mark;
-static OSSL_CRYPTO_malloc_fn *c_CRYPTO_malloc;
-static OSSL_CRYPTO_zalloc_fn *c_CRYPTO_zalloc;
-static OSSL_CRYPTO_free_fn *c_CRYPTO_free;
-static OSSL_CRYPTO_clear_free_fn *c_CRYPTO_clear_free;
-static OSSL_CRYPTO_realloc_fn *c_CRYPTO_realloc;
-static OSSL_CRYPTO_clear_realloc_fn *c_CRYPTO_clear_realloc;
-static OSSL_CRYPTO_secure_malloc_fn *c_CRYPTO_secure_malloc;
-static OSSL_CRYPTO_secure_zalloc_fn *c_CRYPTO_secure_zalloc;
-static OSSL_CRYPTO_secure_free_fn *c_CRYPTO_secure_free;
-static OSSL_CRYPTO_secure_clear_free_fn *c_CRYPTO_secure_clear_free;
-static OSSL_CRYPTO_secure_allocated_fn *c_CRYPTO_secure_allocated;
-static OSSL_BIO_vsnprintf_fn *c_BIO_vsnprintf;
+static OSSL_FUNC_core_gettable_params_fn *c_gettable_params;
+static OSSL_FUNC_core_get_params_fn *c_get_params;
+OSSL_FUNC_core_thread_start_fn *c_thread_start;
+static OSSL_FUNC_core_new_error_fn *c_new_error;
+static OSSL_FUNC_core_set_error_debug_fn *c_set_error_debug;
+static OSSL_FUNC_core_vset_error_fn *c_vset_error;
+static OSSL_FUNC_core_set_error_mark_fn *c_set_error_mark;
+static OSSL_FUNC_core_clear_last_error_mark_fn *c_clear_last_error_mark;
+static OSSL_FUNC_core_pop_error_to_mark_fn *c_pop_error_to_mark;
+static OSSL_FUNC_CRYPTO_malloc_fn *c_CRYPTO_malloc;
+static OSSL_FUNC_CRYPTO_zalloc_fn *c_CRYPTO_zalloc;
+static OSSL_FUNC_CRYPTO_free_fn *c_CRYPTO_free;
+static OSSL_FUNC_CRYPTO_clear_free_fn *c_CRYPTO_clear_free;
+static OSSL_FUNC_CRYPTO_realloc_fn *c_CRYPTO_realloc;
+static OSSL_FUNC_CRYPTO_clear_realloc_fn *c_CRYPTO_clear_realloc;
+static OSSL_FUNC_CRYPTO_secure_malloc_fn *c_CRYPTO_secure_malloc;
+static OSSL_FUNC_CRYPTO_secure_zalloc_fn *c_CRYPTO_secure_zalloc;
+static OSSL_FUNC_CRYPTO_secure_free_fn *c_CRYPTO_secure_free;
+static OSSL_FUNC_CRYPTO_secure_clear_free_fn *c_CRYPTO_secure_clear_free;
+static OSSL_FUNC_CRYPTO_secure_allocated_fn *c_CRYPTO_secure_allocated;
+static OSSL_FUNC_BIO_vsnprintf_fn *c_BIO_vsnprintf;
 
 typedef struct fips_global_st {
     const OSSL_CORE_HANDLE *handle;
@@ -194,7 +194,7 @@ static int dummy_evp_call(OPENSSL_CTX *libctx)
 
 #ifndef OPENSSL_NO_EC
     /* Do some dummy EC calls */
-    key = EC_KEY_new_by_curve_name_ex(libctx, NID_X9_62_prime256v1);
+    key = EC_KEY_new_by_curve_name_with_libctx(libctx, NULL, NID_X9_62_prime256v1);
     if (key == NULL)
         goto err;
 
@@ -377,8 +377,17 @@ static const OSSL_ALGORITHM fips_digests[] = {
     { "SHA3-384", "provider=fips,fips=yes", sha3_384_functions },
     { "SHA3-512", "provider=fips,fips=yes", sha3_512_functions },
 
-    /* Non-FIPS algorithm to support oneshot_hash in the Ed448 code */
-    { "SHAKE-256:SHAKE256", "provider=fips,fips=no", shake_256_functions },
+    { "SHAKE-128:SHAKE128", "provider=fips,fips=yes", shake_128_functions },
+    { "SHAKE-256:SHAKE256", "provider=fips,fips=yes", shake_256_functions },
+
+    /*
+     * KECCAK-KMAC-128 and KECCAK-KMAC-256 as hashes are mostly useful for
+     * KMAC128 and KMAC256.
+     */
+    { "KECCAK-KMAC-128:KECCAK-KMAC128", "provider=fips,fips=yes",
+      keccak_kmac_128_functions },
+    { "KECCAK-KMAC-256:KECCAK-KMAC256", "provider=fips,fips=yes",
+      keccak_kmac_256_functions },
     { NULL, NULL, NULL }
 };
 
@@ -390,6 +399,9 @@ static const OSSL_ALGORITHM_CAPABLE fips_ciphers[] = {
     ALG("AES-256-CBC", aes256cbc_functions),
     ALG("AES-192-CBC", aes192cbc_functions),
     ALG("AES-128-CBC", aes128cbc_functions),
+    ALG("AES-256-CBC-CTS", aes256cbc_cts_functions),
+    ALG("AES-192-CBC-CTS", aes192cbc_cts_functions),
+    ALG("AES-128-CBC-CTS", aes128cbc_cts_functions),
     ALG("AES-256-OFB", aes256ofb_functions),
     ALG("AES-192-OFB", aes192ofb_functions),
     ALG("AES-128-OFB", aes128ofb_functions),
@@ -439,8 +451,13 @@ static const OSSL_ALGORITHM_CAPABLE fips_ciphers[] = {
 static OSSL_ALGORITHM exported_fips_ciphers[OSSL_NELEM(fips_ciphers)];
 
 static const OSSL_ALGORITHM fips_macs[] = {
+#ifndef OPENSSL_NO_CMAC
+    { "CMAC", "provider=fips,fips=yes", cmac_functions },
+#endif
     { "GMAC", "provider=fips,fips=yes", gmac_functions },
     { "HMAC", "provider=fips,fips=yes", hmac_functions },
+    { "KMAC-128:KMAC128", "provider=fips,fips=yes", kmac128_functions },
+    { "KMAC-256:KMAC256", "provider=fips,fips=yes", kmac256_functions },
     { NULL, NULL, NULL }
 };
 
@@ -448,7 +465,18 @@ static const OSSL_ALGORITHM fips_kdfs[] = {
     { "HKDF", "provider=fips,fips=yes", kdf_hkdf_functions },
     { "SSKDF", "provider=fips,fips=yes", kdf_sskdf_functions },
     { "PBKDF2", "provider=fips,fips=yes", kdf_pbkdf2_functions },
+    { "SSHKDF", "provider=fips,fips=yes", kdf_sshkdf_functions },
+    { "X963KDF", "provider=fips,fips=yes", kdf_x963_kdf_functions },
     { "TLS1-PRF", "provider=fips,fips=yes", kdf_tls1_prf_functions },
+    { "KBKDF", "provider=fips,fips=yes", kdf_kbkdf_functions },
+    { NULL, NULL, NULL }
+};
+
+static const OSSL_ALGORITHM fips_rands[] = {
+    { "CTR-DRBG", "provider=fips", drbg_ctr_functions },
+    { "HASH-DRBG", "provider=fips", drbg_hash_functions },
+    { "HMAC-DRBG", "provider=fips", drbg_hmac_functions },
+    { "TEST-RAND", "provider=fips", test_rng_functions },
     { NULL, NULL, NULL }
 };
 
@@ -490,7 +518,8 @@ static const OSSL_ALGORITHM fips_keymgmt[] = {
     { "DSA", "provider=fips,fips=yes", dsa_keymgmt_functions },
 #endif
     { "RSA:rsaEncryption", "provider=fips,fips=yes", rsa_keymgmt_functions },
-    { "RSA-PSS:RSASSA-PSS", "provider=default", rsapss_keymgmt_functions },
+    { "RSA-PSS:RSASSA-PSS", "provider=fips,fips=yes",
+      rsapss_keymgmt_functions },
 #ifndef OPENSSL_NO_EC
     { "EC:id-ecPublicKey", "provider=fips,fips=yes", ec_keymgmt_functions },
     { "X25519", "provider=fips,fips=no", x25519_keymgmt_functions },
@@ -515,6 +544,8 @@ static const OSSL_ALGORITHM *fips_query(void *provctx, int operation_id,
         return fips_macs;
     case OSSL_OP_KDF:
         return fips_kdfs;
+    case OSSL_OP_RAND:
+        return fips_rands;
     case OSSL_OP_KEYMGMT:
         return fips_keymgmt;
     case OSSL_OP_KEYEXCH:
@@ -548,6 +579,7 @@ static const OSSL_DISPATCH fips_dispatch_table[] = {
     { OSSL_FUNC_PROVIDER_GETTABLE_PARAMS, (void (*)(void))fips_gettable_params },
     { OSSL_FUNC_PROVIDER_GET_PARAMS, (void (*)(void))fips_get_params },
     { OSSL_FUNC_PROVIDER_QUERY_OPERATION, (void (*)(void))fips_query },
+    { OSSL_FUNC_PROVIDER_GET_CAPABILITIES, (void (*)(void))provider_get_capabilities },
     { 0, NULL }
 };
 
@@ -566,91 +598,91 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
 {
     FIPS_GLOBAL *fgbl;
     OPENSSL_CTX *libctx = NULL;
-    OSSL_self_test_cb_fn *stcbfn = NULL;
-    OSSL_core_get_library_context_fn *c_get_libctx = NULL;
+    OSSL_FUNC_self_test_cb_fn *stcbfn = NULL;
+    OSSL_FUNC_core_get_library_context_fn *c_get_libctx = NULL;
 
     for (; in->function_id != 0; in++) {
         switch (in->function_id) {
         case OSSL_FUNC_CORE_GET_LIBRARY_CONTEXT:
-            c_get_libctx = OSSL_get_core_get_library_context(in);
+            c_get_libctx = OSSL_FUNC_core_get_library_context(in);
             break;
         case OSSL_FUNC_CORE_GETTABLE_PARAMS:
-            c_gettable_params = OSSL_get_core_gettable_params(in);
+            c_gettable_params = OSSL_FUNC_core_gettable_params(in);
             break;
         case OSSL_FUNC_CORE_GET_PARAMS:
-            c_get_params = OSSL_get_core_get_params(in);
+            c_get_params = OSSL_FUNC_core_get_params(in);
             break;
         case OSSL_FUNC_CORE_THREAD_START:
-            c_thread_start = OSSL_get_core_thread_start(in);
+            c_thread_start = OSSL_FUNC_core_thread_start(in);
             break;
         case OSSL_FUNC_CORE_NEW_ERROR:
-            c_new_error = OSSL_get_core_new_error(in);
+            c_new_error = OSSL_FUNC_core_new_error(in);
             break;
         case OSSL_FUNC_CORE_SET_ERROR_DEBUG:
-            c_set_error_debug = OSSL_get_core_set_error_debug(in);
+            c_set_error_debug = OSSL_FUNC_core_set_error_debug(in);
             break;
         case OSSL_FUNC_CORE_VSET_ERROR:
-            c_vset_error = OSSL_get_core_vset_error(in);
+            c_vset_error = OSSL_FUNC_core_vset_error(in);
             break;
         case OSSL_FUNC_CORE_SET_ERROR_MARK:
-            c_set_error_mark = OSSL_get_core_set_error_mark(in);
+            c_set_error_mark = OSSL_FUNC_core_set_error_mark(in);
             break;
         case OSSL_FUNC_CORE_CLEAR_LAST_ERROR_MARK:
-            c_clear_last_error_mark = OSSL_get_core_clear_last_error_mark(in);
+            c_clear_last_error_mark = OSSL_FUNC_core_clear_last_error_mark(in);
             break;
         case OSSL_FUNC_CORE_POP_ERROR_TO_MARK:
-            c_pop_error_to_mark = OSSL_get_core_pop_error_to_mark(in);
+            c_pop_error_to_mark = OSSL_FUNC_core_pop_error_to_mark(in);
             break;
         case OSSL_FUNC_CRYPTO_MALLOC:
-            c_CRYPTO_malloc = OSSL_get_CRYPTO_malloc(in);
+            c_CRYPTO_malloc = OSSL_FUNC_CRYPTO_malloc(in);
             break;
         case OSSL_FUNC_CRYPTO_ZALLOC:
-            c_CRYPTO_zalloc = OSSL_get_CRYPTO_zalloc(in);
+            c_CRYPTO_zalloc = OSSL_FUNC_CRYPTO_zalloc(in);
             break;
         case OSSL_FUNC_CRYPTO_FREE:
-            c_CRYPTO_free = OSSL_get_CRYPTO_free(in);
+            c_CRYPTO_free = OSSL_FUNC_CRYPTO_free(in);
             break;
         case OSSL_FUNC_CRYPTO_CLEAR_FREE:
-            c_CRYPTO_clear_free = OSSL_get_CRYPTO_clear_free(in);
+            c_CRYPTO_clear_free = OSSL_FUNC_CRYPTO_clear_free(in);
             break;
         case OSSL_FUNC_CRYPTO_REALLOC:
-            c_CRYPTO_realloc = OSSL_get_CRYPTO_realloc(in);
+            c_CRYPTO_realloc = OSSL_FUNC_CRYPTO_realloc(in);
             break;
         case OSSL_FUNC_CRYPTO_CLEAR_REALLOC:
-            c_CRYPTO_clear_realloc = OSSL_get_CRYPTO_clear_realloc(in);
+            c_CRYPTO_clear_realloc = OSSL_FUNC_CRYPTO_clear_realloc(in);
             break;
         case OSSL_FUNC_CRYPTO_SECURE_MALLOC:
-            c_CRYPTO_secure_malloc = OSSL_get_CRYPTO_secure_malloc(in);
+            c_CRYPTO_secure_malloc = OSSL_FUNC_CRYPTO_secure_malloc(in);
             break;
         case OSSL_FUNC_CRYPTO_SECURE_ZALLOC:
-            c_CRYPTO_secure_zalloc = OSSL_get_CRYPTO_secure_zalloc(in);
+            c_CRYPTO_secure_zalloc = OSSL_FUNC_CRYPTO_secure_zalloc(in);
             break;
         case OSSL_FUNC_CRYPTO_SECURE_FREE:
-            c_CRYPTO_secure_free = OSSL_get_CRYPTO_secure_free(in);
+            c_CRYPTO_secure_free = OSSL_FUNC_CRYPTO_secure_free(in);
             break;
         case OSSL_FUNC_CRYPTO_SECURE_CLEAR_FREE:
-            c_CRYPTO_secure_clear_free = OSSL_get_CRYPTO_secure_clear_free(in);
+            c_CRYPTO_secure_clear_free = OSSL_FUNC_CRYPTO_secure_clear_free(in);
             break;
         case OSSL_FUNC_CRYPTO_SECURE_ALLOCATED:
-            c_CRYPTO_secure_allocated = OSSL_get_CRYPTO_secure_allocated(in);
+            c_CRYPTO_secure_allocated = OSSL_FUNC_CRYPTO_secure_allocated(in);
             break;
         case OSSL_FUNC_BIO_NEW_FILE:
-            selftest_params.bio_new_file_cb = OSSL_get_BIO_new_file(in);
+            selftest_params.bio_new_file_cb = OSSL_FUNC_BIO_new_file(in);
             break;
         case OSSL_FUNC_BIO_NEW_MEMBUF:
-            selftest_params.bio_new_buffer_cb = OSSL_get_BIO_new_membuf(in);
+            selftest_params.bio_new_buffer_cb = OSSL_FUNC_BIO_new_membuf(in);
             break;
         case OSSL_FUNC_BIO_READ_EX:
-            selftest_params.bio_read_ex_cb = OSSL_get_BIO_read_ex(in);
+            selftest_params.bio_read_ex_cb = OSSL_FUNC_BIO_read_ex(in);
             break;
         case OSSL_FUNC_BIO_FREE:
-            selftest_params.bio_free_cb = OSSL_get_BIO_free(in);
+            selftest_params.bio_free_cb = OSSL_FUNC_BIO_free(in);
             break;
         case OSSL_FUNC_BIO_VSNPRINTF:
-            c_BIO_vsnprintf = OSSL_get_BIO_vsnprintf(in);
+            c_BIO_vsnprintf = OSSL_FUNC_BIO_vsnprintf(in);
             break;
         case OSSL_FUNC_SELF_TEST_CB: {
-            stcbfn = OSSL_get_self_test_cb(in);
+            stcbfn = OSSL_FUNC_self_test_cb(in);
             break;
         }
         default:
@@ -724,12 +756,12 @@ int fips_intern_provider_init(const OSSL_CORE_HANDLE *handle,
                               const OSSL_DISPATCH **out,
                               void **provctx)
 {
-    OSSL_core_get_library_context_fn *c_get_libctx = NULL;
+    OSSL_FUNC_core_get_library_context_fn *c_get_libctx = NULL;
 
     for (; in->function_id != 0; in++) {
         switch (in->function_id) {
         case OSSL_FUNC_CORE_GET_LIBRARY_CONTEXT:
-            c_get_libctx = OSSL_get_core_get_library_context(in);
+            c_get_libctx = OSSL_FUNC_core_get_library_context(in);
             break;
         default:
             break;

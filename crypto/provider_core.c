@@ -8,7 +8,7 @@
  */
 
 #include <openssl/core.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/provider.h>
 #include <openssl/params.h>
@@ -42,7 +42,8 @@ struct provider_store_st;        /* Forward declaration */
 struct ossl_provider_st {
     /* Flag bits */
     unsigned int flag_initialized:1;
-    unsigned int flag_fallback:1;
+    unsigned int flag_fallback:1; /* Can be used as fallback */
+    unsigned int flag_activated_as_fallback:1;
 
     /* OpenSSL library side data */
     CRYPTO_REF_COUNT refcnt;
@@ -66,10 +67,11 @@ struct ossl_provider_st {
 #endif
 
     /* Provider side functions */
-    OSSL_provider_teardown_fn *teardown;
-    OSSL_provider_gettable_params_fn *gettable_params;
-    OSSL_provider_get_params_fn *get_params;
-    OSSL_provider_query_operation_fn *query_operation;
+    OSSL_FUNC_provider_teardown_fn *teardown;
+    OSSL_FUNC_provider_gettable_params_fn *gettable_params;
+    OSSL_FUNC_provider_get_params_fn *get_params;
+    OSSL_FUNC_provider_get_capabilities_fn *get_capabilities;
+    OSSL_FUNC_provider_query_operation_fn *query_operation;
 
     /*
      * Cache of bit to indicate of query_operation() has been called on
@@ -104,6 +106,24 @@ struct provider_store_st {
     unsigned int use_fallbacks:1;
 };
 
+/*
+ * provider_deactivate_free() is a wrapper around ossl_provider_free()
+ * that also makes sure that activated fallback providers are deactivated.
+ * This is simply done by freeing them an extra time, to compensate for the
+ * refcount that provider_activate_fallbacks() gives them.
+ * Since this is only called when the provider store is being emptied, we
+ * don't need to care about any lock.
+ */
+static void provider_deactivate_free(OSSL_PROVIDER *prov)
+{
+    int extra_free = (prov->flag_initialized
+                      && prov->flag_activated_as_fallback);
+
+    if (extra_free)
+        ossl_provider_free(prov);
+    ossl_provider_free(prov);
+}
+
 static void provider_store_free(void *vstore)
 {
     struct provider_store_st *store = vstore;
@@ -111,7 +131,7 @@ static void provider_store_free(void *vstore)
     if (store == NULL)
         return;
     OPENSSL_free(store->default_path);
-    sk_OSSL_PROVIDER_pop_free(store->providers, ossl_provider_free);
+    sk_OSSL_PROVIDER_pop_free(store->providers, provider_deactivate_free);
     CRYPTO_THREAD_lock_free(store->lock);
     OPENSSL_free(store);
 }
@@ -431,7 +451,7 @@ static int provider_activate(OSSL_PROVIDER *prov)
     void *tmp_provctx = NULL;    /* safety measure */
 #ifndef OPENSSL_NO_ERR
 # ifndef FIPS_MODULE
-    OSSL_provider_get_reason_strings_fn *p_get_reason_strings = NULL;
+    OSSL_FUNC_provider_get_reason_strings_fn *p_get_reason_strings = NULL;
 # endif
 #endif
 
@@ -514,25 +534,29 @@ static int provider_activate(OSSL_PROVIDER *prov)
         switch (provider_dispatch->function_id) {
         case OSSL_FUNC_PROVIDER_TEARDOWN:
             prov->teardown =
-                OSSL_get_provider_teardown(provider_dispatch);
+                OSSL_FUNC_provider_teardown(provider_dispatch);
             break;
         case OSSL_FUNC_PROVIDER_GETTABLE_PARAMS:
             prov->gettable_params =
-                OSSL_get_provider_gettable_params(provider_dispatch);
+                OSSL_FUNC_provider_gettable_params(provider_dispatch);
             break;
         case OSSL_FUNC_PROVIDER_GET_PARAMS:
             prov->get_params =
-                OSSL_get_provider_get_params(provider_dispatch);
+                OSSL_FUNC_provider_get_params(provider_dispatch);
+            break;
+        case OSSL_FUNC_PROVIDER_GET_CAPABILITIES:
+            prov->get_capabilities =
+                OSSL_FUNC_provider_get_capabilities(provider_dispatch);
             break;
         case OSSL_FUNC_PROVIDER_QUERY_OPERATION:
             prov->query_operation =
-                OSSL_get_provider_query_operation(provider_dispatch);
+                OSSL_FUNC_provider_query_operation(provider_dispatch);
             break;
 #ifndef OPENSSL_NO_ERR
 # ifndef FIPS_MODULE
         case OSSL_FUNC_PROVIDER_GET_REASON_STRINGS:
             p_get_reason_strings =
-                OSSL_get_provider_get_reason_strings(provider_dispatch);
+                OSSL_FUNC_provider_get_reason_strings(provider_dispatch);
             break;
 # endif
 #endif
@@ -654,13 +678,22 @@ static void provider_activate_fallbacks(struct provider_store_st *store)
             OSSL_PROVIDER *prov = sk_OSSL_PROVIDER_value(store->providers, i);
 
             /*
-             * Note that we don't care if the activation succeeds or not.
-             * If it doesn't succeed, then any attempt to use any of the
-             * fallback providers will fail anyway.
+             * Activated fallback providers get an extra refcount, to
+             * simulate a regular load.
+             * Note that we don't care if the activation succeeds or not,
+             * other than to maintain a correct refcount.  If the activation
+             * doesn't succeed, then any future attempt to use the fallback
+             * provider will fail anyway.
              */
             if (prov->flag_fallback) {
-                activated_fallback_count++;
-                provider_activate(prov);
+                if (ossl_provider_up_ref(prov)) {
+                    if (!provider_activate(prov)) {
+                        ossl_provider_free(prov);
+                    } else {
+                        prov->flag_activated_as_fallback = 1;
+                        activated_fallback_count++;
+                    }
+                }
             }
         }
 
@@ -759,6 +792,14 @@ const char *ossl_provider_module_path(const OSSL_PROVIDER *prov)
 #endif
 }
 
+void *ossl_provider_prov_ctx(const OSSL_PROVIDER *prov)
+{
+    if (prov != NULL)
+        return prov->provctx;
+
+    return NULL;
+}
+
 OPENSSL_CTX *ossl_provider_library_context(const OSSL_PROVIDER *prov)
 {
     /* TODO(3.0) just: return prov->libctx; */
@@ -782,6 +823,15 @@ int ossl_provider_get_params(const OSSL_PROVIDER *prov, OSSL_PARAM params[])
 {
     return prov->get_params == NULL
         ? 0 : prov->get_params(prov->provctx, params);
+}
+
+int ossl_provider_get_capabilities(const OSSL_PROVIDER *prov,
+                                   const char *capability,
+                                   OSSL_CALLBACK *cb,
+                                   void *arg)
+{
+    return prov->get_capabilities == NULL
+        ? 1 : prov->get_capabilities(prov->provctx, capability, cb, arg);
 }
 
 
@@ -856,17 +906,17 @@ static const OSSL_PARAM param_types[] = {
  * This ensures that the compiler will complain if they aren't defined
  * with the correct signature.
  */
-static OSSL_core_gettable_params_fn core_gettable_params;
-static OSSL_core_get_params_fn core_get_params;
-static OSSL_core_thread_start_fn core_thread_start;
-static OSSL_core_get_library_context_fn core_get_libctx;
+static OSSL_FUNC_core_gettable_params_fn core_gettable_params;
+static OSSL_FUNC_core_get_params_fn core_get_params;
+static OSSL_FUNC_core_thread_start_fn core_thread_start;
+static OSSL_FUNC_core_get_library_context_fn core_get_libctx;
 #ifndef FIPS_MODULE
-static OSSL_core_new_error_fn core_new_error;
-static OSSL_core_set_error_debug_fn core_set_error_debug;
-static OSSL_core_vset_error_fn core_vset_error;
-static OSSL_core_set_error_mark_fn core_set_error_mark;
-static OSSL_core_clear_last_error_mark_fn core_clear_last_error_mark;
-static OSSL_core_pop_error_to_mark_fn core_pop_error_to_mark;
+static OSSL_FUNC_core_new_error_fn core_new_error;
+static OSSL_FUNC_core_set_error_debug_fn core_set_error_debug;
+static OSSL_FUNC_core_vset_error_fn core_vset_error;
+static OSSL_FUNC_core_set_error_mark_fn core_set_error_mark;
+static OSSL_FUNC_core_clear_last_error_mark_fn core_clear_last_error_mark;
+static OSSL_FUNC_core_pop_error_to_mark_fn core_pop_error_to_mark;
 #endif
 
 static const OSSL_PARAM *core_gettable_params(const OSSL_CORE_HANDLE *handle)

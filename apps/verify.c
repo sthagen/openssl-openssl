@@ -60,7 +60,7 @@ const OPTIONS verify_options[] = {
      "Do not load the default trusted certificates file"},
     {"no-CApath", OPT_NOCAPATH, '-',
      "Do not load trusted certificates from the default directory"},
-    {"no-CAstore", OPT_NOCAPATH, '-',
+    {"no-CAstore", OPT_NOCASTORE, '-',
      "Do not load trusted certificates from the default certificates store"},
     {"untrusted", OPT_UNTRUSTED, '<', "A file of untrusted certificates"},
     {"CRLfile", OPT_CRLFILE, '<',
@@ -356,7 +356,7 @@ static int cb(int ok, X509_STORE_CTX *ctx)
             policies_print(ctx);
             /* fall thru */
         case X509_V_ERR_CERT_HAS_EXPIRED:
-            /* Continue even if the leaf is a self signed cert */
+            /* Continue even if the leaf is a self-signed cert */
         case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
             /* Continue after extension errors too */
         case X509_V_ERR_INVALID_CA:

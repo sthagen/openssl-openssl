@@ -13,7 +13,7 @@
  */
 #include "internal/deprecated.h"
 
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/bn.h>
 #include <openssl/err.h>
@@ -25,26 +25,26 @@
 #include "crypto/rsa.h"
 #include "internal/param_build_set.h"
 
-static OSSL_OP_keymgmt_new_fn rsa_newdata;
-static OSSL_OP_keymgmt_new_fn rsapss_newdata;
-static OSSL_OP_keymgmt_gen_init_fn rsa_gen_init;
-static OSSL_OP_keymgmt_gen_init_fn rsapss_gen_init;
-static OSSL_OP_keymgmt_gen_set_params_fn rsa_gen_set_params;
-static OSSL_OP_keymgmt_gen_settable_params_fn rsa_gen_settable_params;
-static OSSL_OP_keymgmt_gen_settable_params_fn rsapss_gen_settable_params;
-static OSSL_OP_keymgmt_gen_fn rsa_gen;
-static OSSL_OP_keymgmt_gen_cleanup_fn rsa_gen_cleanup;
-static OSSL_OP_keymgmt_free_fn rsa_freedata;
-static OSSL_OP_keymgmt_get_params_fn rsa_get_params;
-static OSSL_OP_keymgmt_gettable_params_fn rsa_gettable_params;
-static OSSL_OP_keymgmt_has_fn rsa_has;
-static OSSL_OP_keymgmt_match_fn rsa_match;
-static OSSL_OP_keymgmt_validate_fn rsa_validate;
-static OSSL_OP_keymgmt_import_fn rsa_import;
-static OSSL_OP_keymgmt_import_types_fn rsa_import_types;
-static OSSL_OP_keymgmt_export_fn rsa_export;
-static OSSL_OP_keymgmt_export_types_fn rsa_export_types;
-static OSSL_OP_keymgmt_query_operation_name_fn rsapss_query_operation_name;
+static OSSL_FUNC_keymgmt_new_fn rsa_newdata;
+static OSSL_FUNC_keymgmt_new_fn rsapss_newdata;
+static OSSL_FUNC_keymgmt_gen_init_fn rsa_gen_init;
+static OSSL_FUNC_keymgmt_gen_init_fn rsapss_gen_init;
+static OSSL_FUNC_keymgmt_gen_set_params_fn rsa_gen_set_params;
+static OSSL_FUNC_keymgmt_gen_settable_params_fn rsa_gen_settable_params;
+static OSSL_FUNC_keymgmt_gen_settable_params_fn rsapss_gen_settable_params;
+static OSSL_FUNC_keymgmt_gen_fn rsa_gen;
+static OSSL_FUNC_keymgmt_gen_cleanup_fn rsa_gen_cleanup;
+static OSSL_FUNC_keymgmt_free_fn rsa_freedata;
+static OSSL_FUNC_keymgmt_get_params_fn rsa_get_params;
+static OSSL_FUNC_keymgmt_gettable_params_fn rsa_gettable_params;
+static OSSL_FUNC_keymgmt_has_fn rsa_has;
+static OSSL_FUNC_keymgmt_match_fn rsa_match;
+static OSSL_FUNC_keymgmt_validate_fn rsa_validate;
+static OSSL_FUNC_keymgmt_import_fn rsa_import;
+static OSSL_FUNC_keymgmt_import_types_fn rsa_import_types;
+static OSSL_FUNC_keymgmt_export_fn rsa_export;
+static OSSL_FUNC_keymgmt_export_types_fn rsa_export_types;
+static OSSL_FUNC_keymgmt_query_operation_name_fn rsapss_query_operation_name;
 
 #define RSA_DEFAULT_MD "SHA256"
 #define RSA_PSS_DEFAULT_MD OSSL_DIGEST_NAME_SHA1
@@ -380,6 +380,11 @@ struct rsa_gen_ctx {
     /* For generation callback */
     OSSL_CALLBACK *cb;
     void *cbarg;
+
+#if defined(FIPS_MODULE) && !defined(OPENSSL_NO_ACVP_TESTS)
+    /* ACVP test parameters */
+    OSSL_PARAM *acvp_test_params;
+#endif
 };
 
 static int rsa_gencb(int p, int n, BN_GENCB *cb)
@@ -389,7 +394,6 @@ static int rsa_gencb(int p, int n, BN_GENCB *cb)
 
     params[0] = OSSL_PARAM_construct_int(OSSL_GEN_PARAM_POTENTIAL, &p);
     params[1] = OSSL_PARAM_construct_int(OSSL_GEN_PARAM_ITERATION, &n);
-
     return gctx->cb(params, gctx->cbarg);
 }
 
@@ -451,6 +455,11 @@ static int rsa_gen_set_params(void *genctx, const OSSL_PARAM params[])
         && !pss_params_fromdata(&gctx->pss_params, params, gctx->rsa_type,
                                 gctx->libctx))
         return 0;
+#if defined(FIPS_MODULE) && !defined(OPENSSL_NO_ACVP_TESTS)
+    /* Any ACVP test related parameters are copied into a params[] */
+    if (!rsa_acvp_test_gen_params_new(&gctx->acvp_test_params, params))
+        return 0;
+#endif
     return 1;
 }
 
@@ -525,6 +534,13 @@ static void *rsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
     if (gencb != NULL)
         BN_GENCB_set(gencb, rsa_gencb, genctx);
 
+#if defined(FIPS_MODULE) && !defined(OPENSSL_NO_ACVP_TESTS)
+    if (gctx->acvp_test_params != NULL) {
+        if (!rsa_acvp_test_set_params(rsa_tmp, gctx->acvp_test_params))
+            goto err;
+    }
+#endif
+
     if (!RSA_generate_multi_prime_key(rsa_tmp,
                                       (int)gctx->nbits, (int)gctx->primes,
                                       gctx->pub_exp, gencb))
@@ -551,7 +567,10 @@ static void rsa_gen_cleanup(void *genctx)
 
     if (gctx == NULL)
         return;
-
+#if defined(FIPS_MODULE) && !defined(OPENSSL_NO_ACVP_TESTS)
+    rsa_acvp_test_gen_params_free(gctx->acvp_test_params);
+    gctx->acvp_test_params = NULL;
+#endif
     BN_clear_free(gctx->pub_exp);
     OPENSSL_free(gctx);
 }

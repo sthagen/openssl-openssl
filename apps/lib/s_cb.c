@@ -745,6 +745,7 @@ int generate_cookie_callback(SSL *ssl, unsigned char *cookie,
     EVP_MAC *hmac = NULL;
     EVP_MAC_CTX *ctx = NULL;
     OSSL_PARAM params[3], *p = params;
+    size_t mac_len;
 
     /* Initialize a random secret */
     if (!cookie_initialized) {
@@ -808,10 +809,11 @@ int generate_cookie_callback(SSL *ssl, unsigned char *cookie,
             BIO_printf(bio_err, "HMAC context update failed\n");
             goto end;
     }
-    if (!EVP_MAC_final(ctx, cookie, NULL, (size_t)cookie_len)) {
+    if (!EVP_MAC_final(ctx, cookie, &mac_len, DTLS1_COOKIE_LENGTH)) {
             BIO_printf(bio_err, "HMAC context final failed\n");
             goto end;
     }
+    *cookie_len = (int)mac_len;
     res = 1;
 end:
     OPENSSL_free(buffer);
@@ -840,7 +842,8 @@ int verify_cookie_callback(SSL *ssl, const unsigned char *cookie,
 int generate_stateless_cookie_callback(SSL *ssl, unsigned char *cookie,
                                        size_t *cookie_len)
 {
-    unsigned int temp;
+    unsigned int temp = 0;
+
     int res = generate_cookie_callback(ssl, cookie, &temp);
     *cookie_len = temp;
     return res;
@@ -1224,7 +1227,7 @@ void print_ssl_summary(SSL *s)
     c = SSL_get_current_cipher(s);
     BIO_printf(bio_err, "Ciphersuite: %s\n", SSL_CIPHER_get_name(c));
     do_print_sigalgs(bio_err, s, 0);
-    peer = SSL_get_peer_certificate(s);
+    peer = SSL_get0_peer_certificate(s);
     if (peer != NULL) {
         int nid;
 
@@ -1240,7 +1243,6 @@ void print_ssl_summary(SSL *s)
     } else {
         BIO_puts(bio_err, "No peer certificate\n");
     }
-    X509_free(peer);
 #ifndef OPENSSL_NO_EC
     ssl_print_point_formats(bio_err, s);
     if (SSL_is_server(s))
