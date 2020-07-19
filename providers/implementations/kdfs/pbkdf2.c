@@ -35,12 +35,12 @@
 #define KDF_PBKDF2_MIN_ITERATIONS 1000
 #define KDF_PBKDF2_MIN_SALT_LEN   (128 / 8)
 
-static OSSL_OP_kdf_newctx_fn kdf_pbkdf2_new;
-static OSSL_OP_kdf_freectx_fn kdf_pbkdf2_free;
-static OSSL_OP_kdf_reset_fn kdf_pbkdf2_reset;
-static OSSL_OP_kdf_derive_fn kdf_pbkdf2_derive;
-static OSSL_OP_kdf_settable_ctx_params_fn kdf_pbkdf2_settable_ctx_params;
-static OSSL_OP_kdf_set_ctx_params_fn kdf_pbkdf2_set_ctx_params;
+static OSSL_FUNC_kdf_newctx_fn kdf_pbkdf2_new;
+static OSSL_FUNC_kdf_freectx_fn kdf_pbkdf2_free;
+static OSSL_FUNC_kdf_reset_fn kdf_pbkdf2_reset;
+static OSSL_FUNC_kdf_derive_fn kdf_pbkdf2_derive;
+static OSSL_FUNC_kdf_settable_ctx_params_fn kdf_pbkdf2_settable_ctx_params;
+static OSSL_FUNC_kdf_set_ctx_params_fn kdf_pbkdf2_set_ctx_params;
 
 static int  pbkdf2_derive(const char *pass, size_t passlen,
                           const unsigned char *salt, int saltlen, uint64_t iter,
@@ -95,8 +95,10 @@ static void kdf_pbkdf2_free(void *vctx)
 static void kdf_pbkdf2_reset(void *vctx)
 {
     KDF_PBKDF2 *ctx = (KDF_PBKDF2 *)vctx;
+    void *provctx = ctx->provctx;
 
     kdf_pbkdf2_cleanup(ctx);
+    ctx->provctx = provctx;
     kdf_pbkdf2_init(ctx);
 }
 

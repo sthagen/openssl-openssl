@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -55,6 +55,26 @@ const OSSL_PARAM *OSSL_PROVIDER_gettable_params(const OSSL_PROVIDER *prov)
 int OSSL_PROVIDER_get_params(const OSSL_PROVIDER *prov, OSSL_PARAM params[])
 {
     return ossl_provider_get_params(prov, params);
+}
+
+const OSSL_ALGORITHM *OSSL_PROVIDER_query_operation(const OSSL_PROVIDER *prov,
+                                                    int operation_id,
+                                                    int *no_cache)
+{
+    return ossl_provider_query_operation(prov, operation_id, no_cache);
+}
+
+void *OSSL_PROVIDER_get0_provider_ctx(const OSSL_PROVIDER *prov)
+{
+    return ossl_provider_prov_ctx(prov);
+}
+
+int OSSL_PROVIDER_get_capabilities(const OSSL_PROVIDER *prov,
+                                   const char *capability,
+                                   OSSL_CALLBACK *cb,
+                                   void *arg)
+{
+    return ossl_provider_get_capabilities(prov, capability, cb, arg);
 }
 
 int OSSL_PROVIDER_add_builtin(OPENSSL_CTX *libctx, const char *name,

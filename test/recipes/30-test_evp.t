@@ -31,7 +31,9 @@ my @configs = ( $defaultcnf );
 # Only add the FIPS config if the FIPS module has been built
 push @configs, 'fips.cnf' unless $no_fips;
 
-my @files = qw( evpciph.txt evpdigest.txt evppkey.txt evppkey_ecc.txt);
+my @files = qw( evprand.txt evpciph.txt evpdigest.txt evppkey.txt
+    evppkey_ecc.txt evpciph_aes_cts.txt);
+
 my @defltfiles = qw( evpencod.txt evpkdf.txt evppkey_kdf.txt evpmac.txt
     evppbe.txt evpcase.txt evpccmcavs.txt );
 my @ideafiles = qw( evpciph_idea.txt );
@@ -83,10 +85,7 @@ unless ($no_fips) {
 
     ok(run(app(['openssl', 'fipsinstall',
                 '-out', bldtop_file('providers', 'fipsmodule.cnf'),
-                '-module', $infile,
-                '-provider_name', 'fips', '-mac_name', 'HMAC',
-                '-macopt', 'digest:SHA256', '-macopt', 'hexkey:00',
-                '-section_name', 'fips_sect'])),
+                '-module', $infile])),
        "fipsinstall");
 }
 

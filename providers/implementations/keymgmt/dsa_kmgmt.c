@@ -14,7 +14,7 @@
 #include "internal/deprecated.h"
 
 #include "e_os.h" /* strcasecmp */
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/bn.h>
 #include <openssl/err.h>
@@ -26,23 +26,23 @@
 #include "internal/nelem.h"
 #include "internal/param_build_set.h"
 
-static OSSL_OP_keymgmt_new_fn dsa_newdata;
-static OSSL_OP_keymgmt_free_fn dsa_freedata;
-static OSSL_OP_keymgmt_gen_init_fn dsa_gen_init;
-static OSSL_OP_keymgmt_gen_set_template_fn dsa_gen_set_template;
-static OSSL_OP_keymgmt_gen_set_params_fn dsa_gen_set_params;
-static OSSL_OP_keymgmt_gen_settable_params_fn dsa_gen_settable_params;
-static OSSL_OP_keymgmt_gen_fn dsa_gen;
-static OSSL_OP_keymgmt_gen_cleanup_fn dsa_gen_cleanup;
-static OSSL_OP_keymgmt_get_params_fn dsa_get_params;
-static OSSL_OP_keymgmt_gettable_params_fn dsa_gettable_params;
-static OSSL_OP_keymgmt_has_fn dsa_has;
-static OSSL_OP_keymgmt_match_fn dsa_match;
-static OSSL_OP_keymgmt_validate_fn dsa_validate;
-static OSSL_OP_keymgmt_import_fn dsa_import;
-static OSSL_OP_keymgmt_import_types_fn dsa_import_types;
-static OSSL_OP_keymgmt_export_fn dsa_export;
-static OSSL_OP_keymgmt_export_types_fn dsa_export_types;
+static OSSL_FUNC_keymgmt_new_fn dsa_newdata;
+static OSSL_FUNC_keymgmt_free_fn dsa_freedata;
+static OSSL_FUNC_keymgmt_gen_init_fn dsa_gen_init;
+static OSSL_FUNC_keymgmt_gen_set_template_fn dsa_gen_set_template;
+static OSSL_FUNC_keymgmt_gen_set_params_fn dsa_gen_set_params;
+static OSSL_FUNC_keymgmt_gen_settable_params_fn dsa_gen_settable_params;
+static OSSL_FUNC_keymgmt_gen_fn dsa_gen;
+static OSSL_FUNC_keymgmt_gen_cleanup_fn dsa_gen_cleanup;
+static OSSL_FUNC_keymgmt_get_params_fn dsa_get_params;
+static OSSL_FUNC_keymgmt_gettable_params_fn dsa_gettable_params;
+static OSSL_FUNC_keymgmt_has_fn dsa_has;
+static OSSL_FUNC_keymgmt_match_fn dsa_match;
+static OSSL_FUNC_keymgmt_validate_fn dsa_validate;
+static OSSL_FUNC_keymgmt_import_fn dsa_import;
+static OSSL_FUNC_keymgmt_import_types_fn dsa_import_types;
+static OSSL_FUNC_keymgmt_export_fn dsa_export;
+static OSSL_FUNC_keymgmt_export_types_fn dsa_export_types;
 
 #define DSA_DEFAULT_MD "SHA256"
 #define DSA_POSSIBLE_SELECTIONS                                                \
@@ -56,13 +56,14 @@ struct dsa_gen_ctx {
     /* All these parameters are used for parameter generation only */
     size_t pbits;
     size_t qbits;
-    EVP_MD *md;
     unsigned char *seed; /* optional FIPS186-4 param for testing */
     size_t seedlen;
     int gindex; /* optional  FIPS186-4 generator index (ignored if -1) */
     int gen_type; /* DSA_PARAMGEN_TYPE_FIPS_186_2 or DSA_PARAMGEN_TYPE_FIPS_186_4 */
     int pcounter;
     int hindex;
+    const char *mdname;
+    const char *mdprops;
     OSSL_CALLBACK *cb;
     void *cbarg;
 };
@@ -364,7 +365,6 @@ static void *dsa_gen_init(void *provctx, int selection)
         gctx->libctx = libctx;
         gctx->pbits = 2048;
         gctx->qbits = 224;
-        gctx->md = NULL;
         gctx->gen_type = DSA_PARAMGEN_TYPE_FIPS_186_4;
         gctx->gindex = -1;
         gctx->pcounter = -1;
@@ -440,21 +440,15 @@ static int dsa_gen_set_params(void *genctx, const OSSL_PARAM params[])
         return 0;
     p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_FFC_DIGEST);
     if (p != NULL) {
-        const OSSL_PARAM *p1;
-        char mdprops[OSSL_MAX_PROPQUERY_SIZE] = { '\0' };
-        char *str = mdprops;
-
         if (p->data_type != OSSL_PARAM_UTF8_STRING)
             return 0;
-        p1 = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_FFC_DIGEST_PROPS);
-        if (p1 != NULL) {
-            if (!OSSL_PARAM_get_utf8_string(p1, &str, sizeof(mdprops)))
-                return 0;
-        }
-        EVP_MD_free(gctx->md);
-        gctx->md = EVP_MD_fetch(gctx->libctx, p->data, mdprops);
-        if (gctx->md == NULL)
+        gctx->mdname = p->data;
+    }
+    p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_FFC_DIGEST_PROPS);
+    if (p != NULL) {
+        if (p->data_type != OSSL_PARAM_UTF8_STRING)
             return 0;
+        gctx->mdprops = p->data;
     }
     return 1;
 }
@@ -523,10 +517,14 @@ static void *dsa_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
     } else if (gctx->hindex != 0) {
         ffc_params_set_h(ffc, gctx->hindex);
     }
+    if (gctx->mdname != NULL) {
+        if (!ffc_set_digest(ffc, gctx->mdname, gctx->mdprops))
+            goto end;
+    }
     if ((gctx->selection & OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS) != 0) {
 
          if (dsa_generate_ffc_parameters(dsa, gctx->gen_type,
-                                         gctx->pbits, gctx->qbits, gctx->md,
+                                         gctx->pbits, gctx->qbits,
                                          gencb) <= 0)
              goto end;
     }
@@ -556,7 +554,6 @@ static void dsa_gen_cleanup(void *genctx)
         return;
 
     OPENSSL_clear_free(gctx->seed, gctx->seedlen);
-    EVP_MD_free(gctx->md);
     OPENSSL_free(gctx);
 }
 

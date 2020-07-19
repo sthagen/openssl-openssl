@@ -109,6 +109,7 @@ static int tls1_generate_key_block(SSL *s, unsigned char *km, size_t num)
   * record layer. If read_ahead is enabled, then this might be false and this
   * function will fail.
   */
+# ifndef OPENSSL_NO_KTLS_RX
 static int count_unprocessed_records(SSL *s)
 {
     SSL3_BUFFER *rbuf = RECORD_LAYER_get_rbuf(&s->rlayer);
@@ -132,7 +133,47 @@ static int count_unprocessed_records(SSL *s)
 
     return count;
 }
+# endif
 #endif
+
+
+int tls_provider_set_tls_params(SSL *s, EVP_CIPHER_CTX *ctx,
+                                const EVP_CIPHER *ciph,
+                                const EVP_MD *md)
+{
+    /*
+     * Provided cipher, the TLS padding/MAC removal is performed provider
+     * side so we need to tell the ctx about our TLS version and mac size
+     */
+    OSSL_PARAM params[3], *pprm = params;
+    size_t macsize = 0;
+    int imacsize = -1;
+
+    if ((EVP_CIPHER_flags(ciph) & EVP_CIPH_FLAG_AEAD_CIPHER) == 0
+               /*
+                * We look at s->ext.use_etm instead of SSL_READ_ETM() or
+                * SSL_WRITE_ETM() because this test applies to both reading
+                * and writing.
+                */
+            && !s->ext.use_etm)
+        imacsize = EVP_MD_size(md);
+    if (imacsize >= 0)
+        macsize = (size_t)imacsize;
+
+    *pprm++ = OSSL_PARAM_construct_int(OSSL_CIPHER_PARAM_TLS_VERSION,
+                                       &s->version);
+    *pprm++ = OSSL_PARAM_construct_size_t(OSSL_CIPHER_PARAM_TLS_MAC_SIZE,
+                                          &macsize);
+    *pprm = OSSL_PARAM_construct_end();
+
+    if (!EVP_CIPHER_CTX_set_params(ctx, params)) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS1_CHANGE_CIPHER_STATE,
+                 ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    return 1;
+}
 
 int tls1_change_cipher_state(SSL *s, int which)
 {
@@ -154,10 +195,13 @@ int tls1_change_cipher_state(SSL *s, int which)
 # ifdef __FreeBSD__
     struct tls_enable crypto_info;
 # else
-    struct tls12_crypto_info_aes_gcm_128 crypto_info;
-    unsigned char geniv[12];
+    struct tls_crypto_info_all crypto_info;
+    unsigned char *rec_seq;
+    void *rl_sequence;
+#  ifndef OPENSSL_NO_KTLS_RX
     int count_unprocessed;
     int bit;
+#  endif
 # endif
     BIO *bio;
 #endif
@@ -391,6 +435,12 @@ int tls1_change_cipher_state(SSL *s, int which)
                  ERR_R_INTERNAL_ERROR);
         goto err;
     }
+    if (EVP_CIPHER_provider(c) != NULL
+            && !tls_provider_set_tls_params(s, dd, c, m)) {
+        /* SSLfatal already called */
+        goto err;
+    }
+
 #ifndef OPENSSL_NO_KTLS
     if (s->compress)
         goto skip_ktls;
@@ -441,14 +491,12 @@ int tls1_change_cipher_state(SSL *s, int which)
     crypto_info.iv = iv;
     crypto_info.tls_vmajor = (s->version >> 8) & 0x000000ff;
     crypto_info.tls_vminor = (s->version & 0x000000ff);
-# else
-    /* check that cipher is AES_GCM_128 */
-    if (EVP_CIPHER_nid(c) != NID_aes_128_gcm
-        || EVP_CIPHER_mode(c) != EVP_CIPH_GCM_MODE
-        || EVP_CIPHER_key_length(c) != TLS_CIPHER_AES_GCM_128_KEY_SIZE)
+# else /* !defined(__FreeBSD__) */
+    /* check that cipher is supported */
+    if (!ktls_check_supported_cipher(c, dd))
         goto skip_ktls;
 
-    /* check version is 1.2 */
+    /* check version */
     if (s->version != TLS1_2_VERSION)
         goto skip_ktls;
 # endif
@@ -479,25 +527,17 @@ int tls1_change_cipher_state(SSL *s, int which)
     }
 
 # ifndef __FreeBSD__
-    memset(&crypto_info, 0, sizeof(crypto_info));
-    crypto_info.info.cipher_type = TLS_CIPHER_AES_GCM_128;
-    crypto_info.info.version = s->version;
-
-    EVP_CIPHER_CTX_ctrl(dd, EVP_CTRL_GET_IV,
-                        EVP_GCM_TLS_FIXED_IV_LEN + EVP_GCM_TLS_EXPLICIT_IV_LEN,
-                        geniv);
-    memcpy(crypto_info.iv, geniv + EVP_GCM_TLS_FIXED_IV_LEN,
-           TLS_CIPHER_AES_GCM_128_IV_SIZE);
-    memcpy(crypto_info.salt, geniv, TLS_CIPHER_AES_GCM_128_SALT_SIZE);
-    memcpy(crypto_info.key, key, EVP_CIPHER_key_length(c));
     if (which & SSL3_CC_WRITE)
-        memcpy(crypto_info.rec_seq, &s->rlayer.write_sequence,
-                TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
+        rl_sequence = RECORD_LAYER_get_write_sequence(&s->rlayer);
     else
-        memcpy(crypto_info.rec_seq, &s->rlayer.read_sequence,
-                TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
+        rl_sequence = RECORD_LAYER_get_read_sequence(&s->rlayer);
+
+    if (!ktls_configure_crypto(c, s->version, dd, rl_sequence, &crypto_info,
+                               &rec_seq, iv, key))
+        goto skip_ktls;
 
     if (which & SSL3_CC_READ) {
+#  ifndef OPENSSL_NO_KTLS_RX
         count_unprocessed = count_unprocessed_records(s);
         if (count_unprocessed < 0)
             goto skip_ktls;
@@ -505,14 +545,17 @@ int tls1_change_cipher_state(SSL *s, int which)
         /* increment the crypto_info record sequence */
         while (count_unprocessed) {
             for (bit = 7; bit >= 0; bit--) { /* increment */
-                ++crypto_info.rec_seq[bit];
-                if (crypto_info.rec_seq[bit] != 0)
+                ++rec_seq[bit];
+                if (rec_seq[bit] != 0)
                     break;
             }
             count_unprocessed--;
         }
+#  else
+        goto skip_ktls;
+#  endif
     }
-# endif
+# endif /* !__FreeBSD__ */
 
     /* ktls works with user provided buffers directly */
     if (BIO_set_ktls(bio, &crypto_info, which & SSL3_CC_WRITE)) {

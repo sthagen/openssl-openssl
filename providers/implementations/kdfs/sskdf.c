@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2019, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -70,15 +70,15 @@ typedef struct {
 /* KMAC uses a Customisation string of 'KDF' */
 static const unsigned char kmac_custom_str[] = { 0x4B, 0x44, 0x46 };
 
-static OSSL_OP_kdf_newctx_fn sskdf_new;
-static OSSL_OP_kdf_freectx_fn sskdf_free;
-static OSSL_OP_kdf_reset_fn sskdf_reset;
-static OSSL_OP_kdf_derive_fn sskdf_derive;
-static OSSL_OP_kdf_derive_fn x963kdf_derive;
-static OSSL_OP_kdf_settable_ctx_params_fn sskdf_settable_ctx_params;
-static OSSL_OP_kdf_set_ctx_params_fn sskdf_set_ctx_params;
-static OSSL_OP_kdf_gettable_ctx_params_fn sskdf_gettable_ctx_params;
-static OSSL_OP_kdf_get_ctx_params_fn sskdf_get_ctx_params;
+static OSSL_FUNC_kdf_newctx_fn sskdf_new;
+static OSSL_FUNC_kdf_freectx_fn sskdf_free;
+static OSSL_FUNC_kdf_reset_fn sskdf_reset;
+static OSSL_FUNC_kdf_derive_fn sskdf_derive;
+static OSSL_FUNC_kdf_derive_fn x963kdf_derive;
+static OSSL_FUNC_kdf_settable_ctx_params_fn sskdf_settable_ctx_params;
+static OSSL_FUNC_kdf_set_ctx_params_fn sskdf_set_ctx_params;
+static OSSL_FUNC_kdf_gettable_ctx_params_fn sskdf_gettable_ctx_params;
+static OSSL_FUNC_kdf_get_ctx_params_fn sskdf_get_ctx_params;
 
 /*
  * Refer to https://csrc.nist.gov/publications/detail/sp/800-56c/rev-1/final
@@ -302,6 +302,7 @@ static void *sskdf_new(void *provctx)
 static void sskdf_reset(void *vctx)
 {
     KDF_SSKDF *ctx = (KDF_SSKDF *)vctx;
+    void *provctx = ctx->provctx;
 
     EVP_MAC_CTX_free(ctx->macctx);
     ossl_prov_digest_reset(&ctx->digest);
@@ -309,6 +310,7 @@ static void sskdf_reset(void *vctx)
     OPENSSL_clear_free(ctx->info, ctx->info_len);
     OPENSSL_clear_free(ctx->salt, ctx->salt_len);
     memset(ctx, 0, sizeof(*ctx));
+    ctx->provctx = provctx;
 }
 
 static void sskdf_free(void *vctx)

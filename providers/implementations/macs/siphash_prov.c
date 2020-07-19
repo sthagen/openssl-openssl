@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -8,7 +8,7 @@
  */
 
 #include <string.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/params.h>
 #include <openssl/evp.h>
@@ -30,17 +30,17 @@
  * necessary for the compiler, but provides an assurance that the signatures
  * of the functions in the dispatch table are correct.
  */
-static OSSL_OP_mac_newctx_fn siphash_new;
-static OSSL_OP_mac_dupctx_fn siphash_dup;
-static OSSL_OP_mac_freectx_fn siphash_free;
-static OSSL_OP_mac_gettable_ctx_params_fn siphash_gettable_ctx_params;
-static OSSL_OP_mac_get_ctx_params_fn siphash_get_ctx_params;
-static OSSL_OP_mac_settable_ctx_params_fn siphash_settable_params;
-static OSSL_OP_mac_set_ctx_params_fn siphash_set_params;
-static OSSL_OP_mac_size_fn siphash_size;
-static OSSL_OP_mac_init_fn siphash_init;
-static OSSL_OP_mac_update_fn siphash_update;
-static OSSL_OP_mac_final_fn siphash_final;
+static OSSL_FUNC_mac_newctx_fn siphash_new;
+static OSSL_FUNC_mac_dupctx_fn siphash_dup;
+static OSSL_FUNC_mac_freectx_fn siphash_free;
+static OSSL_FUNC_mac_gettable_ctx_params_fn siphash_gettable_ctx_params;
+static OSSL_FUNC_mac_get_ctx_params_fn siphash_get_ctx_params;
+static OSSL_FUNC_mac_settable_ctx_params_fn siphash_settable_params;
+static OSSL_FUNC_mac_set_ctx_params_fn siphash_set_params;
+static OSSL_FUNC_mac_size_fn siphash_size;
+static OSSL_FUNC_mac_init_fn siphash_init;
+static OSSL_FUNC_mac_update_fn siphash_update;
+static OSSL_FUNC_mac_final_fn siphash_final;
 
 struct siphash_data_st {
     void *provctx;

@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use some engine deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #if !defined(_POSIX_C_SOURCE) && defined(OPENSSL_SYS_VMS)
 /*
  * On VMS, you need to define this to get the declaration of fileno().  The
@@ -438,10 +441,6 @@ X509 *load_cert_pass(const char *uri, int maybe_stdin,
 
     if (desc == NULL)
         desc = "certificate";
-    if (uri == NULL) {
-        unbuffer(stdin);
-        uri = "";
-    }
     (void)load_key_cert_crl(uri, maybe_stdin, pass, desc, NULL, &cert, NULL);
     if (cert == NULL) {
         BIO_printf(bio_err, "Unable to load %s\n", desc);
@@ -453,7 +452,7 @@ X509 *load_cert_pass(const char *uri, int maybe_stdin,
 /* the format parameter is meanwhile not needed anymore and thus ignored */
 X509 *load_cert(const char *uri, int format, const char *desc)
 {
-    return load_cert_pass(uri, 0, NULL, desc);
+    return load_cert_pass(uri, 1, NULL, desc);
 }
 
 /* the format parameter is meanwhile not needed anymore and thus ignored */
@@ -671,16 +670,24 @@ static int load_certs_crls(const char *file, int format,
     return rv;
 }
 
+void app_bail_out(char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    BIO_vprintf(bio_err, fmt, args);
+    va_end(args);
+    ERR_print_errors(bio_err);
+    exit(1);
+}
+
 void* app_malloc(int sz, const char *what)
 {
     void *vp = OPENSSL_malloc(sz);
 
-    if (vp == NULL) {
-        BIO_printf(bio_err, "%s: Could not allocate %d bytes for %s\n",
-                opt_getprog(), sz, what);
-        ERR_print_errors(bio_err);
-        exit(1);
-    }
+    if (vp == NULL)
+        app_bail_out("%s: Could not allocate %d bytes for %s\n",
+                     opt_getprog(), sz, what);
     return vp;
 }
 
@@ -1152,9 +1159,8 @@ ENGINE *setup_engine_methods(const char *id, unsigned int methods, int debug)
 void release_engine(ENGINE *e)
 {
 #ifndef OPENSSL_NO_ENGINE
-    if (e != NULL)
-        /* Free our "structural" reference. */
-        ENGINE_free(e);
+    /* Free our "structural" reference. */
+    ENGINE_free(e);
 #endif
 }
 
@@ -1627,7 +1633,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         goto err;
     }
 
-    while (*cp) {
+    while (*cp != '\0') {
         char *bp = work;
         char *typestr = bp;
         unsigned char *valstr;
@@ -1636,12 +1642,12 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         nextismulti = 0;
 
         /* Collect the type */
-        while (*cp && *cp != '=')
+        while (*cp != '\0' && *cp != '=')
             *bp++ = *cp++;
         if (*cp == '\0') {
             BIO_printf(bio_err,
-                    "%s: Hit end of string before finding the '='\n",
-                    opt_getprog());
+                       "%s: Hit end of string before finding the '='\n",
+                       opt_getprog());
             goto err;
         }
         *bp++ = '\0';
@@ -1649,7 +1655,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
 
         /* Collect the value. */
         valstr = (unsigned char *)bp;
-        for (; *cp && *cp != '/'; *bp++ = *cp++) {
+        for (; *cp != '\0' && *cp != '/'; *bp++ = *cp++) {
             if (canmulti && *cp == '+') {
                 nextismulti = 1;
                 break;
@@ -1664,7 +1670,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         *bp++ = '\0';
 
         /* If not at EOS (must be + or /), move forward. */
-        if (*cp)
+        if (*cp != '\0')
             ++cp;
 
         /* Parse */
@@ -1683,6 +1689,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         if (!X509_NAME_add_entry_by_NID(n, nid, chtype,
                                         valstr, strlen((char *)valstr),
                                         -1, ismulti ? -1 : 0)) {
+            ERR_print_errors(bio_err);
             BIO_printf(bio_err, "%s: Error adding name attribute \"/%s=%s\"\n",
                        opt_getprog(), typestr ,valstr);
             goto err;

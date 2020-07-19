@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -8,7 +8,7 @@
  */
 
 #include <openssl/core.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/serializer.h>
 #include <openssl/ui.h>
 #include "internal/core.h"
@@ -173,32 +173,32 @@ static void *serializer_from_dispatch(int id, const OSSL_ALGORITHM *algodef,
         case OSSL_FUNC_SERIALIZER_NEWCTX:
             if (ser->newctx == NULL)
                 ser->newctx =
-                    OSSL_get_OP_serializer_newctx(fns);
+                    OSSL_FUNC_serializer_newctx(fns);
             break;
         case OSSL_FUNC_SERIALIZER_FREECTX:
             if (ser->freectx == NULL)
                 ser->freectx =
-                    OSSL_get_OP_serializer_freectx(fns);
+                    OSSL_FUNC_serializer_freectx(fns);
             break;
         case OSSL_FUNC_SERIALIZER_SET_CTX_PARAMS:
             if (ser->set_ctx_params == NULL)
                 ser->set_ctx_params =
-                    OSSL_get_OP_serializer_set_ctx_params(fns);
+                    OSSL_FUNC_serializer_set_ctx_params(fns);
             break;
         case OSSL_FUNC_SERIALIZER_SETTABLE_CTX_PARAMS:
             if (ser->settable_ctx_params == NULL)
                 ser->settable_ctx_params =
-                    OSSL_get_OP_serializer_settable_ctx_params(fns);
+                    OSSL_FUNC_serializer_settable_ctx_params(fns);
             break;
         case OSSL_FUNC_SERIALIZER_SERIALIZE_DATA:
             if (ser->serialize_data == NULL)
                 ser->serialize_data =
-                    OSSL_get_OP_serializer_serialize_data(fns);
+                    OSSL_FUNC_serializer_serialize_data(fns);
             break;
         case OSSL_FUNC_SERIALIZER_SERIALIZE_OBJECT:
             if (ser->serialize_object == NULL)
                 ser->serialize_object =
-                    OSSL_get_OP_serializer_serialize_object(fns);
+                    OSSL_FUNC_serializer_serialize_object(fns);
             break;
         }
     }

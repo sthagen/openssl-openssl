@@ -42,27 +42,31 @@ extern "C" {
 #define OSSL_ALG_PARAM_PROPERTIES   "properties"/* utf8_string */
 
 /* cipher parameters */
-#define OSSL_CIPHER_PARAM_PADDING              "padding"    /* uint */
-#define OSSL_CIPHER_PARAM_MODE                 "mode"       /* uint */
-#define OSSL_CIPHER_PARAM_BLOCK_SIZE           "blocksize" /* size_t */
-#define OSSL_CIPHER_PARAM_FLAGS                "flags"      /* ulong */
-#define OSSL_CIPHER_PARAM_KEYLEN               "keylen"     /* size_t */
-#define OSSL_CIPHER_PARAM_IVLEN                "ivlen"      /* size_t */
-#define OSSL_CIPHER_PARAM_IV                   "iv"         /* octet_string OR octet_ptr */
-#define OSSL_CIPHER_PARAM_NUM                  "num"        /* uint */
-#define OSSL_CIPHER_PARAM_ROUNDS               "rounds"     /* uint */
-#define OSSL_CIPHER_PARAM_AEAD_TAG             "tag"        /* octet_string */
-#define OSSL_CIPHER_PARAM_AEAD_TLS1_AAD        "tlsaad"     /* octet_string */
-#define OSSL_CIPHER_PARAM_AEAD_TLS1_AAD_PAD    "tlsaadpad"  /* size_t */
-#define OSSL_CIPHER_PARAM_AEAD_TLS1_IV_FIXED   "tlsivfixed" /* octet_string */
-#define OSSL_CIPHER_PARAM_AEAD_TLS1_GET_IV_GEN "tlsivgen" /* octet_string */
-#define OSSL_CIPHER_PARAM_AEAD_TLS1_SET_IV_INV "tlsivinv" /* octet_string */
+#define OSSL_CIPHER_PARAM_PADDING              "padding"      /* uint */
+#define OSSL_CIPHER_PARAM_TLS_VERSION          "tls-version"  /* uint */
+#define OSSL_CIPHER_PARAM_TLS_MAC              "tls-mac"      /* octet_ptr */
+#define OSSL_CIPHER_PARAM_TLS_MAC_SIZE         "tls-mac-size" /* size_t */
+#define OSSL_CIPHER_PARAM_MODE                 "mode"         /* uint */
+#define OSSL_CIPHER_PARAM_BLOCK_SIZE           "blocksize"    /* size_t */
+#define OSSL_CIPHER_PARAM_FLAGS                "flags"        /* ulong */
+#define OSSL_CIPHER_PARAM_KEYLEN               "keylen"       /* size_t */
+#define OSSL_CIPHER_PARAM_IVLEN                "ivlen"        /* size_t */
+#define OSSL_CIPHER_PARAM_IV                   "iv"           /* octet_string OR octet_ptr */
+#define OSSL_CIPHER_PARAM_NUM                  "num"          /* uint */
+#define OSSL_CIPHER_PARAM_ROUNDS               "rounds"       /* uint */
+#define OSSL_CIPHER_PARAM_AEAD_TAG             "tag"          /* octet_string */
+#define OSSL_CIPHER_PARAM_AEAD_TLS1_AAD        "tlsaad"       /* octet_string */
+#define OSSL_CIPHER_PARAM_AEAD_TLS1_AAD_PAD    "tlsaadpad"    /* size_t */
+#define OSSL_CIPHER_PARAM_AEAD_TLS1_IV_FIXED   "tlsivfixed"   /* octet_string */
+#define OSSL_CIPHER_PARAM_AEAD_TLS1_GET_IV_GEN "tlsivgen"     /* octet_string */
+#define OSSL_CIPHER_PARAM_AEAD_TLS1_SET_IV_INV "tlsivinv"     /* octet_string */
 #define OSSL_CIPHER_PARAM_AEAD_IVLEN           OSSL_CIPHER_PARAM_IVLEN
-#define OSSL_CIPHER_PARAM_AEAD_TAGLEN          "taglen"     /* size_t */
-#define OSSL_CIPHER_PARAM_AEAD_MAC_KEY         "mackey"     /* octet_string */
-#define OSSL_CIPHER_PARAM_RANDOM_KEY           "randkey"    /* octet_string */
-#define OSSL_CIPHER_PARAM_RC2_KEYBITS          "keybits"    /* size_t */
-#define OSSL_CIPHER_PARAM_SPEED                "speed"      /* uint */
+#define OSSL_CIPHER_PARAM_AEAD_TAGLEN          "taglen"       /* size_t */
+#define OSSL_CIPHER_PARAM_AEAD_MAC_KEY         "mackey"       /* octet_string */
+#define OSSL_CIPHER_PARAM_RANDOM_KEY           "randkey"      /* octet_string */
+#define OSSL_CIPHER_PARAM_RC2_KEYBITS          "keybits"      /* size_t */
+#define OSSL_CIPHER_PARAM_SPEED                "speed"        /* uint */
+#define OSSL_CIPHER_PARAM_CTS_MODE             "cts_mode"     /* utf8_string */
 /* For passing the AlgorithmIdentifier parameter in DER form */
 #define OSSL_CIPHER_PARAM_ALG_ID               "alg_id_param" /* octet_string */
 
@@ -82,6 +86,11 @@ extern "C" {
     "tls1multi_encin"      /* octet_string */
 #define OSSL_CIPHER_PARAM_TLS1_MULTIBLOCK_ENC_LEN                              \
     "tls1multi_enclen"     /* size_t */
+
+/* OSSL_CIPHER_PARAM_CTS_MODE Values */
+#define OSSL_CIPHER_CTS_MODE_CS1 "CS1"
+#define OSSL_CIPHER_CTS_MODE_CS2 "CS2"
+#define OSSL_CIPHER_CTS_MODE_CS3 "CS3"
 
 /* digest parameters */
 #define OSSL_DIGEST_PARAM_XOFLEN     "xoflen"    /* size_t */
@@ -180,6 +189,38 @@ extern "C" {
 #define OSSL_KDF_NAME_KBKDF         "KBKDF"
 #define OSSL_KDF_NAME_KRB5KDF       "KRB5KDF"
 
+/* Known RAND names */
+#define OSSL_RAND_PARAM_STATE                   "state"
+#define OSSL_RAND_PARAM_STRENGTH                "strength"
+#define OSSL_RAND_PARAM_TEST_ENTROPY            "test_entropy"
+#define OSSL_RAND_PARAM_TEST_NONCE              "test_nonce"
+
+/* RAND/DRBG names */
+#define OSSL_DRBG_PARAM_RESEED_REQUESTS         "reseed_requests"
+#define OSSL_DRBG_PARAM_RESEED_TIME_INTERVAL    "reseed_time_interval"
+#define OSSL_DRBG_PARAM_MAX_REQUEST             "max_request"
+#define OSSL_DRBG_PARAM_MIN_ENTROPYLEN          "min_entropylen"
+#define OSSL_DRBG_PARAM_MAX_ENTROPYLEN          "max_entropylen"
+#define OSSL_DRBG_PARAM_MIN_NONCELEN            "min_noncelen"
+#define OSSL_DRBG_PARAM_MAX_NONCELEN            "max_noncelen"
+#define OSSL_DRBG_PARAM_MAX_PERSLEN             "max_perslen"
+#define OSSL_DRBG_PARAM_MAX_ADINLEN             "max_adinlen"
+#define OSSL_DRBG_PARAM_RESEED_CTR              "reseed_counter"
+#define OSSL_DRBG_PARAM_RESEED_TIME             "reseed_time"
+#define OSSL_DRBG_PARAM_PROPERTIES              OSSL_ALG_PARAM_PROPERTIES
+#define OSSL_DRBG_PARAM_DIGEST                  OSSL_ALG_PARAM_DIGEST
+#define OSSL_DRBG_PARAM_CIPHER                  OSSL_ALG_PARAM_CIPHER
+#define OSSL_DRBG_PARAM_MAC                     OSSL_ALG_PARAM_MAC
+#define OSSL_DRBG_PARAM_USE_DF                  "use_derivation_function"
+
+/* DRBG call back parameters */
+#define OSSL_DRBG_PARAM_ENTROPY_REQUIRED        "entropy_required"
+#define OSSL_DRBG_PARAM_PREDICTION_RESISTANCE   "prediction_resistance"
+#define OSSL_DRBG_PARAM_MIN_LENGTH              "minium_length"
+#define OSSL_DRBG_PARAM_MAX_LENGTH              "maxium_length"
+#define OSSL_DRBG_PARAM_RANDOM_DATA             "random_data"
+#define OSSL_DRBG_PARAM_SIZE                    "size"
+
 /* PKEY parameters */
 /* Common PKEY parameters */
 #define OSSL_PKEY_PARAM_BITS                "bits" /* integer */
@@ -194,28 +235,36 @@ extern "C" {
 #define OSSL_PKEY_PARAM_MASKGENFUNC         "mgf"
 #define OSSL_PKEY_PARAM_MGF1_DIGEST         "mgf1-digest"
 #define OSSL_PKEY_PARAM_MGF1_PROPERTIES     "mgf1-properties"
+#define OSSL_PKEY_PARAM_TLS_ENCODED_PT      "tls-encoded-pt"
+#define OSSL_PKEY_PARAM_GROUP_NAME          "group"
 
 /* Diffie-Hellman/DSA public/private key */
 #define OSSL_PKEY_PARAM_PUB_KEY             "pub"
 #define OSSL_PKEY_PARAM_PRIV_KEY            "priv"
 
 /* Diffie-Hellman/DSA Parameters */
-#define OSSL_PKEY_PARAM_FFC_P        "p"
-#define OSSL_PKEY_PARAM_FFC_G        "g"
-#define OSSL_PKEY_PARAM_FFC_Q        "q"
-#define OSSL_PKEY_PARAM_FFC_GINDEX   "gindex"
-#define OSSL_PKEY_PARAM_FFC_PCOUNTER "pcounter"
-#define OSSL_PKEY_PARAM_FFC_SEED     "seed"
-#define OSSL_PKEY_PARAM_FFC_COFACTOR "j"
-#define OSSL_PKEY_PARAM_FFC_H        "hindex"
+#define OSSL_PKEY_PARAM_FFC_P               "p"
+#define OSSL_PKEY_PARAM_FFC_G               "g"
+#define OSSL_PKEY_PARAM_FFC_Q               "q"
+#define OSSL_PKEY_PARAM_FFC_GINDEX          "gindex"
+#define OSSL_PKEY_PARAM_FFC_PCOUNTER        "pcounter"
+#define OSSL_PKEY_PARAM_FFC_SEED            "seed"
+#define OSSL_PKEY_PARAM_FFC_COFACTOR        "j"
+#define OSSL_PKEY_PARAM_FFC_H               "hindex"
+#define OSSL_PKEY_PARAM_FFC_VALIDATE_TYPE   "valid-type"
+
+/* Diffie-Hellman/DSA Parameters parameter validation types */
+#define OSSL_FFC_PARAM_VALIDATE_PQ          "validate-pq"
+#define OSSL_FFC_PARAM_VALIDATE_G           "validate-g"
+#define OSSL_FFC_PARAM_VALIDATE_PQG         "validate-pqg"
 
 /* Diffie-Hellman params */
-#define OSSL_PKEY_PARAM_DH_GROUP     "group"
-#define OSSL_PKEY_PARAM_DH_GENERATOR "safeprime-generator"
-#define OSSL_PKEY_PARAM_DH_PRIV_LEN   "priv_len"
+#define OSSL_PKEY_PARAM_DH_GENERATOR        "safeprime-generator"
+#define OSSL_PKEY_PARAM_DH_PRIV_LEN         "priv_len"
 
 /* Elliptic Curve Domain Parameters */
-#define OSSL_PKEY_PARAM_EC_NAME      "curve-name"
+#define OSSL_PKEY_PARAM_EC_PUB_X     "qx"
+#define OSSL_PKEY_PARAM_EC_PUB_Y     "qy"
 
 /* Elliptic Curve Key Parameters */
 #define OSSL_PKEY_PARAM_USE_COFACTOR_FLAG "use-cofactor-flag"
@@ -333,7 +382,6 @@ extern "C" {
 #define OSSL_SIGNATURE_PARAM_MGF1_PROPERTIES    \
     OSSL_PKEY_PARAM_MGF1_PROPERTIES
 #define OSSL_SIGNATURE_PARAM_DIGEST_SIZE        OSSL_PKEY_PARAM_DIGEST_SIZE
-#define OSSL_SIGNATURE_PARAM_KAT                "kat"
 
 /* Asym cipher parameters */
 #define OSSL_ASYM_CIPHER_PARAM_PAD_MODE                 OSSL_PKEY_PARAM_PAD_MODE
@@ -362,6 +410,32 @@ extern "C" {
 /* Keygen callback parameters, from provider to libcrypto */
 #define OSSL_GEN_PARAM_POTENTIAL            "potential" /* integer */
 #define OSSL_GEN_PARAM_ITERATION            "iteration" /* integer */
+
+/* ACVP Test parameters : These should not be used normally */
+#define OSSL_PKEY_PARAM_RSA_TEST_XP1 "xp1"
+#define OSSL_PKEY_PARAM_RSA_TEST_XP2 "xp2"
+#define OSSL_PKEY_PARAM_RSA_TEST_XP  "xp"
+#define OSSL_PKEY_PARAM_RSA_TEST_XQ1 "xq1"
+#define OSSL_PKEY_PARAM_RSA_TEST_XQ2 "xq2"
+#define OSSL_PKEY_PARAM_RSA_TEST_XQ  "xq"
+#define OSSL_PKEY_PARAM_RSA_TEST_P1  "p1"
+#define OSSL_PKEY_PARAM_RSA_TEST_P2  "p2"
+#define OSSL_PKEY_PARAM_RSA_TEST_Q1  "q1"
+#define OSSL_PKEY_PARAM_RSA_TEST_Q2  "q2"
+#define OSSL_SIGNATURE_PARAM_KAT "kat"
+
+/* Capabilities */
+
+/* TLS-GROUP Capbility */
+#define OSSL_CAPABILITY_TLS_GROUP_NAME              "tls-group-name"
+#define OSSL_CAPABILITY_TLS_GROUP_NAME_INTERNAL     "tls-group-name-internal"
+#define OSSL_CAPABILITY_TLS_GROUP_ID                "tls-group-id"
+#define OSSL_CAPABILITY_TLS_GROUP_ALG               "tls-group-alg"
+#define OSSL_CAPABILITY_TLS_GROUP_SECURITY_BITS     "tls-group-sec-bits"
+#define OSSL_CAPABILITY_TLS_GROUP_MIN_TLS           "tls-min-tls"
+#define OSSL_CAPABILITY_TLS_GROUP_MAX_TLS           "tls-max-tls"
+#define OSSL_CAPABILITY_TLS_GROUP_MIN_DTLS          "tls-min-dtls"
+#define OSSL_CAPABILITY_TLS_GROUP_MAX_DTLS          "tls-max-dtls"
 
 # ifdef __cplusplus
 }

@@ -23,6 +23,7 @@
 DEFINE_STACK_OF(OSSL_CMP_CERTSTATUS)
 DEFINE_STACK_OF(OSSL_CMP_ITAV)
 DEFINE_STACK_OF(GENERAL_NAME)
+DEFINE_STACK_OF(X509)
 DEFINE_STACK_OF(X509_EXTENSION)
 DEFINE_STACK_OF(OSSL_CMP_PKISI)
 DEFINE_STACK_OF(OSSL_CRMF_MSG)
@@ -228,7 +229,7 @@ static OSSL_CRMF_MSG *crm_new(OSSL_CMP_CTX *ctx, int bodytype, int rid)
     X509_EXTENSIONS *exts = NULL;
 
     if (rkey == NULL)
-        rkey = ctx->pkey; /* default is independent of ctx->oldClCert */
+        rkey = ctx->pkey; /* default is independent of ctx->oldCert */
     if (rkey == NULL) {
 #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
         CMPerr(0, CMP_R_NULL_ARGUMENT);
@@ -252,12 +253,17 @@ static OSSL_CRMF_MSG *crm_new(OSSL_CMP_CTX *ctx, int bodytype, int rid)
                                             NULL /* serial */))
         goto err;
     if (ctx->days != 0) {
-        time_t notBefore, notAfter;
+        time_t now = time(NULL);
+        ASN1_TIME *notBefore = ASN1_TIME_adj(NULL, now, 0, 0);
+        ASN1_TIME *notAfter = ASN1_TIME_adj(NULL, now, ctx->days, 0);
 
-        notBefore = time(NULL);
-        notAfter = notBefore + 60 * 60 * 24 * ctx->days;
-        if (!OSSL_CRMF_MSG_set_validity(crm, notBefore, notAfter))
+        if (notBefore == NULL
+                || notAfter == NULL
+                || !OSSL_CRMF_MSG_set0_validity(crm, notBefore, notAfter)) {
+            ASN1_TIME_free(notBefore);
+            ASN1_TIME_free(notAfter);
             goto err;
+        }
     }
 
     /* extensions */
@@ -292,7 +298,7 @@ static OSSL_CRMF_MSG *crm_new(OSSL_CMP_CTX *ctx, int bodytype, int rid)
     if (bodytype == OSSL_CMP_PKIBODY_KUR) {
         OSSL_CRMF_CERTID *cid =
             OSSL_CRMF_CERTID_gen(X509_get_issuer_name(refcert),
-                                 X509_get_serialNumber(refcert));
+                                 X509_get0_serialNumber(refcert));
         int ret;
 
         if (cid == NULL)
@@ -426,9 +432,12 @@ OSSL_CMP_MSG *ossl_cmp_certRep_new(OSSL_CMP_CTX *ctx, int bodytype,
     if (bodytype == OSSL_CMP_PKIBODY_IP && caPubs != NULL
             && (repMsg->caPubs = X509_chain_up_ref(caPubs)) == NULL)
         goto err;
-    if (chain != NULL
-            && !ossl_cmp_sk_X509_add1_certs(msg->extraCerts, chain, 0, 1, 0))
+    if (sk_X509_num(chain) > 0) {
+        msg->extraCerts = sk_X509_new_reserve(NULL, sk_X509_num(chain));
+        if (msg->extraCerts == NULL
+            || !ossl_cmp_sk_X509_add1_certs(msg->extraCerts, chain, 0, 1, 0))
         goto err;
+    }
 
     if (!unprotectedErrors
             || ossl_cmp_pkisi_get_status(si) != OSSL_CMP_PKISTATUS_rejection)
@@ -460,7 +469,7 @@ OSSL_CMP_MSG *ossl_cmp_rr_new(OSSL_CMP_CTX *ctx)
                                      NULL /* pubkey would be redundant */,
                                      NULL /* subject would be redundant */,
                                      X509_get_issuer_name(ctx->oldCert),
-                                     X509_get_serialNumber(ctx->oldCert)))
+                                     X509_get0_serialNumber(ctx->oldCert)))
         goto err;
 
     /* revocation reason code is optional */

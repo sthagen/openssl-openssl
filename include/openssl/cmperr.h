@@ -10,6 +10,7 @@
 
 #ifndef OPENSSL_CMPERR_H
 # define OPENSSL_CMPERR_H
+# pragma once
 
 # include <openssl/opensslconf.h>
 # include <openssl/symhacks.h>
@@ -68,10 +69,12 @@ int ERR_load_CMP_strings(void);
 #  define CMP_R_ERROR_SETTING_CERTHASH                     128
 #  define CMP_R_ERROR_UNEXPECTED_CERTCONF                  160
 #  define CMP_R_ERROR_VALIDATING_PROTECTION                140
+#  define CMP_R_ERROR_VALIDATING_SIGNATURE                 171
 #  define CMP_R_FAILED_EXTRACTING_PUBKEY                   141
 #  define CMP_R_FAILURE_OBTAINING_RANDOM                   110
 #  define CMP_R_FAIL_INFO_OUT_OF_RANGE                     129
 #  define CMP_R_INVALID_ARGS                               100
+#  define CMP_R_INVALID_OPTION                             174
 #  define CMP_R_MISSING_KEY_INPUT_FOR_CREATING_PROTECTION  130
 #  define CMP_R_MISSING_KEY_USAGE_DIGITALSIGNATURE         142
 #  define CMP_R_MISSING_PRIVATE_KEY                        131
@@ -107,6 +110,8 @@ int ERR_load_CMP_strings(void);
 #  define CMP_R_UNSUPPORTED_ALGORITHM                      136
 #  define CMP_R_UNSUPPORTED_KEY_TYPE                       137
 #  define CMP_R_UNSUPPORTED_PROTECTION_ALG_DHBASEDMAC      154
+#  define CMP_R_VALUE_TOO_LARGE                            175
+#  define CMP_R_VALUE_TOO_SMALL                            177
 #  define CMP_R_WRONG_ALGORITHM_OID                        138
 #  define CMP_R_WRONG_CERTID_IN_RP                         187
 #  define CMP_R_WRONG_PBM_VALUE                            155

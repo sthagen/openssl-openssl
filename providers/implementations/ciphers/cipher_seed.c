@@ -18,13 +18,14 @@
 #include "cipher_seed.h"
 #include "prov/implementations.h"
 
-static OSSL_OP_cipher_freectx_fn seed_freectx;
-static OSSL_OP_cipher_dupctx_fn seed_dupctx;
+static OSSL_FUNC_cipher_freectx_fn seed_freectx;
+static OSSL_FUNC_cipher_dupctx_fn seed_dupctx;
 
 static void seed_freectx(void *vctx)
 {
     PROV_SEED_CTX *ctx = (PROV_SEED_CTX *)vctx;
 
+    cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
     OPENSSL_clear_free(ctx,  sizeof(*ctx));
 }
 

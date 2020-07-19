@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -8,7 +8,7 @@
  */
 
 #include <openssl/core.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include "internal/core.h"
 #include "internal/property.h"
 #include "internal/provider.h"
@@ -58,13 +58,12 @@ static int algorithm_do_this(OSSL_PROVIDER *provider, void *cbdata)
 
         map = ossl_provider_query_operation(provider, cur_operation,
                                             &no_store);
-        if (map == NULL)
-            continue;
+        if (map != NULL) {
+            while (map->algorithm_names != NULL) {
+                const OSSL_ALGORITHM *thismap = map++;
 
-        while (map->algorithm_names != NULL) {
-            const OSSL_ALGORITHM *thismap = map++;
-
-            data->fn(provider, thismap, no_store, data->data);
+                data->fn(provider, thismap, no_store, data->data);
+            }
         }
 
         /* Do we fulfill post-conditions? */

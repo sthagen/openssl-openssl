@@ -16,11 +16,14 @@ B<openssl list>
 [B<-digest-algorithms>]
 [B<-kdf-algorithms>]
 [B<-mac-algorithms>]
+[B<-random-generators>]
 [B<-cipher-commands>]
 [B<-cipher-algorithms>]
 [B<-public-key-algorithms>]
 [B<-public-key-methods>]
+{- output_off() if $disabled{"deprecated-3.0"}; "" -}
 [B<-engines>]
+{- output_on() if $disabled{"deprecated-3.0"}; "" -}
 [B<-disabled>]
 [B<-objects>]
 [B<-options> I<command>]
@@ -73,6 +76,16 @@ displayed.
 In verbose mode, the algorithms provided by a provider will get additional
 information on what parameters each implementation supports.
 
+=item B<-random-generators>
+
+Display a list of random number generators.
+
+See L</Display of algorithm names> for a description of how names are
+displayed.
+
+In verbose mode, the algorithms provided by a provider will get additional
+information on what parameters each implementation supports.
+
 =item B<-public-key-algorithms>
 
 Display a list of public key algorithms, with each algorithm as
@@ -81,11 +94,15 @@ a block of multiple lines, all but the first are indented.
 =item B<-public-key-methods>
 
 Display a list of public key method OIDs.
+{- output_off() if $disabled{"deprecated-3.0"}; "" -}
 
 =item B<-engines>
 
+This option is deprecated.
+
 Display a list of loaded engines.
 
+{- output_on() if $disabled{"deprecated-3.0"}; "" -}
 =item B<-disabled>
 
 Display a list of disabled features, those that were compiled out
@@ -134,6 +151,10 @@ or like this if it's labeled with multiple names:
 In both cases, C<bar> is the name of the provider.
 
 =back
+
+=head1 HISTORY
+
+The B<-engines> option was deprecated in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 

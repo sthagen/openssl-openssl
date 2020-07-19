@@ -32,14 +32,14 @@
 
 /* KRB5 KDF defined in RFC 3961, Section 5.1 */
 
-static OSSL_OP_kdf_newctx_fn krb5kdf_new;
-static OSSL_OP_kdf_freectx_fn krb5kdf_free;
-static OSSL_OP_kdf_reset_fn krb5kdf_reset;
-static OSSL_OP_kdf_derive_fn krb5kdf_derive;
-static OSSL_OP_kdf_settable_ctx_params_fn krb5kdf_settable_ctx_params;
-static OSSL_OP_kdf_set_ctx_params_fn krb5kdf_set_ctx_params;
-static OSSL_OP_kdf_gettable_ctx_params_fn krb5kdf_gettable_ctx_params;
-static OSSL_OP_kdf_get_ctx_params_fn krb5kdf_get_ctx_params;
+static OSSL_FUNC_kdf_newctx_fn krb5kdf_new;
+static OSSL_FUNC_kdf_freectx_fn krb5kdf_free;
+static OSSL_FUNC_kdf_reset_fn krb5kdf_reset;
+static OSSL_FUNC_kdf_derive_fn krb5kdf_derive;
+static OSSL_FUNC_kdf_settable_ctx_params_fn krb5kdf_settable_ctx_params;
+static OSSL_FUNC_kdf_set_ctx_params_fn krb5kdf_set_ctx_params;
+static OSSL_FUNC_kdf_gettable_ctx_params_fn krb5kdf_gettable_ctx_params;
+static OSSL_FUNC_kdf_get_ctx_params_fn krb5kdf_get_ctx_params;
 
 static int KRB5KDF(const EVP_CIPHER *cipher, ENGINE *engine,
                    const unsigned char *key, size_t key_len,
@@ -78,11 +78,13 @@ static void krb5kdf_free(void *vctx)
 static void krb5kdf_reset(void *vctx)
 {
     KRB5KDF_CTX *ctx = (KRB5KDF_CTX *)vctx;
+    void *provctx = ctx->provctx;
 
     ossl_prov_cipher_reset(&ctx->cipher);
     OPENSSL_clear_free(ctx->key, ctx->key_len);
     OPENSSL_clear_free(ctx->constant, ctx->constant_len);
     memset(ctx, 0, sizeof(*ctx));
+    ctx->provctx = provctx;
 }
 
 static int krb5kdf_set_membuf(unsigned char **dst, size_t *dst_len,

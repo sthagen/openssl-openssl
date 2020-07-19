@@ -434,7 +434,6 @@ int CRYPTO_memcmp(const void * in_a, const void * in_b, size_t len);
     | OPENSSL_INIT_ENGINE_CRYPTODEV | OPENSSL_INIT_ENGINE_CAPI | \
     OPENSSL_INIT_ENGINE_PADLOCK)
 
-
 /* Library initialisation functions */
 void OPENSSL_cleanup(void);
 int OPENSSL_init_crypto(uint64_t opts, const OPENSSL_INIT_SETTINGS *settings);
@@ -494,6 +493,7 @@ int CRYPTO_THREAD_compare_id(CRYPTO_THREAD_ID a, CRYPTO_THREAD_ID b);
 OPENSSL_CTX *OPENSSL_CTX_new(void);
 int OPENSSL_CTX_load_config(OPENSSL_CTX *ctx, const char *config_file);
 void OPENSSL_CTX_free(OPENSSL_CTX *);
+OPENSSL_CTX *OPENSSL_CTX_set0_default(OPENSSL_CTX *libctx);
 
 # ifdef  __cplusplus
 }

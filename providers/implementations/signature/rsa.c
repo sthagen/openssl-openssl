@@ -15,7 +15,7 @@
 
 #include <string.h>
 #include <openssl/crypto.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/err.h>
 #include <openssl/rsa.h>
@@ -30,29 +30,29 @@
 #include "prov/provider_ctx.h"
 #include "prov/der_rsa.h"
 
-static OSSL_OP_signature_newctx_fn rsa_newctx;
-static OSSL_OP_signature_sign_init_fn rsa_sign_init;
-static OSSL_OP_signature_verify_init_fn rsa_verify_init;
-static OSSL_OP_signature_verify_recover_init_fn rsa_verify_recover_init;
-static OSSL_OP_signature_sign_fn rsa_sign;
-static OSSL_OP_signature_verify_fn rsa_verify;
-static OSSL_OP_signature_verify_recover_fn rsa_verify_recover;
-static OSSL_OP_signature_digest_sign_init_fn rsa_digest_sign_init;
-static OSSL_OP_signature_digest_sign_update_fn rsa_digest_signverify_update;
-static OSSL_OP_signature_digest_sign_final_fn rsa_digest_sign_final;
-static OSSL_OP_signature_digest_verify_init_fn rsa_digest_verify_init;
-static OSSL_OP_signature_digest_verify_update_fn rsa_digest_signverify_update;
-static OSSL_OP_signature_digest_verify_final_fn rsa_digest_verify_final;
-static OSSL_OP_signature_freectx_fn rsa_freectx;
-static OSSL_OP_signature_dupctx_fn rsa_dupctx;
-static OSSL_OP_signature_get_ctx_params_fn rsa_get_ctx_params;
-static OSSL_OP_signature_gettable_ctx_params_fn rsa_gettable_ctx_params;
-static OSSL_OP_signature_set_ctx_params_fn rsa_set_ctx_params;
-static OSSL_OP_signature_settable_ctx_params_fn rsa_settable_ctx_params;
-static OSSL_OP_signature_get_ctx_md_params_fn rsa_get_ctx_md_params;
-static OSSL_OP_signature_gettable_ctx_md_params_fn rsa_gettable_ctx_md_params;
-static OSSL_OP_signature_set_ctx_md_params_fn rsa_set_ctx_md_params;
-static OSSL_OP_signature_settable_ctx_md_params_fn rsa_settable_ctx_md_params;
+static OSSL_FUNC_signature_newctx_fn rsa_newctx;
+static OSSL_FUNC_signature_sign_init_fn rsa_sign_init;
+static OSSL_FUNC_signature_verify_init_fn rsa_verify_init;
+static OSSL_FUNC_signature_verify_recover_init_fn rsa_verify_recover_init;
+static OSSL_FUNC_signature_sign_fn rsa_sign;
+static OSSL_FUNC_signature_verify_fn rsa_verify;
+static OSSL_FUNC_signature_verify_recover_fn rsa_verify_recover;
+static OSSL_FUNC_signature_digest_sign_init_fn rsa_digest_sign_init;
+static OSSL_FUNC_signature_digest_sign_update_fn rsa_digest_signverify_update;
+static OSSL_FUNC_signature_digest_sign_final_fn rsa_digest_sign_final;
+static OSSL_FUNC_signature_digest_verify_init_fn rsa_digest_verify_init;
+static OSSL_FUNC_signature_digest_verify_update_fn rsa_digest_signverify_update;
+static OSSL_FUNC_signature_digest_verify_final_fn rsa_digest_verify_final;
+static OSSL_FUNC_signature_freectx_fn rsa_freectx;
+static OSSL_FUNC_signature_dupctx_fn rsa_dupctx;
+static OSSL_FUNC_signature_get_ctx_params_fn rsa_get_ctx_params;
+static OSSL_FUNC_signature_gettable_ctx_params_fn rsa_gettable_ctx_params;
+static OSSL_FUNC_signature_set_ctx_params_fn rsa_set_ctx_params;
+static OSSL_FUNC_signature_settable_ctx_params_fn rsa_settable_ctx_params;
+static OSSL_FUNC_signature_get_ctx_md_params_fn rsa_get_ctx_md_params;
+static OSSL_FUNC_signature_gettable_ctx_md_params_fn rsa_gettable_ctx_md_params;
+static OSSL_FUNC_signature_set_ctx_md_params_fn rsa_set_ctx_md_params;
+static OSSL_FUNC_signature_settable_ctx_md_params_fn rsa_settable_ctx_md_params;
 
 static OSSL_ITEM padding_item[] = {
     { RSA_PKCS1_PADDING,        OSSL_PKEY_RSA_PAD_MODE_PKCSV15 },
@@ -594,13 +594,15 @@ static int rsa_verify_recover(void *vprsactx,
             }
 
             *routlen = ret;
-            if (routsize < (size_t)ret) {
-                ERR_raise_data(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL,
-                               "buffer size is %d, should be %d",
-                               routsize, ret);
-                return 0;
+            if (rout != prsactx->tbuf) {
+                if (routsize < (size_t)ret) {
+                    ERR_raise_data(ERR_LIB_PROV, PROV_R_OUTPUT_BUFFER_TOO_SMALL,
+                                   "buffer size is %d, should be %d",
+                                   routsize, ret);
+                    return 0;
+                }
+                memcpy(rout, prsactx->tbuf, ret);
             }
-            memcpy(rout, prsactx->tbuf, ret);
             break;
 
         case RSA_PKCS1_PADDING:
@@ -655,7 +657,10 @@ static int rsa_verify(void *vprsactx, const unsigned char *sig, size_t siglen,
             }
             return 1;
         case RSA_X931_PADDING:
-            if (rsa_verify_recover(prsactx, NULL, &rslen, 0, sig, siglen) <= 0)
+            if (!setup_tbuf(prsactx))
+                return 0;
+            if (rsa_verify_recover(prsactx, prsactx->tbuf, &rslen, 0,
+                                   sig, siglen) <= 0)
                 return 0;
             break;
         case RSA_PKCS1_PSS_PADDING:

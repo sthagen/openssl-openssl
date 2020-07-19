@@ -11,6 +11,7 @@
 #include <openssl/evp.h>
 #include <openssl/params.h>
 #include <openssl/crypto.h>
+#include <openssl/fipskey.h>
 #include "e_os.h"
 /*
  * We're cheating here. Normally we don't allow RUN_ONCE usage inside the FIPS
@@ -35,7 +36,7 @@
 
 static int FIPS_state = FIPS_STATE_INIT;
 static CRYPTO_RWLOCK *self_test_lock = NULL;
-static unsigned char fixed_key[32] = { 0 };
+static unsigned char fixed_key[32] = { FIPS_KEY_ELEMENTS };
 
 static CRYPTO_ONCE fips_self_test_init = CRYPTO_ONCE_STATIC_INIT;
 DEFINE_RUN_ONCE_STATIC(do_fips_self_test_init)
@@ -92,7 +93,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
     }
     return TRUE;
 }
-#elif defined(__sun)
+#elif defined(__sun) || defined(_AIX)
 
 DEP_DECLARE() /* must be declared before pragma */
 # define DEP_INIT_ATTRIBUTE
@@ -130,7 +131,7 @@ DEP_FINI_ATTRIBUTE void cleanup(void)
  * the result matches the expected value.
  * Return 1 if verified, or 0 if it fails.
  */
-static int verify_integrity(OSSL_CORE_BIO *bio, OSSL_BIO_read_ex_fn read_ex_cb,
+static int verify_integrity(OSSL_CORE_BIO *bio, OSSL_FUNC_BIO_read_ex_fn read_ex_cb,
                             unsigned char *expected, size_t expected_len,
                             OPENSSL_CTX *libctx, OSSL_SELF_TEST *ev,
                             const char *event_type)

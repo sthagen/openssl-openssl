@@ -354,14 +354,14 @@ static int pkcs7_cmp_ri(PKCS7_RECIP_INFO *ri, X509 *pcert)
                         X509_get_issuer_name(pcert));
     if (ret)
         return ret;
-    return ASN1_INTEGER_cmp(X509_get_serialNumber(pcert),
+    return ASN1_INTEGER_cmp(X509_get0_serialNumber(pcert),
                             ri->issuer_and_serial->serial);
 }
 
 /* int */
 BIO *PKCS7_dataDecode(PKCS7 *p7, EVP_PKEY *pkey, BIO *in_bio, X509 *pcert)
 {
-    int i, j;
+    int i, j, len;
     BIO *out = NULL, *btmp = NULL, *etmp = NULL, *bio = NULL;
     X509_ALGOR *xa;
     ASN1_OCTET_STRING *data_body = NULL;
@@ -524,7 +524,10 @@ BIO *PKCS7_dataDecode(PKCS7 *p7, EVP_PKEY *pkey, BIO *in_bio, X509 *pcert)
         if (EVP_CIPHER_asn1_to_param(evp_ctx, enc_alg->parameter) < 0)
             goto err;
         /* Generate random key as MMA defence */
-        tkeylen = EVP_CIPHER_CTX_key_length(evp_ctx);
+        len = EVP_CIPHER_CTX_key_length(evp_ctx);
+        if (len <= 0)
+            goto err;
+        tkeylen = (size_t)len;
         tkey = OPENSSL_malloc(tkeylen);
         if (tkey == NULL)
             goto err;

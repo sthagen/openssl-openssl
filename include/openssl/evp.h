@@ -285,13 +285,15 @@ int (*EVP_CIPHER_meth_get_ctrl(const EVP_CIPHER *cipher))(EVP_CIPHER_CTX *,
 /* Free:                                         0x1000 */
 /* Buffer length in bits not bytes: CFB1 mode only */
 # define         EVP_CIPH_FLAG_LENGTH_BITS       0x2000
-/* Note if suitable for use in FIPS mode */
-# define         EVP_CIPH_FLAG_FIPS              0x4000
-/* Allow non FIPS cipher in FIPS mode */
-# define         EVP_CIPH_FLAG_NON_FIPS_ALLOW    0x8000
+/* Deprecated FIPS flag: was 0x4000 */
+# define         EVP_CIPH_FLAG_FIPS              0
+/* Deprecated FIPS flag: was 0x8000 */
+# define         EVP_CIPH_FLAG_NON_FIPS_ALLOW    0
+
 /*
  * Cipher handles any and all padding logic as well as finalisation.
  */
+# define         EVP_CIPH_FLAG_CTS               0x4000
 # define         EVP_CIPH_FLAG_CUSTOM_CIPHER     0x100000
 # define         EVP_CIPH_FLAG_AEAD_CIPHER       0x200000
 # define         EVP_CIPH_FLAG_TLS1_1_MULTIBLOCK 0x400000
@@ -1102,6 +1104,59 @@ void EVP_MAC_do_all_provided(OPENSSL_CTX *libctx,
 void EVP_MAC_names_do_all(const EVP_MAC *mac,
                           void (*fn)(const char *name, void *data),
                           void *data);
+
+/* RAND stuff */
+EVP_RAND *EVP_RAND_fetch(OPENSSL_CTX *libctx, const char *algorithm,
+                         const char *properties);
+int EVP_RAND_up_ref(EVP_RAND *rand);
+void EVP_RAND_free(EVP_RAND *rand);
+int EVP_RAND_number(const EVP_RAND *rand);
+const char *EVP_RAND_name(const EVP_RAND *rand);
+int EVP_RAND_is_a(const EVP_RAND *rand, const char *name);
+const OSSL_PROVIDER *EVP_RAND_provider(const EVP_RAND *rand);
+int EVP_RAND_get_params(EVP_RAND *rand, OSSL_PARAM params[]);
+
+EVP_RAND_CTX *EVP_RAND_CTX_new(EVP_RAND *rand, EVP_RAND_CTX *parent);
+void EVP_RAND_CTX_free(EVP_RAND_CTX *ctx);
+EVP_RAND *EVP_RAND_CTX_rand(EVP_RAND_CTX *ctx);
+int EVP_RAND_get_ctx_params(EVP_RAND_CTX *ctx, OSSL_PARAM params[]);
+int EVP_RAND_set_ctx_params(EVP_RAND_CTX *ctx, const OSSL_PARAM params[]);
+const OSSL_PARAM *EVP_RAND_gettable_params(const EVP_RAND *rand);
+const OSSL_PARAM *EVP_RAND_gettable_ctx_params(const EVP_RAND *rand);
+const OSSL_PARAM *EVP_RAND_settable_ctx_params(const EVP_RAND *rand);
+
+void EVP_RAND_do_all_provided(OPENSSL_CTX *libctx,
+                              void (*fn)(EVP_RAND *rand, void *arg),
+                              void *arg);
+void EVP_RAND_names_do_all(const EVP_RAND *rand,
+                           void (*fn)(const char *name, void *data),
+                           void *data);
+
+__owur int EVP_RAND_instantiate(EVP_RAND_CTX *ctx, unsigned int strength,
+                                int prediction_resistance,
+                                const unsigned char *pstr, size_t pstr_len);
+int EVP_RAND_uninstantiate(EVP_RAND_CTX *ctx);
+__owur int EVP_RAND_generate(EVP_RAND_CTX *ctx, unsigned char *out,
+                             size_t outlen, unsigned int strength,
+                             int prediction_resistance,
+                             const unsigned char *addin, size_t addin_len);
+int EVP_RAND_reseed(EVP_RAND_CTX *ctx, int prediction_resistance,
+                    const unsigned char *ent, size_t ent_len,
+                    const unsigned char *addin, size_t addin_len);
+__owur int EVP_RAND_nonce(EVP_RAND_CTX *ctx, unsigned char *out, size_t outlen);
+__owur int EVP_RAND_enable_locking(EVP_RAND_CTX *ctx);
+int EVP_RAND_set_callbacks(EVP_RAND_CTX *ctx,
+                           OSSL_INOUT_CALLBACK *get_entropy,
+                           OSSL_CALLBACK *cleanup_entropy,
+                           OSSL_INOUT_CALLBACK *get_nonce,
+                           OSSL_CALLBACK *cleanup_nonce, void *arg);
+int EVP_RAND_verify_zeroization(EVP_RAND_CTX *ctx);
+unsigned int EVP_RAND_strength(EVP_RAND_CTX *ctx);
+int EVP_RAND_state(EVP_RAND_CTX *ctx);
+
+#define EVP_RAND_STATE_UNINITIALISED    0
+#define EVP_RAND_STATE_READY            1
+#define EVP_RAND_STATE_ERROR            2
 
 /* PKEY stuff */
 DEPRECATEDIN_3_0(int EVP_PKEY_decrypt_old(unsigned char *dec_key,
@@ -1917,6 +1972,9 @@ int EVP_str2ctrl(int (*cb)(void *ctx, int cmd, void *buf, size_t buflen),
                  void *ctx, int cmd, const char *value);
 int EVP_hex2ctrl(int (*cb)(void *ctx, int cmd, void *buf, size_t buflen),
                  void *ctx, int cmd, const char *hex);
+
+int EVP_PKEY_CTX_set_group_name(EVP_PKEY_CTX *ctx, const char *name);
+int EVP_PKEY_CTX_get_group_name(EVP_PKEY_CTX *ctx, char *name, size_t namelen);
 
 # ifdef  __cplusplus
 }

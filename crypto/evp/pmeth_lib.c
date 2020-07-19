@@ -385,45 +385,14 @@ void EVP_PKEY_meth_get0_info(int *ppkey_id, int *pflags,
 
 void EVP_PKEY_meth_copy(EVP_PKEY_METHOD *dst, const EVP_PKEY_METHOD *src)
 {
+    int pkey_id = dst->pkey_id;
+    int flags = dst->flags;
 
-    dst->init = src->init;
-    dst->copy = src->copy;
-    dst->cleanup = src->cleanup;
+    *dst = *src;
 
-    dst->paramgen_init = src->paramgen_init;
-    dst->paramgen = src->paramgen;
-
-    dst->keygen_init = src->keygen_init;
-    dst->keygen = src->keygen;
-
-    dst->sign_init = src->sign_init;
-    dst->sign = src->sign;
-
-    dst->verify_init = src->verify_init;
-    dst->verify = src->verify;
-
-    dst->verify_recover_init = src->verify_recover_init;
-    dst->verify_recover = src->verify_recover;
-
-    dst->signctx_init = src->signctx_init;
-    dst->signctx = src->signctx;
-
-    dst->verifyctx_init = src->verifyctx_init;
-    dst->verifyctx = src->verifyctx;
-
-    dst->encrypt_init = src->encrypt_init;
-    dst->encrypt = src->encrypt;
-
-    dst->decrypt_init = src->decrypt_init;
-    dst->decrypt = src->decrypt;
-
-    dst->derive_init = src->derive_init;
-    dst->derive = src->derive;
-
-    dst->ctrl = src->ctrl;
-    dst->ctrl_str = src->ctrl_str;
-
-    dst->check = src->check;
+    /* We only copy the function pointers so restore the other values */
+    dst->pkey_id = pkey_id;
+    dst->flags = flags;
 }
 
 void EVP_PKEY_meth_free(EVP_PKEY_METHOD *pmeth)
@@ -636,7 +605,6 @@ int EVP_PKEY_CTX_set_params(EVP_PKEY_CTX *ctx, OSSL_PARAM *params)
     return 0;
 }
 
-#ifndef FIPS_MODULE
 int EVP_PKEY_CTX_get_params(EVP_PKEY_CTX *ctx, OSSL_PARAM *params)
 {
     if (EVP_PKEY_CTX_IS_DERIVE_OP(ctx)
@@ -660,6 +628,7 @@ int EVP_PKEY_CTX_get_params(EVP_PKEY_CTX *ctx, OSSL_PARAM *params)
     return 0;
 }
 
+#ifndef FIPS_MODULE
 const OSSL_PARAM *EVP_PKEY_CTX_gettable_params(EVP_PKEY_CTX *ctx)
 {
     if (EVP_PKEY_CTX_IS_DERIVE_OP(ctx)
@@ -1086,16 +1055,16 @@ static int legacy_ctrl_str_to_param(EVP_PKEY_CTX *ctx, const char *name,
         name = OSSL_PKEY_PARAM_FFC_TYPE;
         value = dh_gen_type_id2name(atoi(value));
     } else if (strcmp(name, "dh_param") == 0)
-        name = OSSL_PKEY_PARAM_DH_GROUP;
+        name = OSSL_PKEY_PARAM_GROUP_NAME;
     else if (strcmp(name, "dh_rfc5114") == 0) {
-        name = OSSL_PKEY_PARAM_DH_GROUP;
+        name = OSSL_PKEY_PARAM_GROUP_NAME;
         value = ffc_named_group_from_uid(atoi(value));
     } else if (strcmp(name, "dh_pad") == 0)
         name = OSSL_EXCHANGE_PARAM_PAD;
 # endif
 # ifndef OPENSSL_NO_EC
     else if (strcmp(name, "ec_paramgen_curve") == 0)
-        name = OSSL_PKEY_PARAM_EC_NAME;
+        name = OSSL_PKEY_PARAM_GROUP_NAME;
     else if (strcmp(name, "ecdh_cofactor_mode") == 0)
         name = OSSL_EXCHANGE_PARAM_EC_ECDH_COFACTOR_MODE;
     else if (strcmp(name, "ecdh_kdf_md") == 0)
