@@ -219,23 +219,22 @@ static int evp_pkey_cmp_any(const EVP_PKEY *a, const EVP_PKEY *b,
     void *keydata1 = NULL, *keydata2 = NULL, *tmp_keydata = NULL;
 
     /* If none of them are provided, this function shouldn't have been called */
-    if (!ossl_assert(a->keymgmt != NULL || b->keymgmt != NULL))
+    if (!ossl_assert(evp_pkey_is_provided(a) || evp_pkey_is_provided(b)))
         return -2;
 
     /* For purely provided keys, we just call the keymgmt utility */
-    if (a->keymgmt != NULL && b->keymgmt != NULL)
+    if (evp_pkey_is_provided(a) && evp_pkey_is_provided(b))
         return evp_keymgmt_util_match((EVP_PKEY *)a, (EVP_PKEY *)b, selection);
 
     /*
      * At this point, one of them is provided, the other not.  This allows
      * us to compare types using legacy NIDs.
      */
-    if ((a->type != EVP_PKEY_NONE
-         && (b->keymgmt == NULL
-             || !EVP_KEYMGMT_is_a(b->keymgmt, OBJ_nid2sn(a->type))))
-        || (b->type != EVP_PKEY_NONE
-            && (a->keymgmt == NULL
-                || !EVP_KEYMGMT_is_a(a->keymgmt, OBJ_nid2sn(b->type)))))
+    if (evp_pkey_is_legacy(a)
+        && !EVP_KEYMGMT_is_a(b->keymgmt, OBJ_nid2sn(a->type)))
+        return -1;               /* not the same key type */
+    if (evp_pkey_is_legacy(b)
+        && !EVP_KEYMGMT_is_a(a->keymgmt, OBJ_nid2sn(b->type)))
         return -1;               /* not the same key type */
 
     /*
@@ -936,6 +935,8 @@ int EVP_PKEY_is_a(const EVP_PKEY *pkey, const char *name)
 
         if (strcasecmp(name, "RSA") == 0)
             type = EVP_PKEY_RSA;
+        else if (strcasecmp(name, "RSA-PSS") == 0)
+            type = EVP_PKEY_RSA_PSS;
 #ifndef OPENSSL_NO_EC
         else if (strcasecmp(name, "EC") == 0)
             type = EVP_PKEY_EC;
@@ -1803,15 +1804,13 @@ int evp_pkey_downgrade(EVP_PKEY *pk)
      * of the key data, typically the private bits.  In this case, we restore
      * the provider side internal "origin" and leave it at that.
      */
-    if (!ossl_assert(EVP_PKEY_set_type_by_keymgmt(pk, keymgmt))) {
+    if (!ossl_assert(evp_keymgmt_util_assign_pkey(pk, keymgmt, keydata))) {
         /* This should not be impossible */
         ERR_raise(ERR_LIB_EVP, ERR_R_INTERNAL_ERROR);
         return 0;
     }
-    /* EVP_PKEY_set_type_by_keymgmt() increased the refcount... */
+    /* evp_keymgmt_util_assign_pkey() increased the refcount... */
     EVP_KEYMGMT_free(keymgmt);
-    pk->keydata = keydata;
-    evp_keymgmt_util_cache_keyinfo(pk);
     return 0;     /* No downgrade, but at least the key is restored */
 }
 #endif  /* FIPS_MODULE */

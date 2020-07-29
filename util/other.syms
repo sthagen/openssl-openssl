@@ -41,6 +41,12 @@ GEN_SESSION_CB                          datatype
 OPENSSL_Applink                         external
 OPENSSL_CTX                             datatype
 NAMING_AUTHORITY                        datatype
+OSSL_DESERIALIZER                       datatype
+OSSL_DESERIALIZER_CTX                   datatype
+OSSL_DESERIALIZER_FINALIZER             datatype
+OSSL_DESERIALIZER_CLEANER               datatype
+OSSL_DESERIALIZER_INSTANCE              datatype
+OSSL_DESERIALIZER_CTX                   datatype
 OSSL_HTTP_bio_cb_t                      datatype
 OSSL_PARAM                              datatype
 OSSL_PROVIDER                           datatype
@@ -571,8 +577,11 @@ X509_CRL_http_nbio                      define
 X509_http_nbio                          define
 X509_LOOKUP_add_dir                     define
 X509_LOOKUP_add_store                   define
+X509_LOOKUP_add_store_with_libctx       define
 X509_LOOKUP_load_file                   define
+X509_LOOKUP_load_file_with_libctx       define
 X509_LOOKUP_load_store                  define
+X509_LOOKUP_load_store_with_libctx      define
 X509_STORE_set_lookup_crls_cb           define
 X509_STORE_set_verify_func              define
 EVP_PKEY_CTX_set1_id                    define

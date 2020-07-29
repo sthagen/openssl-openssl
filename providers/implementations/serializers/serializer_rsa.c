@@ -27,6 +27,11 @@ OSSL_FUNC_keymgmt_new_fn *ossl_prov_get_keymgmt_rsa_new(void)
     return ossl_prov_get_keymgmt_new(rsa_keymgmt_functions);
 }
 
+OSSL_FUNC_keymgmt_new_fn *ossl_prov_get_keymgmt_rsapss_new(void)
+{
+    return ossl_prov_get_keymgmt_new(rsapss_keymgmt_functions);
+}
+
 OSSL_FUNC_keymgmt_free_fn *ossl_prov_get_keymgmt_rsa_free(void)
 {
     return ossl_prov_get_keymgmt_free(rsa_keymgmt_functions);
@@ -35,6 +40,16 @@ OSSL_FUNC_keymgmt_free_fn *ossl_prov_get_keymgmt_rsa_free(void)
 OSSL_FUNC_keymgmt_import_fn *ossl_prov_get_keymgmt_rsa_import(void)
 {
     return ossl_prov_get_keymgmt_import(rsa_keymgmt_functions);
+}
+
+OSSL_FUNC_keymgmt_export_fn *ossl_prov_get_keymgmt_rsa_export(void)
+{
+    return ossl_prov_get_keymgmt_export(rsa_keymgmt_functions);
+}
+
+OSSL_FUNC_keymgmt_export_fn *ossl_prov_get_keymgmt_rsapss_export(void)
+{
+    return ossl_prov_get_keymgmt_export(rsapss_keymgmt_functions);
 }
 
 int ossl_prov_print_rsa(BIO *out, RSA *rsa, int priv)
@@ -194,6 +209,7 @@ int ossl_prov_prepare_rsa_params(const void *rsa, int nid,
     case RSA_FLAG_TYPE_RSASSAPSS:
         if (rsa_pss_params_30_is_unrestricted(pss)) {
             *pstrtype = V_ASN1_UNDEF;
+            return 1;
         } else {
             ASN1_STRING *astr = NULL;
             WPACKET pkt;

@@ -186,7 +186,7 @@ OPENSSL_KEYBITS=768 \
 ./mkcert.sh genee server.example ee-key-768 ee-cert-768 ca-key ca-cert
 
 # self-signed end-entity cert with explicit keyUsage not including KeyCertSign
-openssl req -new -x509 -key ee-key.pem -subj /CN=ee-self-signed -out ee-self-signed.pem -addext keyUsage=digitalSignature
+openssl req -new -x509 -key ee-key.pem -subj /CN=ee-self-signed -out ee-self-signed.pem -addext keyUsage=digitalSignature -days 36500
 
 # Proxy certificates, off of ee-client
 # Start with some good ones
@@ -375,7 +375,7 @@ OPENSSL_KEYALG=ec OPENSSL_KEYBITS=brainpoolP256r1 ./mkcert.sh genee \
     "Server ECDSA brainpoolP256r1 cert" server-ecdsa-brainpoolP256r1-key \
     server-ecdsa-brainpoolP256r1-cert rootkey rootcert
 
-openssl req -new -nodes -subj "/CN=localhost" \
+openssl req -new -noenc -subj "/CN=localhost" \
     -newkey rsa-pss -keyout server-pss-restrict-key.pem \
     -pkeyopt rsa_pss_keygen_md:sha256 -pkeyopt rsa_pss_keygen_saltlen:32 | \
     ./mkcert.sh geneenocsr "Server RSA-PSS restricted cert" \
