@@ -321,7 +321,7 @@ const OPTIONS cmp_options[] = {
     {OPT_MORE_STR, 0, 0,
      "also used as reference (defaulting to -cert) for subject DN and SANs."},
     {OPT_MORE_STR, 0, 0,
-     "Its issuer is used as recipient unless -srvcert, -recipient or -issuer given"},
+     "Its issuer is used as recipient unless -recipient, -srvcert, or -issuer given"},
     {"revreason", OPT_REVREASON, 'n',
      "Reason code to include in revocation request (rr); possible values:"},
     {OPT_MORE_STR, 0, 0,
@@ -354,7 +354,7 @@ const OPTIONS cmp_options[] = {
     {"srvcert", OPT_SRVCERT, 's',
      "Server cert to pin and trust directly when verifying signed CMP responses"},
     {"recipient", OPT_RECIPIENT, 's',
-     "Distinguished Name (DN) to use as msg recipient; see man page for defaults"},
+     "DN of CA. Default: subject of -srvcert, -issuer, issuer of -oldcert or -cert"},
     {"expect_sender", OPT_EXPECT_SENDER, 's',
      "DN of expected sender of responses. Defaults to subject of -srvcert, if any"},
     {"ignore_keyusage", OPT_IGNORE_KEYUSAGE, '-',
@@ -934,7 +934,6 @@ static X509_STORE *sk_X509_to_store(X509_STORE *store /* may be NULL */,
 static int write_PKIMESSAGE(const OSSL_CMP_MSG *msg, char **filenames)
 {
     char *file;
-    BIO *bio;
 
     if (msg == NULL || filenames == NULL) {
         CMP_err("NULL arg to write_PKIMESSAGE");
@@ -947,17 +946,10 @@ static int write_PKIMESSAGE(const OSSL_CMP_MSG *msg, char **filenames)
 
     file = *filenames;
     *filenames = next_item(file);
-    bio = BIO_new_file(file, "wb");
-    if (bio == NULL) {
-        CMP_err1("Cannot open file '%s' for writing", file);
-        return 0;
-    }
-    if (i2d_OSSL_CMP_MSG_bio(bio, msg) < 0) {
+    if (OSSL_CMP_MSG_write(file, msg) < 0) {
         CMP_err1("Cannot write PKIMessage to file '%s'", file);
-        BIO_free(bio);
         return 0;
     }
-    BIO_free(bio);
     return 1;
 }
 
@@ -965,7 +957,6 @@ static int write_PKIMESSAGE(const OSSL_CMP_MSG *msg, char **filenames)
 static OSSL_CMP_MSG *read_PKIMESSAGE(char **filenames)
 {
     char *file;
-    BIO *bio;
     OSSL_CMP_MSG *ret;
 
     if (filenames == NULL) {
@@ -979,15 +970,10 @@ static OSSL_CMP_MSG *read_PKIMESSAGE(char **filenames)
 
     file = *filenames;
     *filenames = next_item(file);
-    bio = BIO_new_file(file, "rb");
-    if (bio == NULL) {
-        CMP_err1("Cannot open file '%s' for reading", file);
-        return NULL;
-    }
-    ret = d2i_OSSL_CMP_MSG_bio(bio, NULL);
+
+    ret = OSSL_CMP_MSG_read(file);
     if (ret == NULL)
         CMP_err1("Cannot read PKIMessage from file '%s'", file);
-    BIO_free(bio);
     return ret;
 }
 

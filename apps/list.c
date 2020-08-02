@@ -16,6 +16,9 @@
 #include <openssl/provider.h>
 #include <openssl/safestack.h>
 #include <openssl/kdf.h>
+#include <openssl/serializer.h>
+#include <openssl/deserializer.h>
+#include <openssl/core_names.h>
 #include "apps.h"
 #include "app_params.h"
 #include "progs.h"
@@ -349,6 +352,127 @@ static void list_random_generators(void)
         }
     }
     sk_EVP_RAND_pop_free(rands, EVP_RAND_free);
+}
+
+/*
+ * Serializers
+ */
+DEFINE_STACK_OF(OSSL_SERIALIZER)
+static int serializer_cmp(const OSSL_SERIALIZER * const *a,
+                          const OSSL_SERIALIZER * const *b)
+{
+    int ret = OSSL_SERIALIZER_number(*a) - OSSL_SERIALIZER_number(*b);
+
+    if (ret == 0)
+        ret = strcmp(OSSL_PROVIDER_name(OSSL_SERIALIZER_provider(*a)),
+                     OSSL_PROVIDER_name(OSSL_SERIALIZER_provider(*b)));
+    return ret;
+}
+
+static void collect_serializers(OSSL_SERIALIZER *serializer, void *stack)
+{
+    STACK_OF(OSSL_SERIALIZER) *serializer_stack = stack;
+
+    sk_OSSL_SERIALIZER_push(serializer_stack, serializer);
+    OSSL_SERIALIZER_up_ref(serializer);
+}
+
+static void list_serializers(void)
+{
+    STACK_OF(OSSL_SERIALIZER) *serializers;
+    int i;
+
+    serializers = sk_OSSL_SERIALIZER_new(serializer_cmp);
+    if (serializers == NULL) {
+        BIO_printf(bio_err, "ERROR: Memory allocation\n");
+        return;
+    }
+    BIO_printf(bio_out, "Provided SERIALIZERs:\n");
+    OSSL_SERIALIZER_do_all_provided(NULL, collect_serializers, serializers);
+    sk_OSSL_SERIALIZER_sort(serializers);
+
+    for (i = 0; i < sk_OSSL_SERIALIZER_num(serializers); i++) {
+        OSSL_SERIALIZER *k = sk_OSSL_SERIALIZER_value(serializers, i);
+        STACK_OF(OPENSSL_CSTRING) *names =
+            sk_OPENSSL_CSTRING_new(name_cmp);
+
+        OSSL_SERIALIZER_names_do_all(k, collect_names, names);
+
+        BIO_printf(bio_out, "  ");
+        print_names(bio_out, names);
+        BIO_printf(bio_out, " @ %s (%s)\n",
+                   OSSL_PROVIDER_name(OSSL_SERIALIZER_provider(k)),
+                   OSSL_SERIALIZER_properties(k));
+
+        sk_OPENSSL_CSTRING_free(names);
+
+        if (verbose) {
+            print_param_types("settable operation parameters",
+                              OSSL_SERIALIZER_settable_ctx_params(k), 4);
+        }
+    }
+    sk_OSSL_SERIALIZER_pop_free(serializers, OSSL_SERIALIZER_free);
+}
+
+/*
+ * Deserializers
+ */
+DEFINE_STACK_OF(OSSL_DESERIALIZER)
+static int deserializer_cmp(const OSSL_DESERIALIZER * const *a,
+                            const OSSL_DESERIALIZER * const *b)
+{
+    int ret = OSSL_DESERIALIZER_number(*a) - OSSL_DESERIALIZER_number(*b);
+
+    if (ret == 0)
+        ret = strcmp(OSSL_PROVIDER_name(OSSL_DESERIALIZER_provider(*a)),
+                     OSSL_PROVIDER_name(OSSL_DESERIALIZER_provider(*b)));
+    return ret;
+}
+
+static void collect_deserializers(OSSL_DESERIALIZER *deserializer, void *stack)
+{
+    STACK_OF(OSSL_DESERIALIZER) *deserializer_stack = stack;
+
+    sk_OSSL_DESERIALIZER_push(deserializer_stack, deserializer);
+    OSSL_DESERIALIZER_up_ref(deserializer);
+}
+
+static void list_deserializers(void)
+{
+    STACK_OF(OSSL_DESERIALIZER) *deserializers;
+    int i;
+
+    deserializers = sk_OSSL_DESERIALIZER_new(deserializer_cmp);
+    if (deserializers == NULL) {
+        BIO_printf(bio_err, "ERROR: Memory allocation\n");
+        return;
+    }
+    BIO_printf(bio_out, "Provided DESERIALIZERs:\n");
+    OSSL_DESERIALIZER_do_all_provided(NULL, collect_deserializers,
+                                      deserializers);
+    sk_OSSL_DESERIALIZER_sort(deserializers);
+
+    for (i = 0; i < sk_OSSL_DESERIALIZER_num(deserializers); i++) {
+        OSSL_DESERIALIZER *k = sk_OSSL_DESERIALIZER_value(deserializers, i);
+        STACK_OF(OPENSSL_CSTRING) *names =
+            sk_OPENSSL_CSTRING_new(name_cmp);
+
+        OSSL_DESERIALIZER_names_do_all(k, collect_names, names);
+
+        BIO_printf(bio_out, "  ");
+        print_names(bio_out, names);
+        BIO_printf(bio_out, " @ %s (%s)\n",
+                   OSSL_PROVIDER_name(OSSL_DESERIALIZER_provider(k)),
+                   OSSL_DESERIALIZER_properties(k));
+
+        sk_OPENSSL_CSTRING_free(names);
+
+        if (verbose) {
+            print_param_types("settable operation parameters",
+                              OSSL_DESERIALIZER_settable_ctx_params(k), 4);
+        }
+    }
+    sk_OSSL_DESERIALIZER_pop_free(deserializers, OSSL_DESERIALIZER_free);
 }
 
 static void list_missing_help(void)
@@ -697,7 +821,9 @@ typedef enum HELPLIST_CHOICE {
     OPT_COMMANDS, OPT_DIGEST_COMMANDS, OPT_MAC_ALGORITHMS, OPT_OPTIONS,
     OPT_DIGEST_ALGORITHMS, OPT_CIPHER_COMMANDS, OPT_CIPHER_ALGORITHMS,
     OPT_PK_ALGORITHMS, OPT_PK_METHOD, OPT_DISABLED,
-    OPT_KDF_ALGORITHMS, OPT_RANDOM_GENERATORS, OPT_MISSING_HELP, OPT_OBJECTS,
+    OPT_KDF_ALGORITHMS, OPT_RANDOM_GENERATORS, OPT_SERIALIZERS,
+    OPT_DESERIALIZERS,
+    OPT_MISSING_HELP, OPT_OBJECTS,
 #ifndef OPENSSL_NO_DEPRECATED_3_0
     OPT_ENGINES, 
 #endif
@@ -727,6 +853,9 @@ const OPTIONS list_options[] = {
     {"cipher-commands", OPT_CIPHER_COMMANDS, '-', "List of cipher commands"},
     {"cipher-algorithms", OPT_CIPHER_ALGORITHMS, '-',
      "List of cipher algorithms"},
+    {"serializers", OPT_SERIALIZERS, '-', "List of serialization methods" },
+    {"deserializers", OPT_DESERIALIZERS, '-',
+      "List of deserialization methods" },
     {"public-key-algorithms", OPT_PK_ALGORITHMS, '-',
      "List of public key algorithms"},
 #ifndef OPENSSL_NO_DEPRECATED_3_0
@@ -735,8 +864,7 @@ const OPTIONS list_options[] = {
     {"engines", OPT_ENGINES, '-',
      "List of loaded engines"},
 #endif
-    {"disabled", OPT_DISABLED, '-',
-     "List of disabled features"},
+    {"disabled", OPT_DISABLED, '-', "List of disabled features"},
     {"missing-help", OPT_MISSING_HELP, '-',
      "List missing detailed help strings"},
     {"options", OPT_OPTIONS, 's',
@@ -762,6 +890,8 @@ int list_main(int argc, char **argv)
         unsigned int mac_algorithms:1;
         unsigned int cipher_commands:1;
         unsigned int cipher_algorithms:1;
+        unsigned int serializer_algorithms:1;
+        unsigned int deserializer_algorithms:1;
         unsigned int pk_algorithms:1;
         unsigned int pk_method:1;
 #ifndef OPENSSL_NO_DEPRECATED_3_0
@@ -812,6 +942,12 @@ opthelp:
             break;
         case OPT_CIPHER_ALGORITHMS:
             todo.cipher_algorithms = 1;
+            break;
+        case OPT_SERIALIZERS:
+            todo.serializer_algorithms = 1;
+            break;
+        case OPT_DESERIALIZERS:
+            todo.deserializer_algorithms = 1;
             break;
         case OPT_PK_ALGORITHMS:
             todo.pk_algorithms = 1;
@@ -867,6 +1003,10 @@ opthelp:
         list_type(FT_cipher, one);
     if (todo.cipher_algorithms)
         list_ciphers();
+    if (todo.serializer_algorithms)
+        list_serializers();
+    if (todo.deserializer_algorithms)
+        list_deserializers();
     if (todo.pk_algorithms)
         list_pkey();
 #ifndef OPENSSL_NO_DEPRECATED_3_0

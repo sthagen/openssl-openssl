@@ -43,8 +43,8 @@ OPENSSL_CTX                             datatype
 NAMING_AUTHORITY                        datatype
 OSSL_DESERIALIZER                       datatype
 OSSL_DESERIALIZER_CTX                   datatype
-OSSL_DESERIALIZER_FINALIZER             datatype
-OSSL_DESERIALIZER_CLEANER               datatype
+OSSL_DESERIALIZER_CONSTRUCT             datatype
+OSSL_DESERIALIZER_CLEANUP               datatype
 OSSL_DESERIALIZER_INSTANCE              datatype
 OSSL_DESERIALIZER_CTX                   datatype
 OSSL_HTTP_bio_cb_t                      datatype
@@ -305,6 +305,10 @@ EVP_PKEY_CTX_set_tls1_prf_md            define
 EVP_PKEY_assign_DH                      define
 EVP_PKEY_assign_DSA                     define
 EVP_PKEY_assign_EC_KEY                  define
+EVP_PKEY_assign_ED25519                 define
+EVP_PKEY_assign_ED448                   define
+EVP_PKEY_assign_X25519                  define
+EVP_PKEY_assign_X448                    define
 EVP_PKEY_assign_POLY1305                define
 EVP_PKEY_assign_RSA                     define
 EVP_PKEY_assign_SIPHASH                 define
@@ -368,6 +372,10 @@ OpenSSL_add_all_algorithms              define deprecated 1.1.0
 OpenSSL_add_all_ciphers                 define deprecated 1.1.0
 OpenSSL_add_all_digests                 define deprecated 1.1.0
 OpenSSL_add_ssl_algorithms              define
+OSSL_CMP_exec_IR_ses                    define
+OSSL_CMP_exec_CR_ses                    define
+OSSL_CMP_exec_P10CR_ses                 define
+OSSL_CMP_exec_KUR_ses                   define
 OSSL_CMP_CTX_set_log_verbosity          define
 OSSL_CMP_CR                             define
 OSSL_CMP_IR                             define

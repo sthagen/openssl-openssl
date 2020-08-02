@@ -96,17 +96,18 @@ struct ossl_deserializer_ctx_st {
     STACK_OF(OSSL_DESERIALIZER_INSTANCE) *deser_insts;
 
     /*
-     * The finalizer of a deserialization, and its caller argument.
+     * The constructors of a deserialization, and its caller argument.
      */
-    OSSL_DESERIALIZER_FINALIZER *finalizer;
-    OSSL_DESERIALIZER_CLEANER *cleaner;
-    void *finalize_arg;
+    OSSL_DESERIALIZER_CONSTRUCT *construct;
+    OSSL_DESERIALIZER_CLEANUP *cleanup;
+    void *construct_data;
 
     /* For any function that needs a passphrase reader */
+    OSSL_PASSPHRASE_CALLBACK *passphrase_cb;
     const UI_METHOD *ui_method;
     void *ui_data;
     /*
-     * if caller used OSSL_SERIALIZER_CTX_set_passphrase_cb(), we need
+     * if caller used OSSL_SERIALIZER_CTX_set_pem_password_cb(), we need
      * intermediary storage.
      */
     UI_METHOD *allocated_ui_method;
@@ -117,6 +118,16 @@ struct ossl_deserializer_ctx_st {
      */
     unsigned char *cached_passphrase;
     size_t cached_passphrase_len;
+
+    /*
+     * Flag section.  Keep these together
+     */
+
+    /*
+     * The passphrase was passed to us by the user.  In that case, it
+     * should only be freed when freeing this context.
+     */
+    unsigned int flag_user_passphrase:1;
 };
 
 /* Passphrase callbacks, found in serdes_pass.c */

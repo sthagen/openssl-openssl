@@ -11,37 +11,37 @@
 #include <openssl/evp.h>
 #include <openssl/ui.h>
 #include <openssl/deserializer.h>
-#include <openssl/core_names.h>
 #include <openssl/safestack.h>
 #include "crypto/evp.h"
 #include "serializer_local.h"
-
-int OSSL_DESERIALIZER_CTX_set_cipher(OSSL_DESERIALIZER_CTX *ctx,
-                                     const char *cipher_name,
-                                     const char *propquery)
-{
-    OSSL_PARAM params[] = { OSSL_PARAM_END, OSSL_PARAM_END, OSSL_PARAM_END };
-
-    params[0] =
-        OSSL_PARAM_construct_utf8_string(OSSL_DESERIALIZER_PARAM_CIPHER,
-                                         (void *)cipher_name, 0);
-    params[1] =
-        OSSL_PARAM_construct_utf8_string(OSSL_DESERIALIZER_PARAM_PROPERTIES,
-                                         (void *)propquery, 0);
-
-    return OSSL_DESERIALIZER_CTX_set_params(ctx, params);
-}
 
 int OSSL_DESERIALIZER_CTX_set_passphrase(OSSL_DESERIALIZER_CTX *ctx,
                                          const unsigned char *kstr,
                                          size_t klen)
 {
-    OSSL_PARAM params[] = { OSSL_PARAM_END, OSSL_PARAM_END };
+    if (!ossl_assert(ctx != NULL)) {
+        ERR_raise(ERR_LIB_OSSL_DESERIALIZER, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
 
-    params[0] = OSSL_PARAM_construct_octet_string(OSSL_DESERIALIZER_PARAM_PASS,
-                                                  (void *)kstr, klen);
-
-    return OSSL_DESERIALIZER_CTX_set_params(ctx, params);
+    OPENSSL_clear_free(ctx->cached_passphrase, ctx->cached_passphrase_len);
+    ctx->cached_passphrase = NULL;
+    ctx->cached_passphrase_len = 0;
+    if (kstr != NULL) {
+        if (klen == 0) {
+            ctx->cached_passphrase = OPENSSL_zalloc(1);
+            ctx->cached_passphrase_len = 0;
+        } else {
+            ctx->cached_passphrase = OPENSSL_memdup(kstr, klen);
+            ctx->cached_passphrase_len = klen;
+        }
+        if (ctx->cached_passphrase == NULL) {
+            ERR_raise(ERR_LIB_OSSL_DESERIALIZER, ERR_R_MALLOC_FAILURE);
+            return 0;
+        }
+    }
+    ctx->flag_user_passphrase = 1;
+    return 1;
 }
 
 static void deserializer_ctx_reset_passphrase_ui(OSSL_DESERIALIZER_CTX *ctx)
@@ -67,27 +67,36 @@ int OSSL_DESERIALIZER_CTX_set_passphrase_ui(OSSL_DESERIALIZER_CTX *ctx,
     return 1;
 }
 
-int OSSL_DESERIALIZER_CTX_set_passphrase_cb(OSSL_DESERIALIZER_CTX *ctx,
-                                            pem_password_cb *cb, void *cbarg)
+int OSSL_DESERIALIZER_CTX_set_pem_password_cb(OSSL_DESERIALIZER_CTX *ctx,
+                                              pem_password_cb *cb, void *cbarg)
 {
+    UI_METHOD *ui_method = NULL;
+
     if (!ossl_assert(ctx != NULL)) {
         ERR_raise(ERR_LIB_OSSL_DESERIALIZER, ERR_R_PASSED_NULL_PARAMETER);
         return 0;
     }
 
-    deserializer_ctx_reset_passphrase_ui(ctx);
-    if (cb == NULL)
+    /*
+     * If |cb| is NULL, it means the caller wants to reset previous
+     * password callback info.  Otherwise, we only set the new data
+     * if a new UI_METHOD could be created for this sort of callback.
+     */
+    if (cb == NULL
+        || (ui_method = UI_UTIL_wrap_read_pem_callback(cb, 0)) != NULL) {
+        deserializer_ctx_reset_passphrase_ui(ctx);
+        ctx->ui_method = ctx->allocated_ui_method = ui_method;
+        ctx->ui_data = cbarg;
+        ctx->passphrase_cb = ossl_deserializer_passphrase_in_cb;
         return 1;
-    ctx->ui_method =
-        ctx->allocated_ui_method = UI_UTIL_wrap_read_pem_callback(cb, 0);
-    ctx->ui_data = cbarg;
+    }
 
-    return ctx->ui_method != NULL;
+    return 0;
 }
 
 /*
  * Support for OSSL_DESERIALIZER_CTX_new_by_EVP_PKEY:
- * Handle an object reference
+ * The construct data, and collecting keymgmt information for it
  */
 
 DEFINE_STACK_OF(EVP_KEYMGMT)
@@ -98,11 +107,11 @@ struct deser_EVP_PKEY_data_st {
     STACK_OF(EVP_KEYMGMT) *keymgmts; /* The EVP_KEYMGMTs we handle */
 };
 
-static int deser_finalize_EVP_PKEY(OSSL_DESERIALIZER_INSTANCE *deser_inst,
-                                   const OSSL_PARAM *params,
-                                   void *finalize_arg)
+static int deser_construct_EVP_PKEY(OSSL_DESERIALIZER_INSTANCE *deser_inst,
+                                    const OSSL_PARAM *params,
+                                    void *construct_data)
 {
-    struct deser_EVP_PKEY_data_st *data = finalize_arg;
+    struct deser_EVP_PKEY_data_st *data = construct_data;
     OSSL_DESERIALIZER *deser =
         OSSL_DESERIALIZER_INSTANCE_deserializer(deser_inst);
     void *deserctx = OSSL_DESERIALIZER_INSTANCE_deserializer_ctx(deser_inst);
@@ -216,13 +225,15 @@ static int deser_finalize_EVP_PKEY(OSSL_DESERIALIZER_INSTANCE *deser_inst,
     return (*data->object != NULL);
 }
 
-static void deser_clean_EVP_PKEY(void *finalize_arg)
+static void deser_clean_EVP_PKEY_construct_arg(void *construct_data)
 {
-    struct deser_EVP_PKEY_data_st *data = finalize_arg;
+    struct deser_EVP_PKEY_data_st *data = construct_data;
 
-    sk_EVP_KEYMGMT_pop_free(data->keymgmts, EVP_KEYMGMT_free);
-    OPENSSL_free(data->object_type);
-    OPENSSL_free(data);
+    if (data != NULL) {
+        sk_EVP_KEYMGMT_pop_free(data->keymgmts, EVP_KEYMGMT_free);
+        OPENSSL_free(data->object_type);
+        OPENSSL_free(data);
+    }
 }
 
 DEFINE_STACK_OF_CSTRING()
@@ -344,17 +355,15 @@ OSSL_DESERIALIZER_CTX_new_by_EVP_PKEY(EVP_PKEY **pkey,
     /* Finally, collect extra deserializers based on what we already have */
     (void)OSSL_DESERIALIZER_CTX_add_extra(ctx, libctx, propquery);
 
-    if (!OSSL_DESERIALIZER_CTX_set_finalizer(ctx, deser_finalize_EVP_PKEY,
-                                             deser_clean_EVP_PKEY,
-                                             data->process_data))
+    if (!OSSL_DESERIALIZER_CTX_set_construct(ctx, deser_construct_EVP_PKEY)
+        || !OSSL_DESERIALIZER_CTX_set_construct_data(ctx, data->process_data)
+        || !OSSL_DESERIALIZER_CTX_set_cleanup
+                (ctx, deser_clean_EVP_PKEY_construct_arg))
         goto err;
 
     data->process_data = NULL;
  err:
-    if (data->process_data != NULL)
-        sk_EVP_KEYMGMT_pop_free(data->process_data->keymgmts,
-                                EVP_KEYMGMT_free);
-    OPENSSL_free(data->process_data);
+    deser_clean_EVP_PKEY_construct_arg(data->process_data);
     sk_OPENSSL_CSTRING_free(data->names);
     OPENSSL_free(data);
     return ctx;

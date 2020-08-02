@@ -855,9 +855,9 @@ const char *ossl_cmp_bodytype_to_string(int type);
 int ossl_cmp_msg_set_bodytype(OSSL_CMP_MSG *msg, int type);
 int ossl_cmp_msg_get_bodytype(const OSSL_CMP_MSG *msg);
 OSSL_CMP_MSG *ossl_cmp_msg_create(OSSL_CMP_CTX *ctx, int bodytype);
-OSSL_CMP_MSG *ossl_cmp_certReq_new(OSSL_CMP_CTX *ctx, int bodytype,
-                                   int err_code);
-OSSL_CMP_MSG *ossl_cmp_certRep_new(OSSL_CMP_CTX *ctx, int bodytype,
+OSSL_CMP_MSG *ossl_cmp_certreq_new(OSSL_CMP_CTX *ctx, int bodytype,
+                                   const OSSL_CRMF_MSG *crm);
+OSSL_CMP_MSG *ossl_cmp_certrep_new(OSSL_CMP_CTX *ctx, int bodytype,
                                    int certReqId, OSSL_CMP_PKISI *si,
                                    X509 *cert, STACK_OF(X509) *chain,
                                    STACK_OF(X509) *caPubs, int encrypted,
@@ -896,7 +896,6 @@ ossl_cmp_certrepmessage_get0_certresponse(const OSSL_CMP_CERTREPMESSAGE *crm,
                                           int rid);
 X509 *ossl_cmp_certresponse_get1_certificate(EVP_PKEY *privkey,
                                              const OSSL_CMP_CERTRESPONSE *crep);
-OSSL_CMP_MSG *ossl_cmp_msg_load(const char *file);
 
 /* from cmp_protect.c */
 ASN1_BIT_STRING *ossl_cmp_calc_protection(const OSSL_CMP_MSG *msg,

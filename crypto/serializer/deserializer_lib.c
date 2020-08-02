@@ -37,10 +37,11 @@ int OSSL_DESERIALIZER_from_bio(OSSL_DESERIALIZER_CTX *ctx, BIO *in)
 
     ok = deser_process(NULL, &data);
 
-    /* Clear any cached passphrase */
-    OPENSSL_clear_free(ctx->cached_passphrase, ctx->cached_passphrase_len);
-    ctx->cached_passphrase = NULL;
-    ctx->cached_passphrase_len = 0;
+    /* Clear any internally cached passphrase */
+    if (!ctx->flag_user_passphrase) {
+        OSSL_DESERIALIZER_CTX_set_passphrase(ctx, NULL, 0);
+        ctx->flag_user_passphrase = 0;
+    }
     return ok;
 }
 
@@ -274,19 +275,60 @@ int OSSL_DESERIALIZER_CTX_num_deserializers(OSSL_DESERIALIZER_CTX *ctx)
     return sk_OSSL_DESERIALIZER_INSTANCE_num(ctx->deser_insts);
 }
 
-int OSSL_DESERIALIZER_CTX_set_finalizer(OSSL_DESERIALIZER_CTX *ctx,
-                                        OSSL_DESERIALIZER_FINALIZER *finalizer,
-                                        OSSL_DESERIALIZER_CLEANER *cleaner,
-                                        void *finalize_arg)
+int OSSL_DESERIALIZER_CTX_set_construct(OSSL_DESERIALIZER_CTX *ctx,
+                                        OSSL_DESERIALIZER_CONSTRUCT *construct)
 {
     if (!ossl_assert(ctx != NULL)) {
         ERR_raise(ERR_LIB_OSSL_DESERIALIZER, ERR_R_PASSED_NULL_PARAMETER);
         return 0;
     }
-    ctx->finalizer = finalizer;
-    ctx->cleaner = cleaner;
-    ctx->finalize_arg = finalize_arg;
+    ctx->construct = construct;
     return 1;
+}
+
+int OSSL_DESERIALIZER_CTX_set_construct_data(OSSL_DESERIALIZER_CTX *ctx,
+                                             void *construct_data)
+{
+    if (!ossl_assert(ctx != NULL)) {
+        ERR_raise(ERR_LIB_OSSL_DESERIALIZER, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+    ctx->construct_data = construct_data;
+    return 1;
+}
+
+int OSSL_DESERIALIZER_CTX_set_cleanup(OSSL_DESERIALIZER_CTX *ctx,
+                                      OSSL_DESERIALIZER_CLEANUP *cleanup)
+{
+    if (!ossl_assert(ctx != NULL)) {
+        ERR_raise(ERR_LIB_OSSL_DESERIALIZER, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+    ctx->cleanup = cleanup;
+    return 1;
+}
+
+OSSL_DESERIALIZER_CONSTRUCT *
+OSSL_DESERIALIZER_CTX_get_construct(OSSL_DESERIALIZER_CTX *ctx)
+{
+    if (ctx == NULL)
+        return NULL;
+    return ctx->construct;
+}
+
+void *OSSL_DESERIALIZER_CTX_get_construct_data(OSSL_DESERIALIZER_CTX *ctx)
+{
+    if (ctx == NULL)
+        return NULL;
+    return ctx->construct_data;
+}
+
+OSSL_DESERIALIZER_CLEANUP *
+OSSL_DESERIALIZER_CTX_get_cleanup(OSSL_DESERIALIZER_CTX *ctx)
+{
+    if (ctx == NULL)
+        return NULL;
+    return ctx->cleanup;
 }
 
 int OSSL_DESERIALIZER_export(OSSL_DESERIALIZER_INSTANCE *deser_inst,
@@ -353,12 +395,13 @@ static int deser_process(const OSSL_PARAM params[], void *arg)
                                                 data->current_deser_inst_index);
         deser = OSSL_DESERIALIZER_INSTANCE_deserializer(deser_inst);
 
-        if (ctx->finalizer(deser_inst, params, ctx->finalize_arg)) {
+        if (ctx->construct != NULL
+            && ctx->construct(deser_inst, params, ctx->construct_data)) {
             ok = 1;
             goto end;
         }
 
-        /* The finalizer didn't return success */
+        /* The constructor didn't return success */
 
         /*
          * so we try to use the object we got and feed it to any next
@@ -400,7 +443,8 @@ static int deser_process(const OSSL_PARAM params[], void *arg)
          * that's the case, we do this extra check.
          */
         if (deser == NULL && ctx->start_input_type != NULL
-            && strcasecmp(ctx->start_input_type, deser_inst->input_type) != 0)
+            && strcasecmp(ctx->start_input_type,
+                          new_deser_inst->input_type) != 0)
             continue;
 
         /*
@@ -413,20 +457,26 @@ static int deser_process(const OSSL_PARAM params[], void *arg)
             && !OSSL_DESERIALIZER_is_a(deser, new_deser_inst->input_type))
             continue;
 
-        if (loc == 0) {
-            if (BIO_reset(bio) <= 0)
-                goto end;
-        } else {
-            if (BIO_seek(bio, loc) <= 0)
-                goto end;
-        }
+        /*
+         * Checking the return value of BIO_reset() or BIO_seek() is unsafe.
+         * Furthermore, BIO_reset() is unsafe to use if the source BIO happens
+         * to be a BIO_s_mem(), because the earlier BIO_tell() gives us zero
+         * no matter where we are in the underlying buffer we're reading from.
+         *
+         * So, we simply do a BIO_seek(), and use BIO_tell() that we're back
+         * at the same position.  This is a best effort attempt, but BIO_seek()
+         * and BIO_tell() should come as a pair...
+         */
+        (void)BIO_seek(bio, loc);
+        if (BIO_tell(bio) != loc)
+            goto end;
 
         /* Recurse */
         new_data.current_deser_inst_index = i;
         ok = new_deser->deserialize(new_deser_inst->deserctx,
                                     (OSSL_CORE_BIO *)bio,
                                     deser_process, &new_data,
-                                    NULL /* ossl_deserializer_passphrase_in_cb */,
+                                    ctx->passphrase_cb,
                                     new_data.ctx);
         if (ok)
             break;

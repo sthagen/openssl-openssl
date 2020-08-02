@@ -128,7 +128,7 @@ OSSL_CMP_MSG *ossl_cmp_msg_create(OSSL_CMP_CTX *ctx, int bodytype)
 
     case OSSL_CMP_PKIBODY_P10CR:
         if (ctx->p10CSR == NULL) {
-            CMPerr(0, CMP_R_ERROR_CREATING_P10CR);
+            CMPerr(0, CMP_R_MISSING_P10CSR);
             goto err;
         }
         if ((msg->body->value.p10cr = X509_REQ_dup(ctx->p10CSR)) == NULL)
@@ -197,13 +197,12 @@ OSSL_CMP_MSG *ossl_cmp_msg_create(OSSL_CMP_CTX *ctx, int bodytype)
          || OSSL_CMP_CTX_reqExtensions_have_SAN(ctx) == 1)
 
 static const X509_NAME *determine_subj(OSSL_CMP_CTX *ctx, X509 *refcert,
-                                       int bodytype)
+                                       int for_KUR)
 {
     if (ctx->subjectName != NULL)
         return ctx->subjectName;
 
-    if (refcert != NULL
-            && (bodytype == OSSL_CMP_PKIBODY_KUR || !HAS_SAN(ctx)))
+    if (refcert != NULL && (for_KUR || !HAS_SAN(ctx)))
         /*
          * For KUR, copy subjectName from reference certificate.
          * For IR or CR, do the same only if there is no subjectAltName.
@@ -212,18 +211,14 @@ static const X509_NAME *determine_subj(OSSL_CMP_CTX *ctx, X509 *refcert,
     return NULL;
 }
 
-/*
- * Create CRMF certificate request message for IR/CR/KUR
- * returns a pointer to the OSSL_CRMF_MSG on success, NULL on error
- */
-static OSSL_CRMF_MSG *crm_new(OSSL_CMP_CTX *ctx, int bodytype, int rid)
+OSSL_CRMF_MSG *OSSL_CMP_CTX_setup_CRM(OSSL_CMP_CTX *ctx, int for_KUR, int rid)
 {
     OSSL_CRMF_MSG *crm = NULL;
     X509 *refcert = ctx->oldCert != NULL ? ctx->oldCert : ctx->cert;
     /* refcert defaults to current client cert */
     EVP_PKEY *rkey = OSSL_CMP_CTX_get0_newPkey(ctx, 0);
     STACK_OF(GENERAL_NAME) *default_sans = NULL;
-    const X509_NAME *subject = determine_subj(ctx, refcert, bodytype);
+    const X509_NAME *subject = determine_subj(ctx, refcert, for_KUR);
     int crit = ctx->setSubjectAltNameCritical || subject == NULL;
     /* RFC5280: subjectAltName MUST be critical if subject is null */
     X509_EXTENSIONS *exts = NULL;
@@ -236,7 +231,7 @@ static OSSL_CRMF_MSG *crm_new(OSSL_CMP_CTX *ctx, int bodytype, int rid)
         return NULL;
 #endif
     }
-    if (bodytype == OSSL_CMP_PKIBODY_KUR && refcert == NULL) {
+    if (for_KUR && refcert == NULL) {
         CMPerr(0, CMP_R_MISSING_REFERENCE_CERT);
         return NULL;
     }
@@ -295,7 +290,7 @@ static OSSL_CRMF_MSG *crm_new(OSSL_CMP_CTX *ctx, int bodytype, int rid)
     /* end fill certTemplate, now set any controls */
 
     /* for KUR, set OldCertId according to D.6 */
-    if (bodytype == OSSL_CMP_PKIBODY_KUR) {
+    if (for_KUR) {
         OSSL_CRMF_CERTID *cid =
             OSSL_CRMF_CERTID_gen(X509_get_issuer_name(refcert),
                                  X509_get0_serialNumber(refcert));
@@ -321,10 +316,11 @@ static OSSL_CRMF_MSG *crm_new(OSSL_CMP_CTX *ctx, int bodytype, int rid)
     return crm;
 }
 
-OSSL_CMP_MSG *ossl_cmp_certReq_new(OSSL_CMP_CTX *ctx, int type, int err_code)
+OSSL_CMP_MSG *ossl_cmp_certreq_new(OSSL_CMP_CTX *ctx, int type,
+                                   const OSSL_CRMF_MSG *crm)
 {
     OSSL_CMP_MSG *msg;
-    OSSL_CRMF_MSG *crm = NULL;
+    OSSL_CRMF_MSG *local_crm = NULL;
 
     if (!ossl_assert(ctx != NULL))
         return NULL;
@@ -353,13 +349,23 @@ OSSL_CMP_MSG *ossl_cmp_certReq_new(OSSL_CMP_CTX *ctx, int type, int err_code)
             CMPerr(0, CMP_R_MISSING_PRIVATE_KEY);
             goto err;
         }
-        if ((crm = crm_new(ctx, type, OSSL_CMP_CERTREQID)) == NULL
-            || !OSSL_CRMF_MSG_create_popo(crm, privkey, ctx->digest,
-                                          ctx->popoMethod)
-            /* value.ir is same for cr and kur */
-            || !sk_OSSL_CRMF_MSG_push(msg->body->value.ir, crm))
+        if (crm == NULL) {
+            local_crm = OSSL_CMP_CTX_setup_CRM(ctx,
+                                               type == OSSL_CMP_PKIBODY_KUR,
+                                               OSSL_CMP_CERTREQID);
+            if (local_crm == NULL
+                || !OSSL_CRMF_MSG_create_popo(local_crm, privkey, ctx->digest,
+                                              ctx->popoMethod))
+                goto err;
+        } else {
+            if ((local_crm = OSSL_CRMF_MSG_dup(crm)) == NULL)
+                goto err;
+        }
+
+        /* value.ir is same for cr and kur */
+        if (!sk_OSSL_CRMF_MSG_push(msg->body->value.ir, local_crm))
             goto err;
-        crm = NULL;
+        local_crm = NULL;
         /* TODO: here optional 2nd certreqmsg could be pushed to the stack */
     }
 
@@ -369,14 +375,13 @@ OSSL_CMP_MSG *ossl_cmp_certReq_new(OSSL_CMP_CTX *ctx, int type, int err_code)
     return msg;
 
  err:
-    if (err_code != 0)
-        CMPerr(0, err_code);
-    OSSL_CRMF_MSG_free(crm);
+    CMPerr(0, CMP_R_ERROR_CREATING_CERTREQ);
+    OSSL_CRMF_MSG_free(local_crm);
     OSSL_CMP_MSG_free(msg);
     return NULL;
 }
 
-OSSL_CMP_MSG *ossl_cmp_certRep_new(OSSL_CMP_CTX *ctx, int bodytype,
+OSSL_CMP_MSG *ossl_cmp_certrep_new(OSSL_CMP_CTX *ctx, int bodytype,
                                    int certReqId, OSSL_CMP_PKISI *si,
                                    X509 *cert, STACK_OF(X509) *chain,
                                    STACK_OF(X509) *caPubs, int encrypted,
@@ -1003,19 +1008,39 @@ int OSSL_CMP_MSG_update_transactionID(OSSL_CMP_CTX *ctx, OSSL_CMP_MSG *msg)
             || ossl_cmp_msg_protect(ctx, msg);
 }
 
-OSSL_CMP_MSG *ossl_cmp_msg_load(const char *file)
+OSSL_CMP_MSG *OSSL_CMP_MSG_read(const char *file)
 {
     OSSL_CMP_MSG *msg = NULL;
     BIO *bio = NULL;
 
-    if (!ossl_assert(file != NULL))
+    if (file == NULL) {
+        CMPerr(0, CMP_R_NULL_ARGUMENT);
         return NULL;
+    }
 
     if ((bio = BIO_new_file(file, "rb")) == NULL)
         return NULL;
     msg = d2i_OSSL_CMP_MSG_bio(bio, NULL);
     BIO_free(bio);
     return msg;
+}
+
+int OSSL_CMP_MSG_write(const char *file, const OSSL_CMP_MSG *msg)
+{
+    BIO *bio;
+    int res;
+
+    if (file == NULL || msg == NULL) {
+        CMPerr(0, CMP_R_NULL_ARGUMENT);
+        return -1;
+    }
+
+    bio = BIO_new_file(file, "wb");
+    if (bio == NULL)
+        return -2;
+    res = i2d_OSSL_CMP_MSG_bio(bio, msg);
+    BIO_free(bio);
+    return res;
 }
 
 OSSL_CMP_MSG *d2i_OSSL_CMP_MSG_bio(BIO *bio, OSSL_CMP_MSG **msg)
