@@ -144,9 +144,6 @@ const EVP_PKEY_METHOD *ed448_pkey_method(void);
 const EVP_PKEY_METHOD *hmac_pkey_method(void);
 const EVP_PKEY_METHOD *rsa_pkey_method(void);
 const EVP_PKEY_METHOD *rsa_pss_pkey_method(void);
-const EVP_PKEY_METHOD *scrypt_pkey_method(void);
-const EVP_PKEY_METHOD *tls1_prf_pkey_method(void);
-const EVP_PKEY_METHOD *hkdf_pkey_method(void);
 const EVP_PKEY_METHOD *poly1305_pkey_method(void);
 const EVP_PKEY_METHOD *siphash_pkey_method(void);
 
@@ -314,7 +311,7 @@ static int cname##_ecb_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const uns
 {\
         while(inl>=EVP_MAXCHUNK) {\
             int num = EVP_CIPHER_CTX_num(ctx);\
-            cprefix##_ofb##cbits##_encrypt(in, out, (long)EVP_MAXCHUNK, &EVP_C_DATA(kstruct,ctx)->ksched, EVP_CIPHER_CTX_iv_noconst(ctx), &num); \
+            cprefix##_ofb##cbits##_encrypt(in, out, (long)EVP_MAXCHUNK, &EVP_C_DATA(kstruct,ctx)->ksched, ctx->iv, &num); \
             EVP_CIPHER_CTX_set_num(ctx, num);\
             inl-=EVP_MAXCHUNK;\
             in +=EVP_MAXCHUNK;\
@@ -322,7 +319,7 @@ static int cname##_ecb_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const uns
         }\
         if (inl) {\
             int num = EVP_CIPHER_CTX_num(ctx);\
-            cprefix##_ofb##cbits##_encrypt(in, out, (long)inl, &EVP_C_DATA(kstruct,ctx)->ksched, EVP_CIPHER_CTX_iv_noconst(ctx), &num); \
+            cprefix##_ofb##cbits##_encrypt(in, out, (long)inl, &EVP_C_DATA(kstruct,ctx)->ksched, ctx->iv, &num); \
             EVP_CIPHER_CTX_set_num(ctx, num);\
         }\
         return 1;\
@@ -333,13 +330,13 @@ static int cname##_cbc_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const uns
 {\
         while(inl>=EVP_MAXCHUNK) \
             {\
-            cprefix##_cbc_encrypt(in, out, (long)EVP_MAXCHUNK, &EVP_C_DATA(kstruct,ctx)->ksched, EVP_CIPHER_CTX_iv_noconst(ctx), EVP_CIPHER_CTX_encrypting(ctx));\
+            cprefix##_cbc_encrypt(in, out, (long)EVP_MAXCHUNK, &EVP_C_DATA(kstruct,ctx)->ksched, ctx->iv, EVP_CIPHER_CTX_encrypting(ctx));\
             inl-=EVP_MAXCHUNK;\
             in +=EVP_MAXCHUNK;\
             out+=EVP_MAXCHUNK;\
             }\
         if (inl)\
-            cprefix##_cbc_encrypt(in, out, (long)inl, &EVP_C_DATA(kstruct,ctx)->ksched, EVP_CIPHER_CTX_iv_noconst(ctx), EVP_CIPHER_CTX_encrypting(ctx));\
+            cprefix##_cbc_encrypt(in, out, (long)inl, &EVP_C_DATA(kstruct,ctx)->ksched, ctx->iv, EVP_CIPHER_CTX_encrypting(ctx));\
         return 1;\
 }
 
@@ -356,7 +353,7 @@ static int cname##_cfb##cbits##_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, 
             ((cbits == 1) \
                 && !EVP_CIPHER_CTX_test_flags(ctx, EVP_CIPH_FLAG_LENGTH_BITS) \
                 ? chunk*8 : chunk), \
-            &EVP_C_DATA(kstruct, ctx)->ksched, EVP_CIPHER_CTX_iv_noconst(ctx),\
+            &EVP_C_DATA(kstruct, ctx)->ksched, ctx->iv,\
             &num, EVP_CIPHER_CTX_encrypting(ctx));\
         EVP_CIPHER_CTX_set_num(ctx, num);\
         inl -= chunk;\
@@ -697,18 +694,13 @@ void *evp_keymgmt_newdata(const EVP_KEYMGMT *keymgmt);
 void evp_keymgmt_freedata(const EVP_KEYMGMT *keymgmt, void *keyddata);
 int evp_keymgmt_get_params(const EVP_KEYMGMT *keymgmt,
                            void *keydata, OSSL_PARAM params[]);
-const OSSL_PARAM *evp_keymgmt_gettable_params(const EVP_KEYMGMT *keymgmt);
 int evp_keymgmt_set_params(const EVP_KEYMGMT *keymgmt,
                            void *keydata, const OSSL_PARAM params[]);
-const OSSL_PARAM *evp_keymgmt_settable_params(const EVP_KEYMGMT *keymgmt);
-
 void *evp_keymgmt_gen_init(const EVP_KEYMGMT *keymgmt, int selection);
 int evp_keymgmt_gen_set_template(const EVP_KEYMGMT *keymgmt, void *genctx,
                                  void *template);
 int evp_keymgmt_gen_set_params(const EVP_KEYMGMT *keymgmt, void *genctx,
                                const OSSL_PARAM params[]);
-const OSSL_PARAM *
-evp_keymgmt_gen_settable_params(const EVP_KEYMGMT *keymgmt);
 void *evp_keymgmt_gen(const EVP_KEYMGMT *keymgmt, void *genctx,
                       OSSL_CALLBACK *cb, void *cbarg);
 void evp_keymgmt_gen_cleanup(const EVP_KEYMGMT *keymgmt, void *genctx);
@@ -753,6 +745,12 @@ void evp_encode_ctx_set_flags(EVP_ENCODE_CTX *ctx, unsigned int flags);
 const EVP_CIPHER *evp_get_cipherbyname_ex(OPENSSL_CTX *libctx, const char *name);
 const EVP_MD *evp_get_digestbyname_ex(OPENSSL_CTX *libctx, const char *name);
 
+int pkcs5_pbkdf2_hmac_with_libctx(const char *pass, int passlen,
+                                  const unsigned char *salt, int saltlen,
+                                  int iter, const EVP_MD *digest, int keylen,
+                                  unsigned char *out,
+                                  OPENSSL_CTX *libctx, const char *propq);
+
 #ifndef FIPS_MODULE
 /*
  * Internal helpers for stricter EVP_PKEY_CTX_{set,get}_params().
@@ -772,3 +770,4 @@ int evp_pkey_ctx_get_params_strict(EVP_PKEY_CTX *ctx, OSSL_PARAM *params);
 EVP_PKEY *evp_pkcs82pkey_int(const PKCS8_PRIV_KEY_INFO *p8, OPENSSL_CTX *libctx,
                              const char *propq);
 #endif /* !defined(FIPS_MODULE) */
+void evp_method_store_flush(OPENSSL_CTX *libctx);

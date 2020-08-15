@@ -29,7 +29,7 @@ static const OSSL_PARAM cipher_known_gettable_params[] = {
     { OSSL_CIPHER_PARAM_TLS_MAC, OSSL_PARAM_OCTET_PTR, NULL, 0, OSSL_PARAM_UNMODIFIED },
     OSSL_PARAM_END
 };
-const OSSL_PARAM *cipher_generic_gettable_params(void)
+const OSSL_PARAM *cipher_generic_gettable_params(void *provctx)
 {
     return cipher_known_gettable_params;
 }
@@ -112,12 +112,13 @@ static const OSSL_PARAM cipher_aead_known_gettable_ctx_params[] = {
     OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_IVLEN, NULL),
     OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_AEAD_TAGLEN, NULL),
     OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_IV, NULL, 0),
+    OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_IV_STATE, NULL, 0),
     OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TAG, NULL, 0),
     OSSL_PARAM_size_t(OSSL_CIPHER_PARAM_AEAD_TLS1_AAD_PAD, NULL),
     OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TLS1_GET_IV_GEN, NULL, 0),
     OSSL_PARAM_END
 };
-const OSSL_PARAM *cipher_aead_gettable_ctx_params(void)
+const OSSL_PARAM *cipher_aead_gettable_ctx_params(ossl_unused void *provctx)
 {
     return cipher_aead_known_gettable_ctx_params;
 }
@@ -130,7 +131,7 @@ static const OSSL_PARAM cipher_aead_known_settable_ctx_params[] = {
     OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TLS1_SET_IV_INV, NULL, 0),
     OSSL_PARAM_END
 };
-const OSSL_PARAM *cipher_aead_settable_ctx_params(void)
+const OSSL_PARAM *cipher_aead_settable_ctx_params(ossl_unused void *provctx)
 {
     return cipher_aead_known_settable_ctx_params;
 }
@@ -150,6 +151,7 @@ static int cipher_generic_init_internal(PROV_CIPHER_CTX *ctx,
                                         int enc)
 {
     ctx->num = 0;
+    ctx->bufsz = 0;
     ctx->updated = 0;
     ctx->enc = enc ? 1 : 0;
 
@@ -474,6 +476,13 @@ int cipher_generic_get_ctx_params(void *vctx, OSSL_PARAM params[])
     if (p != NULL
         && !OSSL_PARAM_set_octet_ptr(p, &ctx->oiv, ctx->ivlen)
         && !OSSL_PARAM_set_octet_string(p, &ctx->oiv, ctx->ivlen)) {
+        ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
+        return 0;
+    }
+    p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IV_STATE);
+    if (p != NULL
+        && !OSSL_PARAM_set_octet_ptr(p, &ctx->iv, ctx->ivlen)
+        && !OSSL_PARAM_set_octet_string(p, &ctx->iv, ctx->ivlen)) {
         ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
         return 0;
     }

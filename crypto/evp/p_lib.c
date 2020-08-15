@@ -1001,6 +1001,8 @@ int EVP_PKEY_is_a(const EVP_PKEY *pkey, const char *name)
 #ifndef OPENSSL_NO_DH
         else if (strcasecmp(name, "DH") == 0)
             type = EVP_PKEY_DH;
+        else if (strcasecmp(name, "X9.42 DH") == 0)
+            type = EVP_PKEY_DHX;
 #endif
 #ifndef OPENSSL_NO_DSA
         else if (strcasecmp(name, "DSA") == 0)
@@ -1202,19 +1204,18 @@ static int legacy_asn1_ctrl_to_param(EVP_PKEY *pkey, int op,
     case ASN1_PKEY_CTRL_DEFAULT_MD_NID:
         {
             char mdname[80] = "";
-            int nid;
             int rv = EVP_PKEY_get_default_digest_name(pkey, mdname,
                                                       sizeof(mdname));
 
-            if (rv <= 0)
-                return rv;
-            nid = OBJ_sn2nid(mdname);
-            if (nid == NID_undef)
-                nid = OBJ_ln2nid(mdname);
-            if (nid == NID_undef)
-                return 0;
-            *(int *)arg2 = nid;
-            return 1;
+            if (rv > 0) {
+                int nid;
+
+                nid = OBJ_sn2nid(mdname);
+                if (nid == NID_undef)
+                    nid = OBJ_ln2nid(mdname);
+                *(int *)arg2 = nid;
+            }
+            return rv;
         }
     default:
         return -2;
@@ -1882,7 +1883,7 @@ const OSSL_PARAM *EVP_PKEY_gettable_params(EVP_PKEY *pkey)
         || pkey->keymgmt == NULL
         || pkey->keydata == NULL)
         return 0;
-    return evp_keymgmt_gettable_params(pkey->keymgmt);
+    return EVP_KEYMGMT_gettable_params(pkey->keymgmt);
 }
 
 int EVP_PKEY_get_bn_param(EVP_PKEY *pkey, const char *key_name, BIGNUM **bn)

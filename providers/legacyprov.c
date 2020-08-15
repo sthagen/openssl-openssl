@@ -61,7 +61,9 @@ static int legacy_get_params(void *provctx, OSSL_PARAM params[])
     p = OSSL_PARAM_locate(params, OSSL_PROV_PARAM_BUILDINFO);
     if (p != NULL && !OSSL_PARAM_set_utf8_ptr(p, OPENSSL_FULL_VERSION_STR))
         return 0;
-
+    p = OSSL_PARAM_locate(params, OSSL_PROV_PARAM_STATUS);
+    if (p != NULL && !OSSL_PARAM_set_uint(p, 1))
+        return 0;
     return 1;
 }
 
@@ -111,9 +113,9 @@ static const OSSL_ALGORITHM legacy_ciphers[] = {
 #endif /* OPENSSL_NO_SEED */
 #ifndef OPENSSL_NO_RC2
     ALG("RC2-ECB", rc2128ecb_functions),
-    ALG("RC2-CBC", rc2128cbc_functions),
-    ALG("RC2-40-CBC", rc240cbc_functions),
-    ALG("RC2-64-CBC", rc264cbc_functions),
+    ALG("RC2-CBC:RC2:RC2-128", rc2128cbc_functions),
+    ALG("RC2-40-CBC:RC2-40", rc240cbc_functions),
+    ALG("RC2-64-CBC:RC2-64", rc264cbc_functions),
     ALG("RC2-CFB", rc2128cfb128_functions),
     ALG("RC2-OFB", rc2128ofb128_functions),
 #endif /* OPENSSL_NO_RC2 */
@@ -126,7 +128,7 @@ static const OSSL_ALGORITHM legacy_ciphers[] = {
 #endif /* OPENSSL_NO_RC4 */
 #ifndef OPENSSL_NO_RC5
     ALG("RC5-ECB", rc5128ecb_functions),
-    ALG("RC5-CBC", rc5128cbc_functions),
+    ALG("RC5-CBC:RC5", rc5128cbc_functions),
     ALG("RC5-OFB", rc5128ofb64_functions),
     ALG("RC5-CFB", rc5128cfb64_functions),
 #endif /* OPENSSL_NO_RC5 */
