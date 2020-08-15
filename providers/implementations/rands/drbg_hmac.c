@@ -329,10 +329,10 @@ static int drbg_hmac_get_ctx_params(void *vdrbg, OSSL_PARAM params[])
     return drbg_get_ctx_params(drbg, params);
 }
 
-static const OSSL_PARAM *drbg_hmac_gettable_ctx_params(void)
+static const OSSL_PARAM *drbg_hmac_gettable_ctx_params(ossl_unused void *p_ctx)
 {
     static const OSSL_PARAM known_gettable_ctx_params[] = {
-        OSSL_PARAM_DRBG_GETABLE_CTX_COMMON,
+        OSSL_PARAM_DRBG_GETTABLE_CTX_COMMON,
         OSSL_PARAM_END
     };
     return known_gettable_ctx_params;
@@ -378,13 +378,13 @@ static int drbg_hmac_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     return drbg_set_ctx_params(ctx, params);
 }
 
-static const OSSL_PARAM *drbg_hmac_settable_ctx_params(void)
+static const OSSL_PARAM *drbg_hmac_settable_ctx_params(ossl_unused void *p_ctx)
 {
     static const OSSL_PARAM known_settable_ctx_params[] = {
         OSSL_PARAM_utf8_string(OSSL_DRBG_PARAM_PROPERTIES, NULL, 0),
         OSSL_PARAM_utf8_string(OSSL_DRBG_PARAM_DIGEST, NULL, 0),
         OSSL_PARAM_utf8_string(OSSL_DRBG_PARAM_MAC, NULL, 0),
-        OSSL_PARAM_DRBG_SETABLE_CTX_COMMON,
+        OSSL_PARAM_DRBG_SETTABLE_CTX_COMMON,
         OSSL_PARAM_END
     };
     return known_settable_ctx_params;
@@ -408,7 +408,6 @@ const OSSL_DISPATCH drbg_hmac_functions[] = {
     { OSSL_FUNC_RAND_GETTABLE_CTX_PARAMS,
       (void(*)(void))drbg_hmac_gettable_ctx_params },
     { OSSL_FUNC_RAND_GET_CTX_PARAMS, (void(*)(void))drbg_hmac_get_ctx_params },
-    { OSSL_FUNC_RAND_SET_CALLBACKS, (void(*)(void))drbg_set_callbacks },
     { OSSL_FUNC_RAND_VERIFY_ZEROIZATION,
       (void(*)(void))drbg_hmac_verify_zeroization },
     { 0, NULL }

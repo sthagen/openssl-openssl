@@ -201,14 +201,16 @@ void free_index(CA_DB *db);
 int index_name_cmp(const OPENSSL_CSTRING *a, const OPENSSL_CSTRING *b);
 int parse_yesno(const char *str, int def);
 
-X509_NAME *parse_name(const char *str, long chtype, int multirdn);
+X509_NAME *parse_name(const char *str, int chtype, int multirdn,
+                      const char *desc);
 void policies_print(X509_STORE_CTX *ctx);
 int bio_to_mem(unsigned char **out, int maxlen, BIO *in);
 int pkey_ctrl_string(EVP_PKEY_CTX *ctx, const char *value);
 int x509_ctrl_string(X509 *x, const char *value);
 int x509_req_ctrl_string(X509_REQ *x, const char *value);
 int init_gen_str(EVP_PKEY_CTX **pctx,
-                 const char *algname, ENGINE *e, int do_param);
+                 const char *algname, ENGINE *e, int do_param,
+                 OPENSSL_CTX *libctx, const char *propq);
 int do_X509_sign(X509 *x, EVP_PKEY *pkey, const EVP_MD *md,
                  STACK_OF(OPENSSL_STRING) *sigopts);
 int do_X509_verify(X509 *x, EVP_PKEY *pkey, STACK_OF(OPENSSL_STRING) *vfyopts);

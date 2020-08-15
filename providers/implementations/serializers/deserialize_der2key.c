@@ -72,7 +72,7 @@ static void der2key_freectx(void *vctx)
     OPENSSL_free(ctx);
 }
 
-static const OSSL_PARAM *der2key_gettable_params(void)
+static const OSSL_PARAM *der2key_gettable_params(void *provctx)
 {
     static const OSSL_PARAM gettables[] = {
         { OSSL_DESERIALIZER_PARAM_INPUT_TYPE, OSSL_PARAM_UTF8_PTR, NULL, 0, 0 },
@@ -128,6 +128,11 @@ static int der2key_deserialize(void *vctx, OSSL_CORE_BIO *cin,
     if (pkey == NULL) {
         derp = der;
         pkey = d2i_PUBKEY(NULL, &derp, der_len);
+    }
+
+    if (pkey == NULL) {
+        derp = der;
+        pkey = d2i_KeyParams(ctx->desc->type, NULL, &derp, der_len);
     }
 
     if (pkey != NULL) {
@@ -216,6 +221,7 @@ static int der2key_export_object(void *vctx,
 
 #ifndef OPENSSL_NO_DH
 IMPLEMENT_NEWCTX("DH", DH, dh, EVP_PKEY_get1_DH, DH_free);
+IMPLEMENT_NEWCTX("DHX", DHX, dhx, EVP_PKEY_get1_DH, DH_free);
 #endif
 #ifndef OPENSSL_NO_DSA
 IMPLEMENT_NEWCTX("DSA", DSA, dsa, EVP_PKEY_get1_DSA, DSA_free);

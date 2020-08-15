@@ -10,9 +10,10 @@
 #include <openssl/err.h>
 #include <openssl/cryptoerr.h>
 #include <openssl/provider.h>
+#include <openssl/core_names.h>
 #include "internal/provider.h"
 
-OSSL_PROVIDER *OSSL_PROVIDER_load(OPENSSL_CTX *libctx, const char *name)
+OSSL_PROVIDER *OSSL_PROVIDER_try_load(OPENSSL_CTX *libctx, const char *name)
 {
     OSSL_PROVIDER *prov = NULL;
 
@@ -27,6 +28,14 @@ OSSL_PROVIDER *OSSL_PROVIDER_load(OPENSSL_CTX *libctx, const char *name)
     }
 
     return prov;
+}
+
+OSSL_PROVIDER *OSSL_PROVIDER_load(OPENSSL_CTX *libctx, const char *name)
+{
+    /* Any attempt to load a provider disables auto-loading of defaults */
+    if (ossl_provider_disable_fallback_loading(libctx))
+        return OSSL_PROVIDER_try_load(libctx, name);
+    return NULL;
 }
 
 int OSSL_PROVIDER_unload(OSSL_PROVIDER *prov)
@@ -67,6 +76,11 @@ const OSSL_ALGORITHM *OSSL_PROVIDER_query_operation(const OSSL_PROVIDER *prov,
 void *OSSL_PROVIDER_get0_provider_ctx(const OSSL_PROVIDER *prov)
 {
     return ossl_provider_prov_ctx(prov);
+}
+
+int OSSL_PROVIDER_self_test(const OSSL_PROVIDER *prov)
+{
+    return ossl_provider_self_test(prov);
 }
 
 int OSSL_PROVIDER_get_capabilities(const OSSL_PROVIDER *prov,

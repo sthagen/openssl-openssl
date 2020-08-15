@@ -295,8 +295,9 @@ int EVP_DigestUpdate(EVP_MD_CTX *ctx, const void *data, size_t count)
          * Prior to OpenSSL 3.0 EVP_DigestSignUpdate() and
          * EVP_DigestVerifyUpdate() were just macros for EVP_DigestUpdate().
          * Some code calls EVP_DigestUpdate() directly even when initialised
-         * with EVP_DigestSignInit_ex() or EVP_DigestVerifyInit_ex(), so we
-         * detect that and redirect to the correct EVP_Digest*Update() function
+         * with EVP_DigestSignInit_with_libctx() or
+         * EVP_DigestVerifyInit_with_libctx(), so we detect that and redirect to
+         * the correct EVP_Digest*Update() function
          */
         if (ctx->pctx->operation == EVP_PKEY_OP_SIGNCTX)
             return EVP_DigestSignUpdate(ctx, data, count);
@@ -557,7 +558,8 @@ int EVP_MD_get_params(const EVP_MD *digest, OSSL_PARAM params[])
 const OSSL_PARAM *EVP_MD_gettable_params(const EVP_MD *digest)
 {
     if (digest != NULL && digest->gettable_params != NULL)
-        return digest->gettable_params();
+        return digest->gettable_params(
+                           ossl_provider_ctx(EVP_MD_provider(digest)));
     return NULL;
 }
 
@@ -581,7 +583,7 @@ int EVP_MD_CTX_set_params(EVP_MD_CTX *ctx, const OSSL_PARAM params[])
 const OSSL_PARAM *EVP_MD_settable_ctx_params(const EVP_MD *md)
 {
     if (md != NULL && md->settable_ctx_params != NULL)
-        return md->settable_ctx_params();
+        return md->settable_ctx_params(ossl_provider_ctx(EVP_MD_provider(md)));
     return NULL;
 }
 
@@ -589,10 +591,12 @@ const OSSL_PARAM *EVP_MD_CTX_settable_params(EVP_MD_CTX *ctx)
 {
     EVP_PKEY_CTX *pctx;
 
-    if (ctx != NULL
-            && ctx->digest != NULL
-            && ctx->digest->settable_ctx_params != NULL)
-        return ctx->digest->settable_ctx_params();
+    if (ctx == NULL)
+        return NULL;
+
+    if (ctx->digest != NULL && ctx->digest->settable_ctx_params != NULL)
+        return ctx->digest->settable_ctx_params(
+                  ossl_provider_ctx(EVP_MD_provider(ctx->digest)));
 
     pctx = ctx->pctx;
     if (pctx != NULL
@@ -627,7 +631,7 @@ int EVP_MD_CTX_get_params(EVP_MD_CTX *ctx, OSSL_PARAM params[])
 const OSSL_PARAM *EVP_MD_gettable_ctx_params(const EVP_MD *md)
 {
     if (md != NULL && md->gettable_ctx_params != NULL)
-        return md->gettable_ctx_params();
+        return md->gettable_ctx_params(ossl_provider_ctx(EVP_MD_provider(md)));
     return NULL;
 }
 
@@ -638,7 +642,8 @@ const OSSL_PARAM *EVP_MD_CTX_gettable_params(EVP_MD_CTX *ctx)
     if (ctx != NULL
             && ctx->digest != NULL
             && ctx->digest->gettable_ctx_params != NULL)
-        return ctx->digest->gettable_ctx_params();
+        return ctx->digest->gettable_ctx_params(
+                   ossl_provider_ctx(EVP_MD_provider(ctx->digest)));
 
     pctx = ctx->pctx;
     if (pctx != NULL

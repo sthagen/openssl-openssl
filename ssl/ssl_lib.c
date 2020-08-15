@@ -18,7 +18,6 @@
 #include <openssl/objects.h>
 #include <openssl/x509v3.h>
 #include <openssl/rand.h>
-#include <openssl/rand_drbg.h>
 #include <openssl/ocsp.h>
 #include <openssl/dh.h>
 #include <openssl/engine.h>
@@ -643,6 +642,7 @@ int SSL_clear(SSL *s)
     return 1;
 }
 
+#ifndef OPENSSL_NO_DEPRECATED_3_0
 /** Used to change an SSL_CTXs default SSL method type */
 int SSL_CTX_set_ssl_version(SSL_CTX *ctx, const SSL_METHOD *meth)
 {
@@ -665,6 +665,7 @@ int SSL_CTX_set_ssl_version(SSL_CTX *ctx, const SSL_METHOD *meth)
     }
     return 1;
 }
+#endif
 
 SSL *SSL_new(SSL_CTX *ctx)
 {
@@ -955,11 +956,40 @@ int SSL_set_trust(SSL *s, int trust)
 
 int SSL_set1_host(SSL *s, const char *hostname)
 {
+    /* If a hostname is provided and parses as an IP address,
+     * treat it as such. */
+    if (hostname && X509_VERIFY_PARAM_set1_ip_asc(s->param, hostname) == 1)
+        return 1;
+
     return X509_VERIFY_PARAM_set1_host(s->param, hostname, 0);
 }
 
 int SSL_add1_host(SSL *s, const char *hostname)
 {
+    /* If a hostname is provided and parses as an IP address,
+     * treat it as such. */
+    if (hostname)
+    {
+        ASN1_OCTET_STRING *ip;
+        char *old_ip;
+
+        ip = a2i_IPADDRESS(hostname);
+        if (ip) {
+            /* We didn't want it; only to check if it *is* an IP address */
+            ASN1_OCTET_STRING_free(ip);
+
+            old_ip = X509_VERIFY_PARAM_get1_ip_asc(s->param);
+            if (old_ip)
+            {
+                free(old_ip);
+                /* There can be only one IP address */
+                return 0;
+            }
+
+            return X509_VERIFY_PARAM_set1_ip_asc(s->param, hostname);
+        }
+    }
+
     return X509_VERIFY_PARAM_add1_host(s->param, hostname, 0);
 }
 
@@ -3024,7 +3054,8 @@ int SSL_export_keying_material(SSL *s, unsigned char *out, size_t olen,
                                const unsigned char *context, size_t contextlen,
                                int use_context)
 {
-    if (s->version < TLS1_VERSION && s->version != DTLS1_BAD_VER)
+    if (s->session == NULL
+        || (s->version < TLS1_VERSION && s->version != DTLS1_BAD_VER))
         return -1;
 
     return s->method->ssl3_enc->export_keying_material(s, out, olen, label,

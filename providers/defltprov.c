@@ -62,7 +62,9 @@ static int deflt_get_params(void *provctx, OSSL_PARAM params[])
     p = OSSL_PARAM_locate(params, OSSL_PROV_PARAM_BUILDINFO);
     if (p != NULL && !OSSL_PARAM_set_utf8_ptr(p, OPENSSL_FULL_VERSION_STR))
         return 0;
-
+    p = OSSL_PARAM_locate(params, OSSL_PROV_PARAM_STATUS);
+    if (p != NULL && !OSSL_PARAM_set_uint(p, 1))
+        return 0;
     return 1;
 }
 
@@ -95,7 +97,7 @@ static int deflt_get_params(void *provctx, OSSL_PARAM params[])
  */
 static const OSSL_ALGORITHM deflt_digests[] = {
     /* Our primary name:NIST name[:our older names] */
-    { "SHA1:SHA-1", "provider=default", sha1_functions },
+    { "SHA1:SHA-1:SSL3-SHA1", "provider=default", sha1_functions },
     { "SHA2-224:SHA-224:SHA224", "provider=default", sha224_functions },
     { "SHA2-256:SHA-256:SHA256", "provider=default", sha256_functions },
     { "SHA2-384:SHA-384:SHA384", "provider=default", sha384_functions },
@@ -139,7 +141,7 @@ static const OSSL_ALGORITHM deflt_digests[] = {
 #endif /* OPENSSL_NO_SM3 */
 
 #ifndef OPENSSL_NO_MD5
-    { "MD5", "provider=default", md5_functions },
+    { "MD5:SSL3-MD5", "provider=default", md5_functions },
     { "MD5-SHA1", "provider=default", md5_sha1_functions },
 #endif /* OPENSSL_NO_MD5 */
 
@@ -151,9 +153,9 @@ static const OSSL_ALGORITHM_CAPABLE deflt_ciphers[] = {
     ALG("AES-256-ECB", aes256ecb_functions),
     ALG("AES-192-ECB", aes192ecb_functions),
     ALG("AES-128-ECB", aes128ecb_functions),
-    ALG("AES-256-CBC", aes256cbc_functions),
-    ALG("AES-192-CBC", aes192cbc_functions),
-    ALG("AES-128-CBC", aes128cbc_functions),
+    ALG("AES-256-CBC:AES256", aes256cbc_functions),
+    ALG("AES-192-CBC:AES192", aes192cbc_functions),
+    ALG("AES-128-CBC:AES128", aes128cbc_functions),
     ALG("AES-128-CBC-CTS", aes128cbc_cts_functions),
     ALG("AES-192-CBC-CTS", aes192cbc_cts_functions),
     ALG("AES-256-CBC-CTS", aes256cbc_cts_functions),
@@ -314,6 +316,7 @@ static const OSSL_ALGORITHM deflt_kdfs[] = {
     { "HKDF", "provider=default", kdf_hkdf_functions },
     { "SSKDF", "provider=default", kdf_sskdf_functions },
     { "PBKDF2", "provider=default", kdf_pbkdf2_functions },
+    { "PKCS12KDF", "provider=default", kdf_pkcs12_functions },
     { "SSHKDF", "provider=default", kdf_sshkdf_functions },
     { "X963KDF", "provider=default", kdf_x963_kdf_functions },
     { "TLS1-PRF", "provider=default", kdf_tls1_prf_functions },
@@ -337,6 +340,9 @@ static const OSSL_ALGORITHM deflt_keyexch[] = {
     { "X25519", "provider=default", x25519_keyexch_functions },
     { "X448", "provider=default", x448_keyexch_functions },
 #endif
+    { "TLS1-PRF", "provider=default", kdf_tls1_prf_keyexch_functions },
+    { "HKDF", "provider=default", kdf_hkdf_keyexch_functions },
+    { "SCRYPT:id-scrypt", "provider=default", kdf_scrypt_keyexch_functions },
     { NULL, NULL, NULL }
 };
 
@@ -369,6 +375,7 @@ static const OSSL_ALGORITHM deflt_asym_cipher[] = {
 static const OSSL_ALGORITHM deflt_keymgmt[] = {
 #ifndef OPENSSL_NO_DH
     { "DH:dhKeyAgreement", "provider=default", dh_keymgmt_functions },
+    { "DHX:X9.42 DH:dhpublicnumber", "provider=default", dhx_keymgmt_functions },
 #endif
 #ifndef OPENSSL_NO_DSA
     { "DSA:dsaEncryption", "provider=default", dsa_keymgmt_functions },
@@ -382,6 +389,9 @@ static const OSSL_ALGORITHM deflt_keymgmt[] = {
     { "ED25519", "provider=default", ed25519_keymgmt_functions },
     { "ED448", "provider=default", ed448_keymgmt_functions },
 #endif
+    { "TLS1-PRF", "provider=default", kdf_keymgmt_functions },
+    { "HKDF", "provider=default", kdf_keymgmt_functions },
+    { "SCRYPT:id-scrypt", "provider=default", kdf_keymgmt_functions },
     { NULL, NULL, NULL }
 };
 

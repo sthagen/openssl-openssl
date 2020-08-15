@@ -219,15 +219,6 @@ int PROV_DRBG_generate(PROV_DRBG *drbg, unsigned char *out, size_t outlen,
                        unsigned int strength, int prediction_resistance,
                        const unsigned char *adin, size_t adinlen);
 
-/*
- * Entropy call back for the FIPS 140-2 section 4.9.2 Conditional Tests.
- * These need to be exposed for the unit tests.
- */
-int drbg_set_callbacks(void *vctx, OSSL_INOUT_CALLBACK *get_entropy_fn,
-                       OSSL_CALLBACK *cleanup_entropy_fn,
-                       OSSL_INOUT_CALLBACK *get_nonce_fn,
-                       OSSL_CALLBACK *cleanup_nonce_fn, void *arg);
-
 /* Verify that an array of numeric values is all zero */
 #define PROV_DRBG_VERYIFY_ZEROIZATION(v)    \
     {                                       \
@@ -247,11 +238,11 @@ OSSL_FUNC_rand_unlock_fn drbg_unlock;
 int drbg_get_ctx_params(PROV_DRBG *drbg, OSSL_PARAM params[]);
 int drbg_set_ctx_params(PROV_DRBG *drbg, const OSSL_PARAM params[]);
 
-#define OSSL_PARAM_DRBG_SETABLE_CTX_COMMON                                      \
+#define OSSL_PARAM_DRBG_SETTABLE_CTX_COMMON                                      \
     OSSL_PARAM_uint(OSSL_DRBG_PARAM_RESEED_REQUESTS, NULL),             \
     OSSL_PARAM_uint64(OSSL_DRBG_PARAM_RESEED_TIME_INTERVAL, NULL)
 
-#define OSSL_PARAM_DRBG_GETABLE_CTX_COMMON                              \
+#define OSSL_PARAM_DRBG_GETTABLE_CTX_COMMON                              \
     OSSL_PARAM_int(OSSL_RAND_PARAM_STATE, NULL),                        \
     OSSL_PARAM_uint(OSSL_RAND_PARAM_STRENGTH, NULL),                    \
     OSSL_PARAM_size_t(OSSL_DRBG_PARAM_MAX_REQUEST, NULL),               \

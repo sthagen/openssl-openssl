@@ -244,6 +244,7 @@ extern const OSSL_DISPATCH poly1305_functions[];
 
 /* KDFs / PRFs */
 extern const OSSL_DISPATCH kdf_pbkdf2_functions[];
+extern const OSSL_DISPATCH kdf_pkcs12_functions[];
 #ifndef OPENSSL_NO_SCRYPT
 extern const OSSL_DISPATCH kdf_scrypt_functions[];
 #endif
@@ -267,6 +268,7 @@ extern const OSSL_DISPATCH crngt_functions[];
 
 /* Key management */
 extern const OSSL_DISPATCH dh_keymgmt_functions[];
+extern const OSSL_DISPATCH dhx_keymgmt_functions[];
 extern const OSSL_DISPATCH dsa_keymgmt_functions[];
 extern const OSSL_DISPATCH rsa_keymgmt_functions[];
 extern const OSSL_DISPATCH rsapss_keymgmt_functions[];
@@ -275,12 +277,16 @@ extern const OSSL_DISPATCH x448_keymgmt_functions[];
 extern const OSSL_DISPATCH ed25519_keymgmt_functions[];
 extern const OSSL_DISPATCH ed448_keymgmt_functions[];
 extern const OSSL_DISPATCH ec_keymgmt_functions[];
+extern const OSSL_DISPATCH kdf_keymgmt_functions[];
 
 /* Key Exchange */
 extern const OSSL_DISPATCH dh_keyexch_functions[];
 extern const OSSL_DISPATCH x25519_keyexch_functions[];
 extern const OSSL_DISPATCH x448_keyexch_functions[];
 extern const OSSL_DISPATCH ecdh_keyexch_functions[];
+extern const OSSL_DISPATCH kdf_tls1_prf_keyexch_functions[];
+extern const OSSL_DISPATCH kdf_hkdf_keyexch_functions[];
+extern const OSSL_DISPATCH kdf_scrypt_keyexch_functions[];
 
 /* Signature */
 extern const OSSL_DISPATCH dsa_signature_functions[];
@@ -360,7 +366,10 @@ extern const OSSL_DISPATCH ec_pub_pem_serializer_functions[];
 extern const OSSL_DISPATCH ec_param_pem_serializer_functions[];
 
 extern const OSSL_DISPATCH der_to_dh_deserializer_functions[];
+extern const OSSL_DISPATCH der_to_dhx_deserializer_functions[];
 extern const OSSL_DISPATCH der_to_dsa_deserializer_functions[];
+extern const OSSL_DISPATCH msblob_to_dsa_deserializer_functions[];
+extern const OSSL_DISPATCH pvk_to_dsa_deserializer_functions[];
 extern const OSSL_DISPATCH der_to_ec_deserializer_functions[];
 extern const OSSL_DISPATCH der_to_x25519_deserializer_functions[];
 extern const OSSL_DISPATCH der_to_x448_deserializer_functions[];
@@ -368,4 +377,6 @@ extern const OSSL_DISPATCH der_to_ed25519_deserializer_functions[];
 extern const OSSL_DISPATCH der_to_ed448_deserializer_functions[];
 extern const OSSL_DISPATCH der_to_rsa_deserializer_functions[];
 extern const OSSL_DISPATCH der_to_rsapss_deserializer_functions[];
+extern const OSSL_DISPATCH msblob_to_rsa_deserializer_functions[];
+extern const OSSL_DISPATCH pvk_to_rsa_deserializer_functions[];
 extern const OSSL_DISPATCH pem_to_der_deserializer_functions[];

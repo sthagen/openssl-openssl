@@ -23,6 +23,7 @@ extern "C" {
 #define OSSL_PROV_PARAM_NAME            "name"                /* utf8_string */
 #define OSSL_PROV_PARAM_VERSION         "version"             /* utf8_string */
 #define OSSL_PROV_PARAM_BUILDINFO       "buildinfo"           /* utf8_string */
+#define OSSL_PROV_PARAM_STATUS          "status"              /* uint */
 
 /* Self test callback parameters */
 #define OSSL_PROV_PARAM_SELF_TEST_PHASE  "st-phase" /* utf8_string */
@@ -52,6 +53,7 @@ extern "C" {
 #define OSSL_CIPHER_PARAM_KEYLEN               "keylen"       /* size_t */
 #define OSSL_CIPHER_PARAM_IVLEN                "ivlen"        /* size_t */
 #define OSSL_CIPHER_PARAM_IV                   "iv"           /* octet_string OR octet_ptr */
+#define OSSL_CIPHER_PARAM_IV_STATE             "iv-state"     /* octet_string OR octet_ptr */
 #define OSSL_CIPHER_PARAM_NUM                  "num"          /* uint */
 #define OSSL_CIPHER_PARAM_ROUNDS               "rounds"       /* uint */
 #define OSSL_CIPHER_PARAM_AEAD_TAG             "tag"          /* octet_string */
@@ -176,6 +178,7 @@ extern "C" {
 #define OSSL_KDF_PARAM_SIZE         "size"      /* size_t */
 #define OSSL_KDF_PARAM_CIPHER       OSSL_ALG_PARAM_CIPHER     /* utf8 string */
 #define OSSL_KDF_PARAM_CONSTANT     "constant"  /* octet string */
+#define OSSL_KDF_PARAM_PKCS12_ID    "id"        /* int */
 
 /* Known KDF names */
 #define OSSL_KDF_NAME_HKDF          "HKDF"

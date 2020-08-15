@@ -176,16 +176,16 @@ static int rsa_check_padding(int mdnid, int padding)
     return 1;
 }
 
-static int rsa_check_parameters(EVP_MD *md, PROV_RSA_CTX *prsactx)
+static int rsa_check_parameters(PROV_RSA_CTX *prsactx)
 {
     if (prsactx->pad_mode == RSA_PKCS1_PSS_PADDING) {
         int max_saltlen;
 
         /* See if minimum salt length exceeds maximum possible */
-        max_saltlen = RSA_size(prsactx->rsa) - EVP_MD_size(md);
+        max_saltlen = RSA_size(prsactx->rsa) - EVP_MD_size(prsactx->md);
         if ((RSA_bits(prsactx->rsa) & 0x7) == 1)
             max_saltlen--;
-        if (prsactx->min_saltlen > max_saltlen) {
+        if (prsactx->min_saltlen < 0 || prsactx->min_saltlen > max_saltlen) {
             ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_SALT_LENGTH);
             return 0;
         }
@@ -230,7 +230,6 @@ static int rsa_setup_md(PROV_RSA_CTX *ctx, const char *mdname,
         if (md == NULL
             || md_nid == NID_undef
             || !rsa_check_padding(md_nid, ctx->pad_mode)
-            || !rsa_check_parameters(md, ctx)
             || mdname_len >= sizeof(ctx->mdname)) {
             if (md == NULL)
                 ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
@@ -365,7 +364,8 @@ static int rsa_signature_init(void *vprsactx, void *vrsa, int operation)
                 prsactx->saltlen = min_saltlen;
 
                 return rsa_setup_md(prsactx, mdname, prsactx->propq)
-                    && rsa_setup_mgf1_md(prsactx, mgf1mdname, prsactx->propq);
+                    && rsa_setup_mgf1_md(prsactx, mgf1mdname, prsactx->propq)
+                    && rsa_check_parameters(prsactx);
             }
         }
 
@@ -983,7 +983,7 @@ static const OSSL_PARAM known_gettable_ctx_params[] = {
     OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *rsa_gettable_ctx_params(void)
+static const OSSL_PARAM *rsa_gettable_ctx_params(ossl_unused void *provctx)
 {
     return known_gettable_ctx_params;
 }
@@ -1151,7 +1151,7 @@ static int rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
         }
 
         if (rsa_pss_restricted(prsactx)) {
-            switch (prsactx->saltlen) {
+            switch (saltlen) {
             case RSA_PSS_SALTLEN_AUTO:
                 if (prsactx->operation == EVP_PKEY_OP_VERIFY) {
                     ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_PSS_SALTLEN);
@@ -1168,7 +1168,7 @@ static int rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
                                    EVP_MD_size(prsactx->md));
                     return 0;
                 }
-                /* FALLTHRU */
+                break;
             default:
                 if (saltlen >= 0 && saltlen < prsactx->min_saltlen) {
                     ERR_raise_data(ERR_LIB_PROV,
@@ -1233,7 +1233,7 @@ static const OSSL_PARAM known_settable_ctx_params[] = {
     OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *rsa_settable_ctx_params(void)
+static const OSSL_PARAM *rsa_settable_ctx_params(ossl_unused void *provctx)
 {
     /*
      * TODO(3.0): Should this function return a different set of settable ctx
