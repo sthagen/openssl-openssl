@@ -164,6 +164,14 @@ The OpenSSL default provider supports these operations and algorithms:
 
 =item RSA, see L<EVP_SIGNATURE-RSA(7)>
 
+=item HMAC, see L<EVP_SIGNATURE-HMAC(7)>
+
+=item SIPHASH, see L<EVP_SIGNATURE-Siphash(7)>
+
+=item POLY1305, see L<EVP_SIGNATURE-Poly1305(7)>
+
+=item CMAC, see L<EVP_SIGNATURE-CMAC(7)>
+
 =back
 
 =head2 Asymmetric Cipher
@@ -192,25 +200,25 @@ The OpenSSL default provider supports these operations and algorithms:
 
 =back
 
-=head2 Asymmetric Key Serializer
+=head2 Asymmetric Key Encoder
 
-The default provider also includes all of the serialization algorithms
+The default provider also includes all of the encoding algorithms
 present in the base provider.  Some of these have the property "fips=yes",
 to allow them to be used together with the FIPS provider.
 
 =over 4
 
-=item RSA, see L<OSSL_SERIALIZER-RSA(7)>
+=item RSA, see L<OSSL_ENCODER-RSA(7)>
 
-=item DH, see L<OSSL_SERIALIZER-DH(7)>
+=item DH, see L<OSSL_ENCODER-DH(7)>
 
-=item DSA, see L<OSSL_SERIALIZER-DSA(7)>
+=item DSA, see L<OSSL_ENCODER-DSA(7)>
 
-=item EC, see L<OSSL_SERIALIZER-EC(7)>
+=item EC, see L<OSSL_ENCODER-EC(7)>
 
-=item X25519, see L<OSSL_SERIALIZER-X25519(7)>
+=item X25519, see L<OSSL_ENCODER-X25519(7)>
 
-=item X448, see L<OSSL_SERIALIZER-X448(7)>
+=item X448, see L<OSSL_ENCODER-X448(7)>
 
 =back
 

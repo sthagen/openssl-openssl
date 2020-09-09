@@ -18,8 +18,8 @@
 
 /* Extract a private key from a PKCS8 structure */
 
-EVP_PKEY *evp_pkcs82pkey_int(const PKCS8_PRIV_KEY_INFO *p8, OPENSSL_CTX *libctx,
-                             const char *propq)
+EVP_PKEY *EVP_PKCS82PKEY_with_libctx(const PKCS8_PRIV_KEY_INFO *p8,
+                                     OPENSSL_CTX *libctx, const char *propq)
 {
     EVP_PKEY *pkey = NULL;
     const ASN1_OBJECT *algoid;
@@ -64,7 +64,7 @@ EVP_PKEY *evp_pkcs82pkey_int(const PKCS8_PRIV_KEY_INFO *p8, OPENSSL_CTX *libctx,
 
 EVP_PKEY *EVP_PKCS82PKEY(const PKCS8_PRIV_KEY_INFO *p8)
 {
-    return evp_pkcs82pkey_int(p8, NULL, NULL);
+    return EVP_PKCS82PKEY_with_libctx(p8, NULL, NULL);
 }
 
 /* Turn a private key into a PKCS8 structure */
@@ -76,6 +76,11 @@ PKCS8_PRIV_KEY_INFO *EVP_PKEY2PKCS8(const EVP_PKEY *pkey)
         EVPerr(EVP_F_EVP_PKEY2PKCS8, ERR_R_MALLOC_FAILURE);
         return NULL;
     }
+
+    /* Force a key downgrade if that's possible */
+    /* TODO(3.0) Is there a better way for provider-native keys? */
+    if (EVP_PKEY_get0(pkey) == NULL)
+        return NULL;
 
     if (pkey->ameth) {
         if (pkey->ameth->priv_encode) {

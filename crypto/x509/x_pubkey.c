@@ -22,12 +22,16 @@
 #include "crypto/x509.h"
 #include <openssl/rsa.h>
 #include <openssl/dsa.h>
-#include <openssl/serializer.h>
+#include <openssl/encoder.h>
 
 struct X509_pubkey_st {
     X509_ALGOR *algor;
     ASN1_BIT_STRING *public_key;
     EVP_PKEY *pkey;
+
+    /* extra data for the callback, used by d2i_PUBKEY_ex */
+    OPENSSL_CTX *libctx;
+    const char *propq;
 };
 
 static int x509_pubkey_decode(EVP_PKEY **pk, const X509_PUBKEY *key);
@@ -93,18 +97,18 @@ int X509_PUBKEY_set(X509_PUBKEY **x, EVP_PKEY *pkey)
         }
     } else if (pkey->keymgmt != NULL) {
         BIO *bmem = BIO_new(BIO_s_mem());
-        const char *serprop = OSSL_SERIALIZER_PUBKEY_TO_DER_PQ;
-        OSSL_SERIALIZER_CTX *sctx =
-            OSSL_SERIALIZER_CTX_new_by_EVP_PKEY(pkey, serprop);
+        const char *encprop = OSSL_ENCODER_PUBKEY_TO_DER_PQ;
+        OSSL_ENCODER_CTX *ectx =
+            OSSL_ENCODER_CTX_new_by_EVP_PKEY(pkey, encprop);
 
-        if (OSSL_SERIALIZER_to_bio(sctx, bmem)) {
+        if (OSSL_ENCODER_to_bio(ectx, bmem)) {
             const unsigned char *der = NULL;
             long derlen = BIO_get_mem_data(bmem, (char **)&der);
 
             pk = d2i_X509_PUBKEY(NULL, &der, derlen);
         }
 
-        OSSL_SERIALIZER_CTX_free(sctx);
+        OSSL_ENCODER_CTX_free(ectx);
         BIO_free(bmem);
     }
 
@@ -120,7 +124,7 @@ int X509_PUBKEY_set(X509_PUBKEY **x, EVP_PKEY *pkey)
 
     /*
      * pk->pkey is NULL when using the legacy routine, but is non-NULL when
-     * going through the serializer, and for all intents and purposes, it's
+     * going through the encoder, and for all intents and purposes, it's
      * a perfect copy of |pkey|, just not the same instance.  In that case,
      * we could simply return early, right here.
      * However, in the interest of being cautious leaning on paranoia, some
@@ -228,30 +232,55 @@ EVP_PKEY *X509_PUBKEY_get(const X509_PUBKEY *key)
 }
 
 /*
- * Now two pseudo ASN1 routines that take an EVP_PKEY structure and encode or
- * decode as X509_PUBKEY
+ * Now three pseudo ASN1 routines that take an EVP_PKEY structure and encode
+ * or decode as X509_PUBKEY
  */
 
-EVP_PKEY *d2i_PUBKEY(EVP_PKEY **a, const unsigned char **pp, long length)
+EVP_PKEY *d2i_PUBKEY_ex(EVP_PKEY **a, const unsigned char **pp, long length,
+                        OPENSSL_CTX *libctx, const char *propq)
 {
-    X509_PUBKEY *xpk;
-    EVP_PKEY *pktmp;
+    X509_PUBKEY *xpk, *xpk2 = NULL, **pxpk = NULL;
+    EVP_PKEY *pktmp = NULL;
     const unsigned char *q;
 
     q = *pp;
-    xpk = d2i_X509_PUBKEY(NULL, &q, length);
+
+    /*
+     * If libctx or propq are non-NULL, we take advantage of the reuse
+     * feature.  It's not generally recommended, but is safe enough for
+     * newly created structures.
+     */
+    if (libctx != NULL || propq != NULL) {
+        xpk2 = OPENSSL_zalloc(sizeof(*xpk2));
+        if (xpk2 == NULL) {
+            ERR_raise(ERR_LIB_X509, ERR_R_MALLOC_FAILURE);
+            return NULL;
+        }
+        xpk2->libctx = libctx;
+        xpk2->propq = propq;
+        pxpk = &xpk2;
+    }
+    xpk = d2i_X509_PUBKEY(pxpk, &q, length);
     if (xpk == NULL)
-        return NULL;
+        goto end;
     pktmp = X509_PUBKEY_get(xpk);
     X509_PUBKEY_free(xpk);
+    xpk2 = NULL;                 /* We know that xpk == xpk2 */
     if (pktmp == NULL)
-        return NULL;
+        goto end;
     *pp = q;
     if (a != NULL) {
         EVP_PKEY_free(*a);
         *a = pktmp;
     }
+ end:
+    X509_PUBKEY_free(xpk2);
     return pktmp;
+}
+
+EVP_PKEY *d2i_PUBKEY(EVP_PKEY **a, const unsigned char **pp, long length)
+{
+    return d2i_PUBKEY_ex(a, pp, length, NULL, NULL);
 }
 
 int i2d_PUBKEY(const EVP_PKEY *a, unsigned char **pp)
@@ -274,16 +303,16 @@ int i2d_PUBKEY(const EVP_PKEY *a, unsigned char **pp)
         }
         X509_PUBKEY_free(xpk);
     } else if (a->keymgmt != NULL) {
-        const char *serprop = OSSL_SERIALIZER_PUBKEY_TO_DER_PQ;
-        OSSL_SERIALIZER_CTX *ctx =
-            OSSL_SERIALIZER_CTX_new_by_EVP_PKEY(a, serprop);
+        const char *encprop = OSSL_ENCODER_PUBKEY_TO_DER_PQ;
+        OSSL_ENCODER_CTX *ctx =
+            OSSL_ENCODER_CTX_new_by_EVP_PKEY(a, encprop);
         BIO *out = BIO_new(BIO_s_mem());
         BUF_MEM *buf = NULL;
 
         if (ctx != NULL
             && out != NULL
-            && OSSL_SERIALIZER_CTX_get_serializer(ctx) != NULL
-            && OSSL_SERIALIZER_to_bio(ctx, out)
+            && OSSL_ENCODER_CTX_get_encoder(ctx) != NULL
+            && OSSL_ENCODER_to_bio(ctx, out)
             && BIO_get_mem_ptr(out, &buf) > 0) {
             ret = buf->length;
 
@@ -299,7 +328,7 @@ int i2d_PUBKEY(const EVP_PKEY *a, unsigned char **pp)
             }
         }
         BIO_free(out);
-        OSSL_SERIALIZER_CTX_free(ctx);
+        OSSL_ENCODER_CTX_free(ctx);
     }
 
     return ret;
@@ -492,4 +521,14 @@ int X509_PUBKEY_eq(const X509_PUBKEY *a, const X509_PUBKEY *b)
         || (pB = X509_PUBKEY_get0(b)) == NULL)
         return -2;
     return EVP_PKEY_eq(pA, pB);
+}
+
+int X509_PUBKEY_get0_libctx(OPENSSL_CTX **plibctx, const char **ppropq,
+                            const X509_PUBKEY *key)
+{
+    if (plibctx)
+        *plibctx = key->libctx;
+    if (ppropq)
+        *ppropq = key->propq;
+    return 1;
 }

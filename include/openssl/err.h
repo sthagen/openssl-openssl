@@ -113,8 +113,8 @@ struct err_state_st {
 # define ERR_LIB_CRMF            56
 # define ERR_LIB_PROV            57
 # define ERR_LIB_CMP             58
-# define ERR_LIB_OSSL_SERIALIZER 59
-# define ERR_LIB_OSSL_DESERIALIZER 60
+# define ERR_LIB_OSSL_ENCODER    59
+# define ERR_LIB_OSSL_DECODER    60
 # define ERR_LIB_HTTP            61
 
 # define ERR_LIB_USER            128
@@ -295,6 +295,7 @@ static ossl_inline int ERR_FATAL_ERROR(unsigned long errcode)
 # define ERR_R_DSA_LIB   ERR_LIB_DSA/* 10 */
 # define ERR_R_X509_LIB  ERR_LIB_X509/* 11 */
 # define ERR_R_ASN1_LIB  ERR_LIB_ASN1/* 13 */
+# define ERR_R_CRYPTO_LIB ERR_LIB_CRYPTO/* 15 */
 # define ERR_R_EC_LIB    ERR_LIB_EC/* 16 */
 # define ERR_R_BIO_LIB   ERR_LIB_BIO/* 32 */
 # define ERR_R_PKCS7_LIB ERR_LIB_PKCS7/* 33 */
@@ -303,6 +304,7 @@ static ossl_inline int ERR_FATAL_ERROR(unsigned long errcode)
 # define ERR_R_UI_LIB    ERR_LIB_UI/* 40 */
 # define ERR_R_ECDSA_LIB ERR_LIB_ECDSA/* 42 */
 # define ERR_R_OSSL_STORE_LIB ERR_LIB_OSSL_STORE/* 44 */
+# define ERR_R_OSSL_DECODER_LIB ERR_LIB_OSSL_DECODER/* 60 */
 
 /*
  * global reason codes, range 64..99 (sub-system specific codes start at 100)

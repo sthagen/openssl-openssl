@@ -516,10 +516,8 @@ int tls13_change_cipher_state(SSL *s, int which)
     const EVP_MD *md = NULL;
     const EVP_CIPHER *cipher = NULL;
 #if !defined(OPENSSL_NO_KTLS) && defined(OPENSSL_KTLS_TLS13)
-# ifndef __FreeBSD__
-    struct tls_crypto_info_all crypto_info;
+    ktls_crypto_info_t crypto_info;
     BIO *bio;
-# endif
 #endif
 
     if (which & SSL3_CC_READ) {
@@ -784,7 +782,6 @@ int tls13_change_cipher_state(SSL *s, int which)
         s->statem.enc_write_state = ENC_WRITE_STATE_VALID;
 #ifndef OPENSSL_NO_KTLS
 # if defined(OPENSSL_KTLS_TLS13)
-#  ifndef __FreeBSD__
     if (!(which & SSL3_CC_WRITE) || !(which & SSL3_CC_APPLICATION)
         || ((which & SSL3_CC_WRITE) && (s->mode & SSL_MODE_NO_KTLS_TX)))
         goto skip_ktls;
@@ -798,7 +795,7 @@ int tls13_change_cipher_state(SSL *s, int which)
         goto skip_ktls;
 
     /* check that cipher is supported */
-    if (!ktls_check_supported_cipher(cipher, ciph_ctx))
+    if (!ktls_check_supported_cipher(s, cipher, ciph_ctx))
         goto skip_ktls;
 
     bio = s->wbio;
@@ -814,15 +811,14 @@ int tls13_change_cipher_state(SSL *s, int which)
         goto skip_ktls;
 
     /* configure kernel crypto structure */
-    if (!ktls_configure_crypto(cipher, s->version, ciph_ctx, 
+    if (!ktls_configure_crypto(s, cipher, ciph_ctx,
                                RECORD_LAYER_get_write_sequence(&s->rlayer),
-                               &crypto_info, NULL, iv, key))
+                               &crypto_info, NULL, iv, key, NULL, 0))
         goto skip_ktls;
 
     /* ktls works with user provided buffers directly */
     if (BIO_set_ktls(bio, &crypto_info, which & SSL3_CC_WRITE))
         ssl3_release_write_buffer(s);
-#  endif
 skip_ktls:
 # endif
 #endif

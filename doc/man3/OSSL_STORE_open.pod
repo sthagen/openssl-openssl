@@ -21,23 +21,29 @@ OSSL_STORE_error, OSSL_STORE_close
                                  void *ui_data,
                                  OSSL_STORE_post_process_info_fn post_process,
                                  void *post_process_data);
- OSSL_STORE_CTX *OSSL_STORE_open_with_libctx
-     (const char *uri, OPENSSL_CTX *libctx, const char *propq,
-      const UI_METHOD *ui_method, void *ui_data,
-      OSSL_STORE_post_process_info_fn post_process, void *post_process_data);
+ OSSL_STORE_CTX *
+ OSSL_STORE_open_with_libctx(const char *uri,
+                             OPENSSL_CTX *libctx, const char *propq,
+                             const UI_METHOD *ui_method, void *ui_data,
+                             OSSL_STORE_post_process_info_fn post_process,
+                             void *post_process_data);
 
- int OSSL_STORE_ctrl(OSSL_STORE_CTX *ctx, int cmd, ... /* args */);
  OSSL_STORE_INFO *OSSL_STORE_load(OSSL_STORE_CTX *ctx);
  int OSSL_STORE_eof(OSSL_STORE_CTX *ctx);
  int OSSL_STORE_error(OSSL_STORE_CTX *ctx);
  int OSSL_STORE_close(OSSL_STORE_CTX *ctx);
 
+Deprecated since OpenSSL 3.0, can be hidden entirely by defining
+B<OPENSSL_API_COMPAT> with a suitable version value, see
+L<openssl_user_macros(7)>:
+
+ int OSSL_STORE_ctrl(OSSL_STORE_CTX *ctx, int cmd, ... /* args */);
+
 =head1 DESCRIPTION
 
 These functions help the application to fetch supported objects (see
 L<OSSL_STORE_INFO(3)/SUPPORTED OBJECTS> for information on which those are)
-from a given URI (see L</SUPPORTED SCHEMES> for more information on
-the supported URI schemes).
+from a given URI.
 The general method to do so is to "open" the URI using OSSL_STORE_open(),
 read each available and supported object using OSSL_STORE_load() as long as
 OSSL_STORE_eof() hasn't been reached, and finish it off with OSSL_STORE_close().
@@ -57,7 +63,7 @@ together.
 OSSL_STORE_open_with_libctx() takes a uri or path I<uri>, password UI method
 I<ui_method> with associated data I<ui_data>, and post processing
 callback I<post_process> with associated data I<post_process_data>,
-a library context I<libctx> with an associated property query <propq>,
+a library context I<libctx> with an associated property query I<propq>,
 and opens a channel to the data located at the URI and returns a
 B<OSSL_STORE_CTX> with all necessary internal information.
 The given I<ui_method> and I<ui_data> will be reused by all
@@ -71,7 +77,7 @@ the next object, until I<post_process> returns something other than
 NULL, or the end of data is reached as indicated by OSSL_STORE_eof().
 
 OSSL_STORE_open() is similar to OSSL_STORE_open_with_libctx() but uses NULL for
-the library context I<libctx> and property query <propq>.
+the library context I<libctx> and property query I<propq>.
 
 OSSL_STORE_ctrl() takes a B<OSSL_STORE_CTX>, and command number I<cmd> and
 more arguments not specified here.
@@ -87,7 +93,7 @@ There are also global controls available:
 
 Controls if the loader should attempt to use secure memory for any
 allocated B<OSSL_STORE_INFO> and its contents.
-This control expects one argument, a pointer to an B<int> that is expected to
+This control expects one argument, a pointer to an I<int> that is expected to
 have the value 1 (yes) or 0 (no).
 Any other value is an error.
 
@@ -108,12 +114,6 @@ OSSL_STORE_close() takes a B<OSSL_STORE_CTX>, closes the channel that was opened
 by OSSL_STORE_open() and frees all other information that was stored in the
 B<OSSL_STORE_CTX>, as well as the B<OSSL_STORE_CTX> itself.
 If I<ctx> is NULL it does nothing.
-
-=head1 SUPPORTED SCHEMES
-
-The basic supported scheme is B<file:>.
-Any other scheme can be added dynamically, using
-OSSL_STORE_register_loader().
 
 =head1 NOTES
 
@@ -161,12 +161,16 @@ L<passphrase-encoding(7)>
 
 OSSL_STORE_open_with_libctx() was added in OpenSSL 3.0.
 
-OSSL_STORE_CTX(), OSSL_STORE_post_process_info_fn(), OSSL_STORE_open(),
+B<OSSL_STORE_CTX>, OSSL_STORE_post_process_info_fn(), OSSL_STORE_open(),
 OSSL_STORE_ctrl(), OSSL_STORE_load(), OSSL_STORE_eof() and OSSL_STORE_close()
 were added in OpenSSL 1.1.1.
 
 Handling of NULL I<ctx> argument for OSSL_STORE_close()
 was introduced in OpenSSL 1.1.1h.
+
+OSSL_STORE_open_with_libctx() was added in OpenSSL 3.0.
+
+OSSL_STORE_ctrl() and OSSL_STORE_vctrl() were deprecated in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 

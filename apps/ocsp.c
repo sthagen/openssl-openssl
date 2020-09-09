@@ -275,7 +275,7 @@ int ocsp_main(int argc, char **argv)
             OPENSSL_free(tpath);
             thost = tport = tpath = NULL;
             if (!OSSL_HTTP_parse_url(opt_arg(),
-                                     &host, &port, &path, &use_ssl)) {
+                                     &host, &port, NULL, &path, &use_ssl)) {
                 BIO_printf(bio_err, "%s Error parsing URL\n", prog);
                 goto end;
             }
@@ -567,11 +567,10 @@ int ocsp_main(int argc, char **argv)
             BIO_printf(bio_err, "Error loading responder certificate\n");
             goto end;
         }
-        if (!load_certs(rca_filename, &rca_cert, FORMAT_PEM,
-                        NULL, "CA certificate"))
+        if (!load_certs(rca_filename, &rca_cert, NULL, "CA certificates"))
             goto end;
         if (rcertfile != NULL) {
-            if (!load_certs(rcertfile, &rother, FORMAT_PEM, NULL,
+            if (!load_certs(rcertfile, &rother, NULL,
                             "responder other certificates"))
                 goto end;
         }
@@ -665,7 +664,7 @@ redo_accept:
             goto end;
         }
         if (sign_certfile != NULL) {
-            if (!load_certs(sign_certfile, &sign_other, FORMAT_PEM, NULL,
+            if (!load_certs(sign_certfile, &sign_other, NULL,
                             "signer certificates"))
                 goto end;
         }
@@ -774,8 +773,8 @@ redo_accept:
     if (vpmtouched)
         X509_STORE_set1_param(store, vpm);
     if (verify_certfile != NULL) {
-        if (!load_certs(verify_certfile, &verify_other, FORMAT_PEM, NULL,
-                        "validator certificate"))
+        if (!load_certs(verify_certfile, &verify_other, NULL,
+                        "validator certificates"))
             goto end;
     }
 

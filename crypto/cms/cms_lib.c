@@ -189,6 +189,10 @@ BIO *CMS_dataInit(CMS_ContentInfo *cms, BIO *icont)
         cmsbio = cms_EnvelopedData_init_bio(cms);
         break;
 
+    case NID_id_smime_ct_authEnvelopedData:
+        cmsbio = cms_AuthEnvelopedData_init_bio(cms);
+        break;
+
     default:
         CMSerr(CMS_F_CMS_DATAINIT, CMS_R_UNSUPPORTED_TYPE);
         goto err;
@@ -239,6 +243,9 @@ int CMS_dataFinal(CMS_ContentInfo *cms, BIO *cmsbio)
     case NID_pkcs7_enveloped:
         return cms_EnvelopedData_final(cms, cmsbio);
 
+    case NID_id_smime_ct_authEnvelopedData:
+        return cms_AuthEnvelopedData_final(cms, cmsbio);
+
     case NID_pkcs7_signed:
         return cms_SignedData_final(cms, cmsbio);
 
@@ -274,6 +281,10 @@ ASN1_OCTET_STRING **CMS_get0_content(CMS_ContentInfo *cms)
 
     case NID_pkcs7_encrypted:
         return &cms->d.encryptedData->encryptedContentInfo->encryptedContent;
+
+    case NID_id_smime_ct_authEnvelopedData:
+        return &cms->d.authEnvelopedData->authEncryptedContentInfo
+                                        ->encryptedContent;
 
     case NID_id_smime_ct_authData:
         return &cms->d.authenticatedData->encapContentInfo->eContent;
@@ -311,6 +322,9 @@ static ASN1_OBJECT **cms_get0_econtent_type(CMS_ContentInfo *cms)
     case NID_pkcs7_encrypted:
         return &cms->d.encryptedData->encryptedContentInfo->contentType;
 
+    case NID_id_smime_ct_authEnvelopedData:
+        return &cms->d.authEnvelopedData->authEncryptedContentInfo
+                                        ->contentType;
     case NID_id_smime_ct_authData:
         return &cms->d.authenticatedData->encapContentInfo->eContentType;
 
@@ -394,26 +408,37 @@ BIO *cms_DigestAlgorithm_init_bio(X509_ALGOR *digestAlgorithm,
 {
     BIO *mdbio = NULL;
     const ASN1_OBJECT *digestoid;
-    EVP_MD *digest = NULL;
+    const EVP_MD *digest = NULL;
+    EVP_MD *fetched_digest = NULL;
     const char *alg;
 
     X509_ALGOR_get0(&digestoid, NULL, NULL, digestAlgorithm);
     alg = OBJ_nid2sn(OBJ_obj2nid(digestoid));
-    digest = EVP_MD_fetch(ctx->libctx, alg, ctx->propq);
+
+    (void)ERR_set_mark();
+    fetched_digest = EVP_MD_fetch(ctx->libctx, alg, ctx->propq);
+
+    if (fetched_digest != NULL)
+        digest = fetched_digest;
+    else
+        digest = EVP_get_digestbyobj(digestoid);
     if (digest == NULL) {
+        (void)ERR_clear_last_mark();
         CMSerr(CMS_F_CMS_DIGESTALGORITHM_INIT_BIO,
                CMS_R_UNKNOWN_DIGEST_ALGORITHM);
         goto err;
     }
+    (void)ERR_pop_to_mark();
+
     mdbio = BIO_new(BIO_f_md());
     if (mdbio == NULL || !BIO_set_md(mdbio, digest)) {
         CMSerr(CMS_F_CMS_DIGESTALGORITHM_INIT_BIO, CMS_R_MD_BIO_INIT_ERROR);
         goto err;
     }
-    EVP_MD_free(digest);
+    EVP_MD_free(fetched_digest);
     return mdbio;
  err:
-    EVP_MD_free(digest);
+    EVP_MD_free(fetched_digest);
     BIO_free(mdbio);
     return NULL;
 }
@@ -460,6 +485,11 @@ static STACK_OF(CMS_CertificateChoices)
         if (cms->d.envelopedData->originatorInfo == NULL)
             return NULL;
         return &cms->d.envelopedData->originatorInfo->certificates;
+
+    case NID_id_smime_ct_authEnvelopedData:
+        if (cms->d.authEnvelopedData->originatorInfo == NULL)
+            return NULL;
+        return &cms->d.authEnvelopedData->originatorInfo->certificates;
 
     default:
         CMSerr(CMS_F_CMS_GET0_CERTIFICATE_CHOICES,
@@ -539,6 +569,11 @@ static STACK_OF(CMS_RevocationInfoChoice)
         if (cms->d.envelopedData->originatorInfo == NULL)
             return NULL;
         return &cms->d.envelopedData->originatorInfo->crls;
+
+    case NID_id_smime_ct_authEnvelopedData:
+        if (cms->d.authEnvelopedData->originatorInfo == NULL)
+            return NULL;
+        return &cms->d.authEnvelopedData->originatorInfo->crls;
 
     default:
         CMSerr(CMS_F_CMS_GET0_REVOCATION_CHOICES,

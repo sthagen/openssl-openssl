@@ -105,7 +105,7 @@ X509_REQ *load_csr(const char *file, int format, const char *desc);
 X509 *load_cert_pass(const char *uri, int maybe_stdin,
                      const char *pass, const char *desc);
 /* the format parameter is meanwhile not needed anymore and thus ignored */
-X509 *load_cert(const char *uri, int format, const char *desc);
+#define load_cert(uri, format, desc) load_cert_pass(uri, 0, NULL, desc)
 X509_CRL *load_crl(const char *uri, int format, const char *desc);
 void cleanse(char *str);
 void clear_free(char *str);
@@ -113,13 +113,19 @@ EVP_PKEY *load_key(const char *uri, int format, int maybe_stdin,
                    const char *pass, ENGINE *e, const char *desc);
 EVP_PKEY *load_pubkey(const char *uri, int format, int maybe_stdin,
                       const char *pass, ENGINE *e, const char *desc);
-int load_certs(const char *file, STACK_OF(X509) **certs, int format,
+int load_certs(const char *uri, STACK_OF(X509) **certs,
                const char *pass, const char *desc);
-int load_crls(const char *file, STACK_OF(X509_CRL) **crls, int format,
+int load_crls(const char *uri, STACK_OF(X509_CRL) **crls,
               const char *pass, const char *desc);
+int load_key_certs_crls(const char *uri, int maybe_stdin,
+                        const char *pass, const char *desc,
+                        EVP_PKEY **ppkey, EVP_PKEY **ppubkey,
+                        X509 **pcert, STACK_OF(X509) **pcerts,
+                        X509_CRL **pcrl, STACK_OF(X509_CRL) **pcrls);
 int load_key_cert_crl(const char *uri, int maybe_stdin,
                       const char *pass, const char *desc,
-                      EVP_PKEY **ppkey, X509 **pcert, X509_CRL **pcrl);
+                      EVP_PKEY **ppkey, EVP_PKEY **ppubkey,
+                      X509 **pcert, X509_CRL **pcrl);
 X509_STORE *setup_verify(const char *CAfile, int noCAfile,
                          const char *CApath, int noCApath,
                          const char *CAstore, int noCAstore);

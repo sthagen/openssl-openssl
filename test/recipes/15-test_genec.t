@@ -29,28 +29,10 @@ sub supported_pass {
     ok(run(@_), $str);
 }
 
-sub unsupported_pass {
-    my $str = shift;
- TODO: {
-        local $TODO = "Currently not supported";
-
-        ok(run(@_), $str);
-    }
-}
-
 sub supported_fail {
     my $str = shift;
 
     ok(!run(@_), $str);
-}
-
-sub unsupported_fail {
-    my $str = shift;
- TODO: {
-        local $TODO = "Currently not supported";
-
-        ok(!run(@_), $str);
-    }
 }
 
 setup("test_genec");
@@ -183,7 +165,7 @@ push(@curve_list, @curve_aliases);
 my %params_encodings =
     (
      'named_curve'      => \&supported_pass,
-     'explicit'         => \&unsupported_pass
+     'explicit'         => \&supported_pass
     );
 
 my @output_formats = ('PEM', 'DER');
@@ -194,6 +176,7 @@ plan tests => scalar(@curve_list) * scalar(keys %params_encodings)
     + 1                             # Checking that with no curve it fails
     + 1                             # Checking that with unknown curve it fails
     + 1                             # Subtest for explicit only curves
+    + 1                             # base serializer test
     ;
 
 ok(!run(app([ 'openssl', 'genpkey',
@@ -204,6 +187,15 @@ ok(!run(app([ 'openssl', 'genpkey',
               '-algorithm', 'EC',
               '-pkeyopt', 'ec_paramgen_curve:bogus_foobar_curve'])),
    "genpkey EC with unknown curve name should fail");
+
+ok(run(app([ 'openssl', 'genpkey',
+             '-provider-path', 'providers',
+             '-provider', 'base',
+             '-config', srctop_file("test", "default.cnf"),
+             '-algorithm', 'EC',
+             '-pkeyopt', 'ec_paramgen_curve:prime256v1',
+             '-text'])),
+    "generate a private key and serialize it using the base provider");
 
 foreach my $curvename (@curve_list) {
     foreach my $paramenc (sort keys %params_encodings) {
@@ -263,7 +255,7 @@ subtest "test curves that only support explicit parameters encoding" => sub {
     my %params_encodings =
         (
          'named_curve'      => \&supported_fail,
-         'explicit'         => \&unsupported_pass
+         'explicit'         => \&supported_pass
         );
 
     foreach my $curvename (@explicit_only_curves) {

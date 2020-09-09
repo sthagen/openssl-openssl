@@ -38,6 +38,9 @@ typedef struct test_fixture {
     int additional_arg;
 } CMP_VFY_TEST_FIXTURE;
 
+static OPENSSL_CTX *libctx = NULL;
+static OSSL_PROVIDER *default_null_provider = NULL, *provider = NULL;
+
 static void tear_down(CMP_VFY_TEST_FIXTURE *fixture)
 {
     OSSL_CMP_MSG_free(fixture->msg);
@@ -56,7 +59,7 @@ static CMP_VFY_TEST_FIXTURE *set_up(const char *const test_case_name)
         return NULL;
     fixture->test_case_name = test_case_name;
     if (ts == NULL
-            || !TEST_ptr(fixture->cmp_ctx = OSSL_CMP_CTX_new())
+            || !TEST_ptr(fixture->cmp_ctx = OSSL_CMP_CTX_new(libctx, NULL))
             || !OSSL_CMP_CTX_set0_trustedStore(fixture->cmp_ctx, ts)
             || !OSSL_CMP_CTX_set_log_cb(fixture->cmp_ctx, print_to_bio_out)) {
         tear_down(fixture);
@@ -98,7 +101,7 @@ static int execute_verify_popo_test(CMP_VFY_TEST_FIXTURE *fixture)
             return 0;
     }
     return TEST_int_eq(fixture->expected,
-                       ossl_cmp_verify_popo(fixture->msg,
+                       ossl_cmp_verify_popo(fixture->cmp_ctx, fixture->msg,
                                             fixture->additional_arg));
 }
 
@@ -140,12 +143,13 @@ static int execute_validate_cert_path_test(CMP_VFY_TEST_FIXTURE *fixture)
 
 static int test_validate_msg_mac_alg_protection(void)
 {
-    SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
     /* secret value belonging to cmp-test/CMP_IP_waitingStatus_PBM.der */
     const unsigned char sec_1[] = {
         '9', 'p', 'p', '8', '-', 'b', '3', '5', 'i', '-', 'X', 'd', '3',
         'Q', '-', 'u', 'd', 'N', 'R'
     };
+
+    SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
 
     fixture->expected = 1;
     if (!TEST_true(OSSL_CMP_CTX_set1_secretValue(fixture->cmp_ctx, sec_1,
@@ -161,11 +165,12 @@ static int test_validate_msg_mac_alg_protection(void)
 #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 static int test_validate_msg_mac_alg_protection_bad(void)
 {
-    SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
     const unsigned char sec_bad[] = {
         '9', 'p', 'p', '8', '-', 'b', '3', '5', 'i', '-', 'X', 'd', '3',
         'Q', '-', 'u', 'd', 'N', 'r'
     };
+
+    SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
     fixture->expected = 0;
 
     if (!TEST_true(OSSL_CMP_CTX_set1_secretValue(fixture->cmp_ctx, sec_bad,
@@ -186,15 +191,17 @@ static int add_trusted(OSSL_CMP_CTX *ctx, X509 *cert)
 
 static int add_untrusted(OSSL_CMP_CTX *ctx, X509 *cert)
 {
-    return X509_add_cert(OSSL_CMP_CTX_get0_untrusted_certs(ctx), cert,
+    return X509_add_cert(OSSL_CMP_CTX_get0_untrusted(ctx), cert,
                          X509_ADD_FLAG_UP_REF);
 }
 
 static int test_validate_msg_signature_partial_chain(int expired)
 {
-    SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
-    X509_STORE *ts = OSSL_CMP_CTX_get0_trustedStore(fixture->cmp_ctx);
+    X509_STORE *ts;
 
+    SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
+
+    ts = OSSL_CMP_CTX_get0_trustedStore(fixture->cmp_ctx);
     fixture->expected = !expired;
     if (ts == NULL
             || !TEST_ptr(fixture->msg = load_pkimsg(ir_protected_f))
@@ -543,8 +550,20 @@ void cleanup_tests(void)
     X509_free(instaca_cert);
     OSSL_CMP_MSG_free(ir_unprotected);
     OSSL_CMP_MSG_free(ir_rmprotection);
+    OPENSSL_CTX_free(libctx);
     return;
 }
+
+
+#define USAGE "server.crt client.crt " \
+    "EndEntity1.crt EndEntity2.crt " \
+    "Root_CA.crt Intermediate_CA.crt " \
+    "CMP_IR_protected.der CMP_IR_unprotected.der " \
+    "IP_waitingStatus_PBM.der IR_rmprotection.der " \
+    "insta.cert.pem insta_ca.cert.pem " \
+    "IR_protected_0_extraCerts.der " \
+    "IR_protected_2_extraCerts.der module_name [module_conf_file]\n"
+OPT_TEST_DECLARE_USAGE(USAGE)
 
 int setup_tests(void)
 {
@@ -578,31 +597,27 @@ int setup_tests(void)
             || !TEST_ptr(instaca_f = test_get_argument(11))
             || !TEST_ptr(ir_protected_0_extracerts = test_get_argument(12))
             || !TEST_ptr(ir_protected_2_extracerts = test_get_argument(13))) {
-        TEST_error("usage: cmp_vfy_test server.crt client.crt "
-                   "EndEntity1.crt EndEntity2.crt "
-                   "Root_CA.crt Intermediate_CA.crt "
-                   "CMP_IR_protected.der CMP_IR_unprotected.der "
-                   "IP_waitingStatus_PBM.der IR_rmprotection.der "
-                   "insta.cert.pem insta_ca.cert.pem "
-                   "IR_protected_0_extraCerts.der "
-                   "IR_protected_2_extraCerts.der\n");
+        TEST_error("usage: cmp_vfy_test %s", USAGE);
         return 0;
     }
 
+    if (!test_get_libctx(&libctx, &default_null_provider, &provider, 14, USAGE))
+        return 0;
+
     /* Load certificates for cert chain */
-    if (!TEST_ptr(endentity1 = load_pem_cert(endentity1_f))
-            || !TEST_ptr(endentity2 = load_pem_cert(endentity2_f))
-            || !TEST_ptr(root = load_pem_cert(root_f))
-            || !TEST_ptr(intermediate = load_pem_cert(intermediate_f)))
+    if (!TEST_ptr(endentity1 = load_pem_cert(endentity1_f, libctx))
+            || !TEST_ptr(endentity2 = load_pem_cert(endentity2_f, libctx))
+            || !TEST_ptr(root = load_pem_cert(root_f, NULL))
+            || !TEST_ptr(intermediate = load_pem_cert(intermediate_f, libctx)))
         goto err;
 
-    if (!TEST_ptr(insta_cert = load_pem_cert(instacert_f))
-            || !TEST_ptr(instaca_cert = load_pem_cert(instaca_f)))
+    if (!TEST_ptr(insta_cert = load_pem_cert(instacert_f, libctx))
+            || !TEST_ptr(instaca_cert = load_pem_cert(instaca_f, libctx)))
         goto err;
 
     /* Load certificates for message validation */
-    if (!TEST_ptr(srvcert = load_pem_cert(server_f))
-            || !TEST_ptr(clcert = load_pem_cert(client_f)))
+    if (!TEST_ptr(srvcert = load_pem_cert(server_f, libctx))
+            || !TEST_ptr(clcert = load_pem_cert(client_f, libctx)))
         goto err;
     if (!TEST_int_eq(1, RAND_bytes(rand_data, OSSL_CMP_TRANSACTIONID_LENGTH)))
         goto err;

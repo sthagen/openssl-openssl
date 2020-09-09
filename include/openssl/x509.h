@@ -159,6 +159,7 @@ DEFINE_OR_DECLARE_STACK_OF(X509_TRUST)
 # define X509_FLAG_NO_AUX                (1L << 10)
 # define X509_FLAG_NO_ATTRIBUTES         (1L << 11)
 # define X509_FLAG_NO_IDS                (1L << 12)
+# define X509_FLAG_EXTENSIONS_ONLY_KID   (1L << 13)
 
 /* Flags specific to X509_NAME_print_ex() */
 
@@ -522,6 +523,8 @@ EVP_PKEY *X509_PUBKEY_get(const X509_PUBKEY *key);
 int X509_get_pubkey_parameters(EVP_PKEY *pkey, STACK_OF(X509) *chain);
 long X509_get_pathlen(X509 *x);
 DECLARE_ASN1_ENCODE_FUNCTIONS_only(EVP_PKEY, PUBKEY)
+EVP_PKEY *d2i_PUBKEY_ex(EVP_PKEY **a, const unsigned char **pp, long length,
+                        OPENSSL_CTX *libctx, const char *propq);
 # ifndef OPENSSL_NO_RSA
 DECLARE_ASN1_ENCODE_FUNCTIONS_only(RSA, RSA_PUBKEY)
 # endif
@@ -619,33 +622,30 @@ X509_INFO *X509_INFO_new(void);
 void X509_INFO_free(X509_INFO *a);
 char *X509_NAME_oneline(const X509_NAME *a, char *buf, int size);
 
+/* TODO move this block of decls to asn1.h when 'breaking change' is possible */
 DEPRECATEDIN_3_0(int ASN1_verify(i2d_of_void *i2d, X509_ALGOR *algor1,
                                  ASN1_BIT_STRING *signature, char *data,
                                  EVP_PKEY *pkey))
-
 DEPRECATEDIN_3_0(int ASN1_digest(i2d_of_void *i2d, const EVP_MD *type,
                                  char *data,
                                  unsigned char *md, unsigned int *len))
-
 DEPRECATEDIN_3_0(int ASN1_sign(i2d_of_void *i2d, X509_ALGOR *algor1,
                                X509_ALGOR *algor2, ASN1_BIT_STRING *signature,
                                char *data, EVP_PKEY *pkey, const EVP_MD *type))
-
 int ASN1_item_digest(const ASN1_ITEM *it, const EVP_MD *type, void *data,
                      unsigned char *md, unsigned int *len);
-
-int ASN1_item_verify(const ASN1_ITEM *it, X509_ALGOR *algor1,
-                     ASN1_BIT_STRING *signature, void *data, EVP_PKEY *pkey);
-int ASN1_item_verify_ctx(const ASN1_ITEM *it, X509_ALGOR *algor1,
-                         ASN1_BIT_STRING *signature, void *data,
+int ASN1_item_verify(const ASN1_ITEM *it, const X509_ALGOR *alg,
+                     const ASN1_BIT_STRING *signature, const void *data,
+                     EVP_PKEY *pkey);
+int ASN1_item_verify_ctx(const ASN1_ITEM *it, const X509_ALGOR *alg,
+                         const ASN1_BIT_STRING *signature, const void *data,
                          EVP_MD_CTX *ctx);
-
-int ASN1_item_sign(const ASN1_ITEM *it, X509_ALGOR *algor1,
-                   X509_ALGOR *algor2, ASN1_BIT_STRING *signature, void *data,
-                   EVP_PKEY *pkey, const EVP_MD *type);
+int ASN1_item_sign(const ASN1_ITEM *it, X509_ALGOR *algor1, X509_ALGOR *algor2,
+                   ASN1_BIT_STRING *signature, const void *data,
+                   EVP_PKEY *pkey, const EVP_MD *md);
 int ASN1_item_sign_ctx(const ASN1_ITEM *it, X509_ALGOR *algor1,
                        X509_ALGOR *algor2, ASN1_BIT_STRING *signature,
-                       void *asn, EVP_MD_CTX *ctx);
+                       const void *data, EVP_MD_CTX *ctx);
 
 long X509_get_version(const X509 *x);
 int X509_set_version(X509 *x, long version);
@@ -1036,6 +1036,8 @@ X509_ALGOR *PKCS5_pbkdf2_set(int iter, unsigned char *salt, int saltlen,
 DECLARE_ASN1_FUNCTIONS(PKCS8_PRIV_KEY_INFO)
 
 EVP_PKEY *EVP_PKCS82PKEY(const PKCS8_PRIV_KEY_INFO *p8);
+EVP_PKEY *EVP_PKCS82PKEY_with_libctx(const PKCS8_PRIV_KEY_INFO *p8,
+                                     OPENSSL_CTX *libctx, const char *propq);
 PKCS8_PRIV_KEY_INFO *EVP_PKEY2PKCS8(const EVP_PKEY *pkey);
 
 int PKCS8_pkey_set0(PKCS8_PRIV_KEY_INFO *priv, ASN1_OBJECT *aobj,

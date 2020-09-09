@@ -878,8 +878,22 @@ static int do_x509_check(X509 *x, const char *chk, size_t chklen,
             ASN1_STRING *cstr;
 
             gen = sk_GENERAL_NAME_value(gens, i);
-            if (gen->type != check_type)
-                continue;
+            if ((gen->type == GEN_OTHERNAME) && (check_type == GEN_EMAIL)) {
+                if (OBJ_obj2nid(gen->d.otherName->type_id) ==
+                    NID_id_on_SmtpUTF8Mailbox) {
+                    san_present = 1;
+                    cstr = gen->d.otherName->value->value.utf8string;
+
+                    /* Positive on success, negative on error! */
+                    if ((rv = do_check_string(cstr, 0, equal, flags,
+                                              chk, chklen, peername)) != 0)
+                        break;
+                } else
+                    continue;
+            } else {
+                if ((gen->type != check_type) && (gen->type != GEN_OTHERNAME))
+                    continue;
+            }
             san_present = 1;
             if (check_type == GEN_EMAIL)
                 cstr = gen->d.rfc822Name;
@@ -978,7 +992,12 @@ int X509_check_ip_asc(X509 *x, const char *ipasc, unsigned int flags)
 
 char *ipaddr_to_asc(unsigned char *p, int len)
 {
+    /*
+     * 40 is enough space for the longest IPv6 address + nul terminator byte
+     * XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX\0
+     */
     char buf[40], *out;
+    int i = 0, remain = 0, bytes = 0;
 
     switch (len) {
     case 4: /* IPv4 */
@@ -986,11 +1005,14 @@ char *ipaddr_to_asc(unsigned char *p, int len)
         break;
         /* TODO possibly combine with static i2r_address() in v3_addr.c */
     case 16: /* IPv6 */
-        for (out = buf; out < buf + 8 * 3; out += 3) {
-            BIO_snprintf(out, 3 + 1, "%X:", p[0] << 8 | p[1]);
+        for (out = buf, i = 8, remain = sizeof(buf);
+             i-- > 0 && bytes >= 0;
+             remain -= bytes, out += bytes) {
+            const char *template = (i > 0 ? "%X:" : "%X");
+
+            bytes = BIO_snprintf(out, remain, template, p[0] << 8 | p[1]);
             p += 2;
         }
-        out[-1] = '\0';
         break;
     default:
         BIO_snprintf(buf, sizeof(buf), "<invalid length=%d>", len);

@@ -22,7 +22,7 @@ IF[{- !$disabled{tests} -}]
           testutil/driver.c testutil/tests.c testutil/cb.c testutil/stanza.c \
           testutil/format_output.c \
           testutil/test_cleanup.c testutil/main.c testutil/testutil_init.c \
-          testutil/options.c testutil/test_options.c \
+          testutil/options.c testutil/test_options.c testutil/provider.c \
           testutil/apps_mem.c testutil/random.c $LIBAPPSSRC
   INCLUDE[libtestutil.a]=../include ../apps/include ..
   DEPEND[libtestutil.a]=../libcrypto
@@ -52,12 +52,12 @@ IF[{- !$disabled{tests} -}]
           cipherbytes_test \
           asn1_encode_test asn1_decode_test asn1_string_table_test \
           x509_time_test x509_dup_cert_test x509_check_cert_pkey_test \
-          recordlentest drbgtest sslbuffertest \
+          recordlentest drbgtest rand_status_test sslbuffertest \
           time_offset_test pemtest ssl_cert_table_internal_test ciphername_test \
           http_test servername_test ocspapitest fatalerrtest tls13ccstest \
           sysdefaulttest errtest ssl_ctx_test gosttest \
           context_internal_test aesgcmtest params_test evp_pkey_dparams_test \
-          keymgmt_internal_test hexstr_test provider_status_test
+          keymgmt_internal_test hexstr_test provider_status_test defltfips_test
 
   IF[{- !$disabled{'deprecated-3.0'} -}]
     PROGRAMS{noinst}=enginetest
@@ -324,6 +324,10 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[sslapitest]=../include ../apps/include ..
   DEPEND[sslapitest]=../libcrypto ../libssl libtestutil.a
 
+  SOURCE[defltfips_test]=defltfips_test.c
+  INCLUDE[defltfips_test]=../include  ../apps/include
+  DEPEND[defltfips_test]=../libcrypto libtestutil.a
+
   SOURCE[ocspapitest]=ocspapitest.c
   INCLUDE[ocspapitest]=../include ../apps/include
   DEPEND[ocspapitest]=../libcrypto libtestutil.a
@@ -375,6 +379,10 @@ IF[{- !$disabled{tests} -}]
   SOURCE[drbgtest]=drbgtest.c
   INCLUDE[drbgtest]=../include ../apps/include
   DEPEND[drbgtest]=../libcrypto.a libtestutil.a
+
+  SOURCE[rand_status_test]=rand_status_test.c
+  INCLUDE[rand_status_test]=../include ../apps/include
+  DEPEND[rand_status_test]=../libcrypto libtestutil.a
 
   SOURCE[x509_dup_cert_test]=x509_dup_cert_test.c
   INCLUDE[x509_dup_cert_test]=../include ../apps/include
@@ -776,10 +784,10 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[hexstr_test]=.. ../include ../apps/include
   DEPEND[hexstr_test]=../libcrypto.a libtestutil.a
 
-  PROGRAMS{noinst}=serdes_test
-  SOURCE[serdes_test]=serdes_test.c
-  INCLUDE[serdes_test]=.. ../include ../apps/include
-  DEPEND[serdes_test]=../libcrypto.a libtestutil.a
+  PROGRAMS{noinst}=endecode_test
+  SOURCE[endecode_test]=endecode_test.c
+  INCLUDE[endecode_test]=.. ../include ../apps/include
+  DEPEND[endecode_test]=../libcrypto.a libtestutil.a
 
   PROGRAMS{noinst}=namemap_internal_test
   SOURCE[namemap_internal_test]=namemap_internal_test.c

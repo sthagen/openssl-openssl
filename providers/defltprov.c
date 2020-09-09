@@ -364,6 +364,14 @@ static const OSSL_ALGORITHM deflt_signature[] = {
     { "ED448:Ed448", "provider=default", ed448_signature_functions },
     { "ECDSA", "provider=default", ecdsa_signature_functions },
 #endif
+    { "HMAC", "provider=default", mac_legacy_hmac_signature_functions },
+    { "SIPHASH", "provider=default", mac_legacy_siphash_signature_functions },
+#ifndef OPENSSL_NO_POLY1305
+    { "POLY1305", "provider=default", mac_legacy_poly1305_signature_functions },
+#endif
+#ifndef OPENSSL_NO_CMAC
+    { "CMAC", "provider=default", mac_legacy_cmac_signature_functions },
+#endif
     { NULL, NULL, NULL }
 };
 
@@ -392,30 +400,47 @@ static const OSSL_ALGORITHM deflt_keymgmt[] = {
     { "TLS1-PRF", "provider=default", kdf_keymgmt_functions },
     { "HKDF", "provider=default", kdf_keymgmt_functions },
     { "SCRYPT:id-scrypt", "provider=default", kdf_keymgmt_functions },
+    { "HMAC", "provider=default", mac_legacy_keymgmt_functions },
+    { "SIPHASH", "provider=default", mac_legacy_keymgmt_functions },
+#ifndef OPENSSL_NO_POLY1305
+    { "POLY1305", "provider=default", mac_legacy_keymgmt_functions },
+#endif
+#ifndef OPENSSL_NO_CMAC
+    { "CMAC", "provider=default", cmac_legacy_keymgmt_functions },
+#endif
     { NULL, NULL, NULL }
 };
 
-static const OSSL_ALGORITHM deflt_serializer[] = {
-#define SER(name, fips, format, type, func_table)                           \
+static const OSSL_ALGORITHM deflt_encoder[] = {
+#define ENCODER(name, _fips, _format, _type, func_table)                    \
     { name,                                                                 \
-      "provider=default,fips=" fips ",format=" format ",type=" type,        \
+      "provider=default,fips=" _fips ",format=" _format ",type=" _type,     \
       (func_table) }
 
-#include "serializers.inc"
+#include "encoders.inc"
     { NULL, NULL, NULL }
 };
-#undef SER
+#undef ENCODER
 
-static const OSSL_ALGORITHM deflt_deserializer[] = {
-#define DESER(name, fips, input, func_table)                                \
+static const OSSL_ALGORITHM deflt_decoder[] = {
+#define DECODER(name, _fips, _input, func_table)                            \
     { name,                                                                 \
-      "provider=default,fips=" fips ",input=" input,                        \
+      "provider=default,fips=" _fips ",input=" _input,                      \
       (func_table) }
 
-#include "deserializers.inc"
+#include "decoders.inc"
     { NULL, NULL, NULL }
 };
-#undef DESER
+#undef DECODER
+
+static const OSSL_ALGORITHM deflt_store[] = {
+#define STORE(name, fips, func_table)                           \
+    { name, "provider=default,fips=" fips, (func_table) },
+
+#include "stores.inc"
+    { NULL, NULL, NULL }
+#undef STORE
+};
 
 static const OSSL_ALGORITHM *deflt_query(void *provctx, int operation_id,
                                          int *no_cache)
@@ -441,10 +466,12 @@ static const OSSL_ALGORITHM *deflt_query(void *provctx, int operation_id,
         return deflt_signature;
     case OSSL_OP_ASYM_CIPHER:
         return deflt_asym_cipher;
-    case OSSL_OP_SERIALIZER:
-        return deflt_serializer;
-    case OSSL_OP_DESERIALIZER:
-        return deflt_deserializer;
+    case OSSL_OP_ENCODER:
+        return deflt_encoder;
+    case OSSL_OP_DECODER:
+        return deflt_decoder;
+    case OSSL_OP_STORE:
+        return deflt_store;
     }
     return NULL;
 }

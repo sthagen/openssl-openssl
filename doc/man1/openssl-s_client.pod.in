@@ -234,7 +234,7 @@ Suppresses sending of the SNI (Server Name Indication) extension in the
 ClientHello message. Cannot be used in conjunction with the B<-servername> or
 <-dane_tlsa_domain> options.
 
-=item B<-cert> I<certname>
+=item B<-cert> I<filename>
 
 The client certificate to use, if one is requested by the server.
 The default is not to use a certificate.
@@ -248,8 +248,9 @@ This option has no effect and is retained for backward compatibility only.
 
 =item B<-cert_chain>
 
-A file containing untrusted certificates to use when attempting to build the
+A file or URI of untrusted certificates to use when attempting to build the
 certificate chain related to the certificate specified via the B<-cert> option.
+The input can be in PEM, DER, or PKCS#12 format.
 
 =item B<-build_chain>
 
@@ -282,7 +283,8 @@ See L<openssl(1)/Format Options> for details.
 
 =item B<-pass> I<arg>
 
-the private key password source. For more information about the format of I<arg>
+the private key and certifiate file password source.
+For more information about the format of I<arg>
 see L<openssl(1)/Pass phrase options>.
 
 =item B<-verify> I<depth>

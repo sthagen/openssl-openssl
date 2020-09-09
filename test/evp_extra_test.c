@@ -27,10 +27,19 @@
 #include <openssl/params.h>
 #include <openssl/dsa.h>
 #include <openssl/dh.h>
+#include <openssl/aes.h>
 #include "testutil.h"
 #include "internal/nelem.h"
 #include "internal/sizes.h"
 #include "crypto/evp.h"
+
+#ifndef OPENSSL_NO_SM2
+/*
+ * TODO(3.0) remove when provider SM2 keymgmt is implemented and
+ * EVP_PKEY_set_alias_type() works with provider-native keys.
+ */
+# define TMP_SM2_HACK
+#endif
 
 static OPENSSL_CTX *testctx = NULL;
 
@@ -880,6 +889,11 @@ static int test_EVP_SM2_verify(void)
     if (!TEST_true(pkey != NULL))
         goto done;
 
+#ifdef TMP_SM2_HACK
+    if (!TEST_ptr(EVP_PKEY_get0(pkey)))
+        goto done;
+#endif
+
     if (!TEST_true(EVP_PKEY_set_alias_type(pkey, EVP_PKEY_SM2)))
         goto done;
 
@@ -1254,23 +1268,69 @@ static int test_EVP_PKEY_check(int i)
 }
 
 #ifndef OPENSSL_NO_CMAC
+static int get_cmac_val(EVP_PKEY *pkey, unsigned char *mac)
+{
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+    const char msg[] = "Hello World";
+    size_t maclen;
+    int ret = 1;
+
+    if (!TEST_ptr(mdctx)
+            || !TEST_true(EVP_DigestSignInit(mdctx, NULL, NULL, NULL, pkey))
+            || !TEST_true(EVP_DigestSignUpdate(mdctx, msg, sizeof(msg)))
+            || !TEST_true(EVP_DigestSignFinal(mdctx, mac, &maclen))
+            || !TEST_size_t_eq(maclen, AES_BLOCK_SIZE))
+        ret = 0;
+
+    EVP_MD_CTX_free(mdctx);
+
+    return ret;
+}
 static int test_CMAC_keygen(void)
 {
+    static unsigned char key[] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+        0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
+    };
     /*
      * This is a legacy method for CMACs, but should still work.
      * This verifies that it works without an ENGINE.
      */
     EVP_PKEY_CTX *kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_CMAC, NULL);
     int ret = 0;
+    EVP_PKEY *pkey = NULL;
+    unsigned char mac[AES_BLOCK_SIZE], mac2[AES_BLOCK_SIZE];
 
-    if (!TEST_true(EVP_PKEY_keygen_init(kctx) > 0)
-        && !TEST_true(EVP_PKEY_CTX_ctrl(kctx, -1, EVP_PKEY_OP_KEYGEN,
-                                        EVP_PKEY_CTRL_CIPHER,
-                                        0, (void *)EVP_aes_256_ecb()) > 0))
+    /* Test a CMAC key created using the "generated" method */
+    if (!TEST_int_gt(EVP_PKEY_keygen_init(kctx), 0)
+            || !TEST_int_gt(EVP_PKEY_CTX_ctrl(kctx, -1, EVP_PKEY_OP_KEYGEN,
+                                            EVP_PKEY_CTRL_CIPHER,
+                                            0, (void *)EVP_aes_256_ecb()), 0)
+            || !TEST_int_gt(EVP_PKEY_CTX_ctrl(kctx, -1, EVP_PKEY_OP_KEYGEN,
+                                            EVP_PKEY_CTRL_SET_MAC_KEY,
+                                            sizeof(key), (void *)key), 0)
+            || !TEST_int_gt(EVP_PKEY_keygen(kctx, &pkey), 0)
+            || !TEST_ptr(pkey)
+            || !TEST_true(get_cmac_val(pkey, mac)))
         goto done;
+
+    EVP_PKEY_free(pkey);
+
+    /*
+     * Test a CMAC key using the direct method, and compare with the mac
+     * created above.
+     */
+    pkey = EVP_PKEY_new_CMAC_key(NULL, key, sizeof(key), EVP_aes_256_ecb());
+    if (!TEST_ptr(pkey)
+            || !TEST_true(get_cmac_val(pkey, mac2))
+            || !TEST_mem_eq(mac, sizeof(mac), mac2, sizeof(mac2)))
+        goto done;
+
     ret = 1;
 
  done:
+    EVP_PKEY_free(pkey);
     EVP_PKEY_CTX_free(kctx);
     return ret;
 }
@@ -1743,14 +1803,19 @@ static int test_keygen_with_empty_template(int n)
 
 /*
  * Test that we fail if we attempt to use an algorithm that is not available
- * in the current library context (unless we are using an algorithm that should
- * be made available via legacy codepaths).
+ * in the current library context (unless we are using an algorithm that
+ * should be made available via legacy codepaths).
+ *
+ * 0:   RSA
+ * 1:   SM2
  */
 static int test_pkey_ctx_fail_without_provider(int tst)
 {
     OPENSSL_CTX *tmpctx = OPENSSL_CTX_new();
     OSSL_PROVIDER *nullprov = NULL;
     EVP_PKEY_CTX *pctx = NULL;
+    const char *keytype = NULL;
+    int expect_null = 0;
     int ret = 0;
 
     if (!TEST_ptr(tmpctx))
@@ -1760,19 +1825,42 @@ static int test_pkey_ctx_fail_without_provider(int tst)
     if (!TEST_ptr(nullprov))
         goto err;
 
-    pctx = EVP_PKEY_CTX_new_from_name(tmpctx, tst == 0 ? "RSA" : "HMAC", "");
-
-    /* RSA is not available via any provider so we expect this to fail */
-    if (tst == 0 && !TEST_ptr_null(pctx))
-        goto err;
-
     /*
-     * HMAC is always available because it is implemented via legacy codepaths
-     * and not in a provider at all. We expect this to pass.
+     * We check for certain algos in the null provider.
+     * If an algo is expected to have a provider keymgmt, contructing an
+     * EVP_PKEY_CTX is expected to fail (return NULL).
+     * Otherwise, if it's expected to have legacy support, contructing an
+     * EVP_PKEY_CTX is expected to succeed (return non-NULL).
      */
-    if (tst == 1 && !TEST_ptr(pctx))
+    switch (tst) {
+    case 0:
+        keytype = "RSA";
+        expect_null = 1;
+        break;
+    case 1:
+        keytype = "SM2";
+        expect_null = 0; /* TODO: change to 1 when we have a SM2 keymgmt */
+#ifdef OPENSSL_NO_EC
+        TEST_info("EC disable, skipping SM2 check...");
+        goto end;
+#endif
+#ifdef OPENSSL_NO_SM2
+        TEST_info("SM2 disable, skipping SM2 check...");
+        goto end;
+#endif
+        break;
+    default:
+        TEST_error("No test for case %d", tst);
+        goto err;
+    }
+
+    pctx = EVP_PKEY_CTX_new_from_name(tmpctx, keytype, "");
+    if (expect_null ? !TEST_ptr_null(pctx) : !TEST_ptr(pctx))
         goto err;
 
+#if defined(OPENSSL_NO_EC) || defined(OPENSSL_NO_SM2)
+ end:
+#endif
     ret = 1;
 
  err:

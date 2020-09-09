@@ -117,6 +117,14 @@ void ffc_params_set_flags(FFC_PARAMS *params, unsigned int flags)
     params->flags = flags;
 }
 
+void ffc_params_enable_flags(FFC_PARAMS *params, unsigned int flags, int enable)
+{
+    if (enable)
+        params->flags |= flags;
+    else
+        params->flags &= ~flags;
+}
+
 int ffc_set_digest(FFC_PARAMS *params, const char *alg, const char *props)
 {
     params->mdname = alg;
@@ -305,8 +313,10 @@ int ffc_params_print(BIO *bp, const FFC_PARAMS *ffc, int indent)
         goto err;
     if (ffc->seed != NULL) {
         size_t i;
-        BIO_indent(bp, indent, 128);
-        BIO_puts(bp, "seed:");
+
+        if (!BIO_indent(bp, indent, 128)
+            || BIO_puts(bp, "seed:") <= 0)
+            goto err;
         for (i = 0; i < ffc->seedlen; i++) {
             if ((i % 15) == 0) {
                 if (BIO_puts(bp, "\n") <= 0
@@ -321,8 +331,8 @@ int ffc_params_print(BIO *bp, const FFC_PARAMS *ffc, int indent)
             return 0;
     }
     if (ffc->pcounter != -1) {
-        BIO_indent(bp, indent, 128);
-        if (BIO_printf(bp, "counter: %d\n", ffc->pcounter) <= 0)
+        if (!BIO_indent(bp, indent, 128)
+            || BIO_printf(bp, "counter: %d\n", ffc->pcounter) <= 0)
             goto err;
     }
     return 1;

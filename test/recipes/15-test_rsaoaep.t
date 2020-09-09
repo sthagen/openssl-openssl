@@ -27,7 +27,7 @@ plan tests =>
     + 9;
 
 my @prov = ( );
-my $provconf = srctop_file("test", "fips.cnf");
+my $provconf = srctop_file("test", "fips-and-base.cnf");
 my $provpath = bldtop_dir("providers");
 my $msg_file = data_file("plain_text");
 my $enc1_file = "enc1.bin";
@@ -39,7 +39,7 @@ my $dec3_file = "dec3.txt";
 my $key_file = srctop_file("test", "testrsa.pem");
 
 unless ($no_fips) {
-    @prov = ( "-provider_path", $provpath, "-config", $provconf );
+    @prov = ( "-provider-path", $provpath, "-config", $provconf );
     my $infile = bldtop_file('providers', platform->dso('fips'));
 
     ok(run(app(['openssl', 'fipsinstall',

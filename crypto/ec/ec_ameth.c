@@ -22,6 +22,7 @@
 #include <openssl/asn1t.h>
 #include "crypto/asn1.h"
 #include "crypto/evp.h"
+#include "crypto/x509.h"
 #include <openssl/core_names.h>
 #include "openssl/param_build.h"
 #include "ec_local.h"
@@ -161,12 +162,15 @@ static int eckey_pub_decode(EVP_PKEY *pkey, const X509_PUBKEY *pubkey)
     int ptype, pklen;
     EC_KEY *eckey = NULL;
     X509_ALGOR *palg;
+    OPENSSL_CTX *libctx = NULL;
+    const char *propq = NULL;
 
-    if (!X509_PUBKEY_get0_param(NULL, &p, &pklen, &palg, pubkey))
+    if (!X509_PUBKEY_get0_libctx(&libctx, &propq, pubkey)
+        || !X509_PUBKEY_get0_param(NULL, &p, &pklen, &palg, pubkey))
         return 0;
     X509_ALGOR_get0(NULL, &ptype, &pval, palg);
 
-    eckey = eckey_type2param(ptype, pval, NULL, NULL);
+    eckey = eckey_type2param(ptype, pval, libctx, propq);
 
     if (!eckey) {
         ECerr(EC_F_ECKEY_PUB_DECODE, ERR_R_EC_LIB);
@@ -602,43 +606,6 @@ size_t ec_pkey_dirty_cnt(const EVP_PKEY *pkey)
     return pkey->pkey.ec->dirty_cnt;
 }
 
-static ossl_inline
-int ecparams_to_params(const EC_KEY *eckey, OSSL_PARAM_BLD *tmpl)
-{
-    const EC_GROUP *ecg;
-    int curve_nid;
-
-    if (eckey == NULL)
-        return 0;
-
-    ecg = EC_KEY_get0_group(eckey);
-    if (ecg == NULL)
-        return 0;
-
-    curve_nid = EC_GROUP_get_curve_name(ecg);
-
-    if (curve_nid == NID_undef) {
-        /* explicit parameters */
-
-        /*
-         * TODO(3.0): should we support explicit parameters curves?
-         */
-        return 0;
-    } else {
-        /* named curve */
-        const char *curve_name = NULL;
-
-        if ((curve_name = OBJ_nid2sn(curve_nid)) == NULL)
-            return 0;
-
-        if (!OSSL_PARAM_BLD_push_utf8_string(tmpl, OSSL_PKEY_PARAM_GROUP_NAME,
-                                             curve_name, 0))
-            return 0;
-    }
-
-    return 1;
-}
-
 static
 int ec_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
                       EVP_KEYMGMT *to_keymgmt, OPENSSL_CTX *libctx,
@@ -646,7 +613,7 @@ int ec_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
 {
     const EC_KEY *eckey = NULL;
     const EC_GROUP *ecg = NULL;
-    unsigned char *pub_key_buf = NULL;
+    unsigned char *pub_key_buf = NULL, *gen_buf = NULL;
     size_t pub_key_buflen;
     OSSL_PARAM_BLD *tmpl;
     OSSL_PARAM *params = NULL;
@@ -672,8 +639,17 @@ int ec_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
     if (tmpl == NULL)
         return 0;
 
+    /*
+     * EC_POINT_point2buf() can generate random numbers in some
+     * implementations so we need to ensure we use the correct libctx.
+     */
+    bnctx = BN_CTX_new_ex(libctx);
+    if (bnctx == NULL)
+        goto err;
+    BN_CTX_start(bnctx);
+
     /* export the domain parameters */
-    if (!ecparams_to_params(eckey, tmpl))
+    if (!ec_group_todata(ecg, tmpl, NULL, libctx, propq, bnctx, &gen_buf))
         goto err;
     selection |= OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS;
 
@@ -681,14 +657,6 @@ int ec_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
     pub_point = EC_KEY_get0_public_key(eckey);
 
     if (pub_point != NULL) {
-        /*
-         * EC_POINT_point2buf() can generate random numbers in some
-         * implementations so we need to ensure we use the correct libctx.
-         */
-        bnctx = BN_CTX_new_ex(libctx);
-        if (bnctx == NULL)
-            goto err;
-
         /* convert pub_point to a octet string according to the SECG standard */
         if ((pub_key_buflen = EC_POINT_point2buf(ecg, pub_point,
                                                  POINT_CONVERSION_COMPRESSED,
@@ -775,6 +743,8 @@ int ec_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
     OSSL_PARAM_BLD_free(tmpl);
     OSSL_PARAM_BLD_free_params(params);
     OPENSSL_free(pub_key_buf);
+    OPENSSL_free(gen_buf);
+    BN_CTX_end(bnctx);
     BN_CTX_free(bnctx);
     return rv;
 }
@@ -790,7 +760,7 @@ static int ec_pkey_import_from(const OSSL_PARAM params[], void *vpctx)
         return 0;
     }
 
-    if (!ec_key_domparams_fromdata(ec, params)
+    if (!ec_group_fromdata(ec, params)
         || !ec_key_otherparams_fromdata(ec, params)
         || !ec_key_fromdata(ec, params, 1)
         || !EVP_PKEY_assign_EC_KEY(pkey, ec)) {
@@ -1006,7 +976,7 @@ static int ecdh_cms_set_shared_info(EVP_PKEY_CTX *pctx, CMS_RecipientInfo *ri)
 
     plen = CMS_SharedInfo_encode(&der, kekalg, ukm, keylen);
 
-    if (!plen)
+    if (plen <= 0)
         goto err;
 
     if (EVP_PKEY_CTX_set0_ecdh_kdf_ukm(pctx, der, plen) <= 0)

@@ -30,6 +30,23 @@ extern "C" {
 #define OSSL_PROV_PARAM_SELF_TEST_TYPE   "st-type"  /* utf8_string */
 #define OSSL_PROV_PARAM_SELF_TEST_DESC   "st-desc"  /* utf8_string */
 
+/*-
+ * Provider-native object abstractions
+ *
+ * These are used when a provider wants to pass object data or an object
+ * reference back to libcrypto.  This is only useful for provider functions
+ * that take a callback to which an OSSL_PARAM array with these parameters
+ * can be passed.
+ *
+ * This set of parameter names is explained in detail in provider-object(7)
+ * (doc/man7/provider-object.pod)
+ */
+#define OSSL_OBJECT_PARAM_TYPE       "type"      /* INTEGER */
+#define OSSL_OBJECT_PARAM_DATA_TYPE  "data-type" /* UTF8_STRING */
+#define OSSL_OBJECT_PARAM_REFERENCE  "reference" /* OCTET_STRING */
+#define OSSL_OBJECT_PARAM_DATA       "data" /* OCTET_STRING or UTF8_STRING */
+#define OSSL_OBJECT_PARAM_DESC       "desc"      /* UTF8_STRING */
+
 /*
  * Algorithm parameters
  * If "engine" or "properties" are specified, they should always be paired
@@ -39,6 +56,7 @@ extern "C" {
  */
 #define OSSL_ALG_PARAM_DIGEST       "digest"    /* utf8_string */
 #define OSSL_ALG_PARAM_CIPHER       "cipher"    /* utf8_string */
+#define OSSL_ALG_PARAM_ENGINE       "engine"    /* utf8_string */
 #define OSSL_ALG_PARAM_MAC          "mac"       /* utf8_string */
 #define OSSL_ALG_PARAM_PROPERTIES   "properties"/* utf8_string */
 
@@ -135,10 +153,11 @@ extern "C" {
  * If "engine" or "properties" are specified, they should always be paired
  * with "cipher" or "digest".
  */
-#define OSSL_MAC_PARAM_CIPHER       OSSL_ALG_PARAM_CIPHER     /* utf8 string */
-#define OSSL_MAC_PARAM_DIGEST       OSSL_ALG_PARAM_DIGEST     /* utf8 string */
-#define OSSL_MAC_PARAM_PROPERTIES   OSSL_ALG_PARAM_PROPERTIES /* utf8 string */
-#define OSSL_MAC_PARAM_SIZE         "size"       /* size_t */
+#define OSSL_MAC_PARAM_CIPHER           OSSL_ALG_PARAM_CIPHER     /* utf8 string */
+#define OSSL_MAC_PARAM_DIGEST           OSSL_ALG_PARAM_DIGEST     /* utf8 string */
+#define OSSL_MAC_PARAM_PROPERTIES       OSSL_ALG_PARAM_PROPERTIES /* utf8 string */
+#define OSSL_MAC_PARAM_SIZE             "size"                    /* size_t */
+#define OSSL_MAC_PARAM_TLS_DATA_SIZE    "tls-data-size"           /* size_t */
 
 /* Known MAC names */
 #define OSSL_MAC_NAME_BLAKE2BMAC    "BLAKE2BMAC"
@@ -230,6 +249,8 @@ extern "C" {
 #define OSSL_PKEY_PARAM_MAX_SIZE            "max-size" /* integer */
 #define OSSL_PKEY_PARAM_SECURITY_BITS       "security-bits" /* integer */
 #define OSSL_PKEY_PARAM_DIGEST              OSSL_ALG_PARAM_DIGEST
+#define OSSL_PKEY_PARAM_CIPHER              OSSL_ALG_PARAM_CIPHER /* utf8 string */
+#define OSSL_PKEY_PARAM_ENGINE              OSSL_ALG_PARAM_ENGINE /* utf8 string */
 #define OSSL_PKEY_PARAM_PROPERTIES          OSSL_ALG_PARAM_PROPERTIES
 #define OSSL_PKEY_PARAM_DEFAULT_DIGEST      "default-digest" /* utf8 string */
 #define OSSL_PKEY_PARAM_MANDATORY_DIGEST    "mandatory-digest" /* utf8 string */
@@ -240,8 +261,7 @@ extern "C" {
 #define OSSL_PKEY_PARAM_MGF1_PROPERTIES     "mgf1-properties"
 #define OSSL_PKEY_PARAM_TLS_ENCODED_PT      "tls-encoded-pt"
 #define OSSL_PKEY_PARAM_GROUP_NAME          "group"
-
-/* Diffie-Hellman/DSA public/private key */
+#define OSSL_PKEY_PARAM_DIST_ID             "distid"
 #define OSSL_PKEY_PARAM_PUB_KEY             "pub"
 #define OSSL_PKEY_PARAM_PRIV_KEY            "priv"
 
@@ -268,6 +288,22 @@ extern "C" {
 /* Elliptic Curve Domain Parameters */
 #define OSSL_PKEY_PARAM_EC_PUB_X     "qx"
 #define OSSL_PKEY_PARAM_EC_PUB_Y     "qy"
+
+/* Elliptic Curve Explicit Domain Parameters */
+#define OSSL_PKEY_PARAM_EC_FIELD_TYPE     "field-type"
+#define OSSL_PKEY_PARAM_EC_P              "p"
+#define OSSL_PKEY_PARAM_EC_A              "a"
+#define OSSL_PKEY_PARAM_EC_B              "b"
+#define OSSL_PKEY_PARAM_EC_GENERATOR      "generator"
+#define OSSL_PKEY_PARAM_EC_ORDER          "order"
+#define OSSL_PKEY_PARAM_EC_COFACTOR       "cofactor"
+#define OSSL_PKEY_PARAM_EC_SEED           "seed"
+#define OSSL_PKEY_PARAM_EC_CHAR2_M        "m"
+#define OSSL_PKEY_PARAM_EC_CHAR2_TYPE     "basis-type"
+#define OSSL_PKEY_PARAM_EC_CHAR2_TP_BASIS "tp"
+#define OSSL_PKEY_PARAM_EC_CHAR2_PP_K1    "k1"
+#define OSSL_PKEY_PARAM_EC_CHAR2_PP_K2    "k2"
+#define OSSL_PKEY_PARAM_EC_CHAR2_PP_K3    "k3"
 
 /* Elliptic Curve Key Parameters */
 #define OSSL_PKEY_PARAM_USE_COFACTOR_FLAG "use-cofactor-flag"
@@ -352,6 +388,12 @@ extern "C" {
 #define OSSL_PKEY_PARAM_FFC_DIGEST       OSSL_PKEY_PARAM_DIGEST
 #define OSSL_PKEY_PARAM_FFC_DIGEST_PROPS OSSL_PKEY_PARAM_PROPERTIES
 
+#define OSSL_PKEY_PARAM_EC_ENCODING      "encoding" /* utf8_string */
+
+/* OSSL_PKEY_PARAM_EC_ENCODING values */
+#define OSSL_PKEY_EC_ENCODING_EXPLICIT  "explicit"
+#define OSSL_PKEY_EC_ENCODING_GROUP     "named_curve"
+
 /* Key Exchange parameters */
 #define OSSL_EXCHANGE_PARAM_PAD                   "pad" /* uint */
 #define OSSL_EXCHANGE_PARAM_EC_ECDH_COFACTOR_MODE "ecdh-cofactor-mode" /* int */
@@ -400,23 +442,20 @@ extern "C" {
 #define OSSL_ASYM_CIPHER_PARAM_TLS_NEGOTIATED_VERSION   "tls-negotiated-version"
 
 /*
- * Serializer / deserializer parameters
+ * Encoder / decoder parameters
  */
 /* The passphrase may be passed as a utf8 string or an octet string */
-#define OSSL_SERIALIZER_PARAM_CIPHER            OSSL_ALG_PARAM_CIPHER
-#define OSSL_SERIALIZER_PARAM_PROPERTIES        OSSL_ALG_PARAM_PROPERTIES
-#define OSSL_SERIALIZER_PARAM_PASS              "passphrase"
+#define OSSL_ENCODER_PARAM_CIPHER       OSSL_ALG_PARAM_CIPHER
+#define OSSL_ENCODER_PARAM_PROPERTIES   OSSL_ALG_PARAM_PROPERTIES
+#define OSSL_ENCODER_PARAM_PASS         "passphrase"
 
-#define OSSL_DESERIALIZER_PARAM_CIPHER          OSSL_ALG_PARAM_CIPHER
-#define OSSL_DESERIALIZER_PARAM_PROPERTIES      OSSL_ALG_PARAM_PROPERTIES
-#define OSSL_DESERIALIZER_PARAM_PASS            "passphrase"
-#define OSSL_DESERIALIZER_PARAM_INPUT_TYPE      "input-type"
-#define OSSL_DESERIALIZER_PARAM_DATA_TYPE       "data-type"
-#define OSSL_DESERIALIZER_PARAM_DATA            "data"
-#define OSSL_DESERIALIZER_PARAM_REFERENCE       "reference"
+#define OSSL_DECODER_PARAM_CIPHER       OSSL_ALG_PARAM_CIPHER
+#define OSSL_DECODER_PARAM_PROPERTIES   OSSL_ALG_PARAM_PROPERTIES
+#define OSSL_DECODER_PARAM_PASS         "passphrase"
+#define OSSL_DECODER_PARAM_INPUT_TYPE   "input-type"
 
 /* Passphrase callback parameters */
-#define OSSL_PASSPHRASE_PARAM_INFO              "info"
+#define OSSL_PASSPHRASE_PARAM_INFO      "info"
 
 /* Keygen callback parameters, from provider to libcrypto */
 #define OSSL_GEN_PARAM_POTENTIAL            "potential" /* integer */
@@ -447,6 +486,34 @@ extern "C" {
 #define OSSL_CAPABILITY_TLS_GROUP_MAX_TLS           "tls-max-tls"
 #define OSSL_CAPABILITY_TLS_GROUP_MIN_DTLS          "tls-min-dtls"
 #define OSSL_CAPABILITY_TLS_GROUP_MAX_DTLS          "tls-max-dtls"
+
+/*-
+ * storemgmt parameters
+ */
+
+/*
+ * Used by storemgmt_ctx_set_params():
+ *
+ * - OSSL_STORE_PARAM_EXPECT is an INTEGER, and the value is any of the
+ *   OSSL_STORE_INFO numbers.  This is used to set the expected type of
+ *   object loaded.
+ *
+ * - OSSL_STORE_PARAM_SUBJECT, OSSL_STORE_PARAM_ISSUER,
+ *   OSSL_STORE_PARAM_SERIAL, OSSL_STORE_PARAM_FINGERPRINT,
+ *   OSSL_STORE_PARAM_DIGEST, OSSL_STORE_PARAM_ALIAS
+ *   are used as search criteria.
+ *   (OSSL_STORE_PARAM_DIGEST is used with OSSL_STORE_PARAM_FINGERPRINT)
+ */
+#define OSSL_STORE_PARAM_EXPECT     "expect"       /* INTEGER */
+#define OSSL_STORE_PARAM_SUBJECT    "subject" /* DER blob => OCTET_STRING */
+#define OSSL_STORE_PARAM_ISSUER     "name" /* DER blob => OCTET_STRING */
+#define OSSL_STORE_PARAM_SERIAL     "serial"       /* INTEGER */
+#define OSSL_STORE_PARAM_DIGEST     "digest"       /* UTF8_STRING */
+#define OSSL_STORE_PARAM_FINGERPRINT "fingerprint" /* OCTET_STRING */
+#define OSSL_STORE_PARAM_ALIAS      "alias"        /* UTF8_STRING */
+
+/* You may want to pass properties for the provider implementation to use */
+#define OSSL_STORE_PARAM_PROPERTIES "properties"   /* utf8_string */
 
 # ifdef __cplusplus
 }

@@ -228,8 +228,9 @@ This option has no effect and is retained for backward compatibility only.
 
 =item B<-cert_chain>
 
-A file containing untrusted certificates to use when attempting to build the
+A file or URI of untrusted certificates to use when attempting to build the
 certificate chain related to the certificate specified via the B<-cert> option.
+The input can be in PEM, DER, or PKCS#12 format.
 
 =item B<-build_chain>
 
@@ -257,7 +258,7 @@ See L<openssl(1)/Format Options> for details.
 
 =item B<-pass> I<val>
 
-The private key password source.
+The private key and certificate file password source.
 For more information about the format of I<val>,
 see L<openssl(1)/Pass Phrase Options>.
 
@@ -274,9 +275,10 @@ by using an appropriate certificate.
 
 =item B<-dcert_chain>
 
-A file containing untrusted certificates to use when attempting to build the
+A file or URI of untrusted certificates to use when attempting to build the
 server certificate chain when a certificate specified via the B<-dcert> option
 is in use.
+The input can be in PEM, DER, or PKCS#12 format.
 
 =item B<-dcertform> B<DER>|B<PEM>|B<P12>
 
@@ -291,7 +293,7 @@ See L<openssl(1)/Format Options>.
 
 =item B<-dpass> I<val>
 
-The passphrase for the additional private key.
+The passphrase for the additional private key and certificate.
 For more information about the format of I<val>,
 see L<openssl(1)/Pass Phrase Options>.
 

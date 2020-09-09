@@ -35,6 +35,7 @@
 # include "internal/refcount.h"
 # include "internal/tsan_assist.h"
 # include "internal/bio.h"
+# include "internal/ktls.h"
 
 # ifdef OPENSSL_BUILD_SHLIBSSL
 #  undef OPENSSL_EXTERN
@@ -2747,15 +2748,25 @@ __owur int ssl_log_secret(SSL *ssl, const char *label,
 #define EARLY_EXPORTER_SECRET_LABEL "EARLY_EXPORTER_SECRET"
 #define EXPORTER_SECRET_LABEL "EXPORTER_SECRET"
 
+#  ifndef OPENSSL_NO_KTLS
+/* ktls.c */
+int ktls_check_supported_cipher(const SSL *s, const EVP_CIPHER *c,
+                                const EVP_CIPHER_CTX *dd);
+int ktls_configure_crypto(const SSL *s, const EVP_CIPHER *c, EVP_CIPHER_CTX *dd,
+                          void *rl_sequence, ktls_crypto_info_t *crypto_info,
+                          unsigned char **rec_seq, unsigned char *iv,
+                          unsigned char *key, unsigned char *mac_key,
+                          size_t mac_secret_size);
+#  endif
+
 /* s3_cbc.c */
 __owur char ssl3_cbc_record_digest_supported(const EVP_MD_CTX *ctx);
-__owur int ssl3_cbc_digest_record(SSL *s,
-                                  const EVP_MD_CTX *ctx,
+__owur int ssl3_cbc_digest_record(const EVP_MD *md,
                                   unsigned char *md_out,
                                   size_t *md_out_size,
                                   const unsigned char header[13],
                                   const unsigned char *data,
-                                  size_t data_plus_mac_size,
+                                  size_t data_size,
                                   size_t data_plus_mac_plus_padding_size,
                                   const unsigned char *mac_secret,
                                   size_t mac_secret_length, char is_sslv3);

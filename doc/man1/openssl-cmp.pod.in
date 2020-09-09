@@ -12,7 +12,7 @@ B<openssl> B<cmp>
 [B<-config> I<filename>]
 [B<-section> I<names>]
 
-[B<-server> I<address[:port]>]
+[B<-server> I<[http[s]://]address[:port][/path]>]
 [B<-proxy> I<[http[s]://]address[:port][/path]>]
 [B<-no_proxy> I<addresses>]
 [B<-path> I<remote_path>]
@@ -32,6 +32,7 @@ B<openssl> B<cmp>
 [B<-ref> I<value>]
 [B<-secret> I<arg>]
 [B<-cert> I<filename>]
+[B<-own_trusted> I<filenames>]
 [B<-key> I<filename>]
 [B<-keypass> I<arg>]
 [B<-digest> I<name>]
@@ -63,13 +64,13 @@ B<openssl> B<cmp>
 [B<-implicit_confirm>]
 [B<-disable_confirm>]
 [B<-certout> I<filename>]
+[B<-chainout> I<filename>]
 
 [B<-oldcert> I<filename>]
 [B<-revreason> I<number>]
 
 [B<-certform> I<PEM|DER>]
 [B<-keyform> I<PEM|DER|P12|ENGINE>]
-[B<-certsform> I<PEM|DER|P12>]
 [B<-otherpass> I<arg>]
 {- $OpenSSL::safe::opt_engine_synopsis -}
 {- $OpenSSL::safe::opt_provider_synopsis -}
@@ -82,6 +83,7 @@ B<openssl> B<cmp>
 [B<-tls_trusted> I<filenames>]
 [B<-tls_host> I<name>]
 
+[B<-verbosity> I<level>]
 [B<-batch>]
 [B<-repeat> I<number>]
 [B<-reqin>] I<filenames>
@@ -172,6 +174,7 @@ Default filename is from the environment variable C<OPENSSL_CONF>.
 Section(s) to use within config file defining CMP options.
 An empty string C<""> means no specific section.
 Default is C<cmp>.
+
 Multiple section names may be given, separated by commas and/or whitespace
 (where in the latter case the whole argument must be enclosed in "...").
 Contents of sections named later may override contents of sections named before.
@@ -335,7 +338,7 @@ is provided via the B<-newkey> or B<-key> options.
 
 =item B<-csr> I<filename>
 
-CSR in PKCS#10 format to use in legacy P10CR messages.
+PKCS#10 CSR in PEM or DER format to use in legacy P10CR messages.
 
 =item B<-out_trusted> I<filenames>
 
@@ -377,6 +380,10 @@ B<WARNING:> This leads to behavior violating RFC 4210.
 =item B<-certout> I<filename>
 
 The file where the newly enrolled certificate should be saved.
+
+=item B<-chainout> I<filename>
+
+The file where the chain of the newly enrolled certificate should be saved.
 
 =back
 
@@ -425,11 +432,12 @@ Reason numbers defined in RFC 5280 are:
 
 =over 4
 
-=item B<-server> I<[http[s]://]address[:port]>
+=item B<-server> I<[http[s]://]address[:port][/path]>
 
 The IP address or DNS hostname and optionally port (defaulting to 80 or 443)
 of the CMP server to connect to using HTTP(S) transport.
 The optional I<http://> or I<https://> prefix is ignored.
+If a path is included it provides the default value for the B<-path> option.
 
 =item B<-proxy> I<[http[s]://]address[:port][/path]>
 
@@ -448,7 +456,7 @@ Default is from the environment variable C<no_proxy> if set, else C<NO_PROXY>.
 =item B<-path> I<remote_path>
 
 HTTP path at the CMP server (aka CMP alias) to use for POST requests.
-Defaults to I</>.
+Defaults to any path given with B<-server>, else C<"/">.
 
 =item B<-msg_timeout> I<seconds>
 
@@ -477,6 +485,9 @@ during CMP server authentication.
 This option gives more flexibility than the B<-srvcert> option because the
 protection certificate is not pinned but may be any certificate
 for which a chain to one of the given trusted certificates can be constructed.
+
+If no B<-trusted>, B<-srvcert>, and B<-secret> option is given
+then protected response messages from the server are not authenticated.
 
 Multiple filenames may be given, separated by commas and/or whitespace
 (where in the latter case the whole argument must be enclosed in "...").
@@ -612,7 +623,7 @@ B<PASS PHRASE ARGUMENTS> section in L<openssl(1)>.
 
 =item B<-cert> I<filename>
 
-The client's current certificate.
+The client's current CMP signer certificate.
 Requires the corresponding key to be given with B<-key>.
 The subject of this certificate will be used as sender of outgoing CMP messages,
 while the subject of B<-oldcert> or B<-subjectName> may provide fallback values.
@@ -623,6 +634,16 @@ using an external entity certificate as defined in appendix E.7 of RFC 4210.
 For Key Update Request (KUR) messages this is also used as
 the certificate to be updated if the B<-oldcert> option is not given.
 If the file includes further certs, they are appended to the untrusted certs.
+
+=item B<-own_trusted> I<filenames>
+
+If this list of certificates is provided then the chain built for
+the CMP signer certificate given with the B<-cert> option is verified
+using the given certificates as trust anchors.
+
+Multiple filenames may be given, separated by commas and/or whitespace
+(where in the latter case the whole argument must be enclosed in "...").
+Each source may contain multiple certificates.
 
 =item B<-key> I<filename>
 
@@ -681,19 +702,15 @@ Send messages without CMP-level protection.
 File format to use when saving a certificate to a file.
 Default value is PEM.
 
-=item B<-keyform> I<PEM|DER|P12>
+=item B<-keyform> I<PEM|DER|P12|ENGINE>
 
-Format to assume when reading key files.
-Default value is PEM.
-
-=item B<-certsform> I<PEM|DER|P12>
-
-Format to try first when reading multiple certificates from file(s).
-Default value is PEM.
+The format of the key input.
+The only value with effect is B<ENGINE>.
 
 =item B<-otherpass> I<arg>
 
 Pass phrase source for certificate given with the B<-trusted>, B<-untrusted>,
+B<-own_trusted>,
 B<-out_trusted>, B<-extracerts>, B<-tls_extra>, or B<-tls_trusted> options.
 If not given here, the password will be prompted for if needed.
 
@@ -776,6 +793,13 @@ If not given it defaults to the B<-server> address.
 
 =over 4
 
+=item B<-verbosity> I<level>
+
+Level of verbosity for logging, error output, etc.
+0 = EMERG, 1 = ALERT, 2 = CRIT, 3 = ERR, 4 = WARN, 5 = NOTE,
+6 = INFO, 7 = DEBUG, 8 = TRACE.
+Defaults to 6 = INFO.
+
 =item B<-batch>
 
 Do not interactively prompt for input, for instance when a password is needed.
@@ -789,6 +813,7 @@ Default is one invocation.
 =item B<-reqin> I<filenames>
 
 Take sequence of CMP requests from file(s).
+
 Multiple filenames may be given, separated by commas and/or whitespace
 (where in the latter case the whole argument must be enclosed in "...").
 As many files are read as needed for a complete transaction.
@@ -803,18 +828,21 @@ and the CMP server complains that the transaction ID has already been used.
 =item B<-reqout> I<filenames>
 
 Save sequence of CMP requests to file(s).
+
 Multiple filenames may be given, separated by commas and/or whitespace.
 As many files are written as needed to store the complete transaction.
 
 =item B<-rspin> I<filenames>
 
 Process sequence of CMP responses provided in file(s), skipping server.
+
 Multiple filenames may be given, separated by commas and/or whitespace.
 As many files are read as needed for the complete transaction.
 
 =item B<-rspout> I<filenames>
 
 Save sequence of CMP responses to file(s).
+
 Multiple filenames may be given, separated by commas and/or whitespace.
 As many files are written as needed to store the complete transaction.
 

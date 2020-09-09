@@ -1151,7 +1151,7 @@ static int mac_test_run_pkey(EVP_TEST *t)
                   OBJ_nid2sn(expected->type), expected->alg);
 
     if (expected->type == EVP_PKEY_CMAC) {
-        if (is_cipher_disabled(expected->alg)) {
+        if (expected->alg != NULL && is_cipher_disabled(expected->alg)) {
             TEST_info("skipping, PKEY CMAC '%s' is disabled", expected->alg);
             t->skip = 1;
             t->err = NULL;
@@ -1161,8 +1161,10 @@ static int mac_test_run_pkey(EVP_TEST *t)
             t->err = "MAC_KEY_CREATE_ERROR";
             goto err;
         }
-        key = EVP_PKEY_new_CMAC_key(NULL, expected->key, expected->key_len,
-                                    cipher);
+        key = EVP_PKEY_new_CMAC_key_with_libctx(expected->key,
+                                                expected->key_len,
+                                                EVP_CIPHER_name(cipher),
+                                                libctx, NULL);
     } else {
         key = EVP_PKEY_new_raw_private_key_with_libctx(libctx,
                                                        OBJ_nid2sn(expected->type),
@@ -1174,7 +1176,7 @@ static int mac_test_run_pkey(EVP_TEST *t)
         goto err;
     }
 
-    if (expected->type == EVP_PKEY_HMAC) {
+    if (expected->type == EVP_PKEY_HMAC && expected->alg != NULL) {
         if (is_digest_disabled(expected->alg)) {
             TEST_info("skipping, HMAC '%s' is disabled", expected->alg);
             t->skip = 1;
@@ -2095,7 +2097,8 @@ static int rand_test_init(EVP_TEST *t, const char *name)
     if (!TEST_ptr(rdata = OPENSSL_zalloc(sizeof(*rdata))))
         return 0;
 
-    rand = EVP_RAND_fetch(libctx, "TEST-RAND", NULL);
+    /* TEST-RAND is available in the FIPS provider but not with "fips=yes" */
+    rand = EVP_RAND_fetch(libctx, "TEST-RAND", "-fips");
     if (rand == NULL)
         goto err;
     rdata->parent = EVP_RAND_CTX_new(rand, NULL);
@@ -3250,7 +3253,7 @@ static void free_key_list(KEY_LIST *lst)
  */
 static int key_unsupported(void)
 {
-    long err = ERR_peek_error();
+    long err = ERR_peek_last_error();
 
     if (ERR_GET_LIB(err) == ERR_LIB_EVP
             && (ERR_GET_REASON(err) == EVP_R_UNSUPPORTED_ALGORITHM
@@ -3265,7 +3268,8 @@ static int key_unsupported(void)
      * disabled).
      */
     if (ERR_GET_LIB(err) == ERR_LIB_EC
-        && ERR_GET_REASON(err) == EC_R_UNKNOWN_GROUP) {
+        && (ERR_GET_REASON(err) == EC_R_UNKNOWN_GROUP
+            || ERR_GET_REASON(err) == EC_R_INVALID_CURVE)) {
         ERR_clear_error();
         return 1;
     }
@@ -3341,7 +3345,7 @@ start:
         }
         klist = &private_keys;
     } else if (strcmp(pp->key, "PublicKey") == 0) {
-        pkey = PEM_read_bio_PUBKEY(t->s.key, NULL, 0, NULL);
+        pkey = PEM_read_bio_PUBKEY_ex(t->s.key, NULL, 0, NULL, libctx, NULL);
         if (pkey == NULL && !key_unsupported()) {
             EVP_PKEY_free(pkey);
             TEST_info("Can't read public key %s", pp->value);

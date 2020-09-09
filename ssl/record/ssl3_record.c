@@ -213,7 +213,7 @@ int ssl3_get_record(SSL *s)
                                num_recs == 0 ? 1 : 0, &n);
             if (rret <= 0) {
 #ifndef OPENSSL_NO_KTLS
-                if (!BIO_get_ktls_recv(s->rbio))
+                if (!BIO_get_ktls_recv(s->rbio) || rret == 0)
                     return rret;     /* error or non-blocking */
                 switch (errno) {
                 case EBADMSG:
@@ -287,20 +287,24 @@ int ssl3_get_record(SSL *s)
                 }
             } else {
                 /* SSLv3+ style record */
-                if (s->msg_callback)
-                    s->msg_callback(0, 0, SSL3_RT_HEADER, p, 5, s,
-                                    s->msg_callback_arg);
 
                 /* Pull apart the header into the SSL3_RECORD */
                 if (!PACKET_get_1(&pkt, &type)
                         || !PACKET_get_net_2(&pkt, &version)
                         || !PACKET_get_net_2_len(&pkt, &thisrr->length)) {
+                    if (s->msg_callback)
+                        s->msg_callback(0, 0, SSL3_RT_HEADER, p, 5, s,
+                                        s->msg_callback_arg);
                     SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_F_SSL3_GET_RECORD,
                              ERR_R_INTERNAL_ERROR);
                     return -1;
                 }
                 thisrr->type = type;
                 thisrr->rec_version = version;
+
+                if (s->msg_callback)
+                    s->msg_callback(0, version, SSL3_RT_HEADER, p, 5, s,
+                                    s->msg_callback_arg);
 
                 /*
                  * Lets check version. In TLSv1.3 we only check this field
@@ -1303,6 +1307,25 @@ int tls1_enc(SSL *s, SSL3_RECORD *recs, size_t n_recs, int sending,
     return 1;
 }
 
+/*
+ * ssl3_cbc_record_digest_supported returns 1 iff |ctx| uses a hash function
+ * which ssl3_cbc_digest_record supports.
+ */
+char ssl3_cbc_record_digest_supported(const EVP_MD_CTX *ctx)
+{
+    switch (EVP_MD_CTX_type(ctx)) {
+    case NID_md5:
+    case NID_sha1:
+    case NID_sha224:
+    case NID_sha256:
+    case NID_sha384:
+    case NID_sha512:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 int n_ssl3_mac(SSL *ssl, SSL3_RECORD *rec, unsigned char *md, int sending)
 {
     unsigned char *mac_sec, *seq;
@@ -1331,6 +1354,9 @@ int n_ssl3_mac(SSL *ssl, SSL3_RECORD *rec, unsigned char *md, int sending)
     if (!sending &&
         EVP_CIPHER_CTX_mode(ssl->enc_read_ctx) == EVP_CIPH_CBC_MODE &&
         ssl3_cbc_record_digest_supported(hash)) {
+#ifdef OPENSSL_NO_DEPRECATED_3_0
+        return 0;
+#else
         /*
          * This is a CBC-encrypted record. We must avoid leaking any
          * timing-side channel information about how many blocks of data we
@@ -1358,12 +1384,13 @@ int n_ssl3_mac(SSL *ssl, SSL3_RECORD *rec, unsigned char *md, int sending)
         header[j++] = (unsigned char)(rec->length & 0xff);
 
         /* Final param == is SSLv3 */
-        if (ssl3_cbc_digest_record(ssl, hash,
+        if (ssl3_cbc_digest_record(EVP_MD_CTX_md(hash),
                                    md, &md_size,
                                    header, rec->input,
-                                   rec->length + md_size, rec->orig_len,
+                                   rec->length, rec->orig_len,
                                    mac_sec, md_size, 1) <= 0)
             return 0;
+#endif
     } else {
         unsigned int md_size_u;
         /* Chop the digest off the end :-) */
@@ -1461,31 +1488,25 @@ int tls1_mac(SSL *ssl, SSL3_RECORD *rec, unsigned char *md, int sending)
     header[12] = (unsigned char)(rec->length & 0xff);
 
     if (!sending && !SSL_READ_ETM(ssl) &&
-        EVP_CIPHER_CTX_mode(ssl->enc_read_ctx) == EVP_CIPH_CBC_MODE &&
-        ssl3_cbc_record_digest_supported(mac_ctx)) {
-        /*
-         * This is a CBC-encrypted record. We must avoid leaking any
-         * timing-side channel information about how many blocks of data we
-         * are hashing because that gives an attacker a timing-oracle.
-         */
-        /* Final param == not SSLv3 */
-        if (ssl3_cbc_digest_record(ssl, mac_ctx,
-                                   md, &md_size,
-                                   header, rec->input,
-                                   rec->length + md_size, rec->orig_len,
-                                   ssl->s3.read_mac_secret,
-                                   ssl->s3.read_mac_secret_size, 0) <= 0) {
-            EVP_MD_CTX_free(hmac);
+            EVP_CIPHER_CTX_mode(ssl->enc_read_ctx) == EVP_CIPH_CBC_MODE &&
+            ssl3_cbc_record_digest_supported(mac_ctx)) {
+        OSSL_PARAM tls_hmac_params[2], *p = tls_hmac_params;
+
+        *p++ = OSSL_PARAM_construct_size_t(OSSL_MAC_PARAM_TLS_DATA_SIZE,
+                                           &rec->orig_len);
+        *p++ = OSSL_PARAM_construct_end();
+
+        if (!EVP_PKEY_CTX_set_params(EVP_MD_CTX_pkey_ctx(mac_ctx),
+                                     tls_hmac_params))
             return 0;
-        }
-    } else {
-        /* TODO(size_t): Convert these calls */
-        if (EVP_DigestSignUpdate(mac_ctx, header, sizeof(header)) <= 0
-            || EVP_DigestSignUpdate(mac_ctx, rec->input, rec->length) <= 0
-            || EVP_DigestSignFinal(mac_ctx, md, &md_size) <= 0) {
-            EVP_MD_CTX_free(hmac);
-            return 0;
-        }
+    }
+
+    /* TODO(size_t): Convert these calls */
+    if (EVP_DigestSignUpdate(mac_ctx, header, sizeof(header)) <= 0
+        || EVP_DigestSignUpdate(mac_ctx, rec->input, rec->length) <= 0
+        || EVP_DigestSignFinal(mac_ctx, md, &md_size) <= 0) {
+        EVP_MD_CTX_free(hmac);
+        return 0;
     }
 
     EVP_MD_CTX_free(hmac);

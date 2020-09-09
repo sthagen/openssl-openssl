@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <openssl/objects.h>
 #include <openssl/evp.h>
+#include <openssl/ec.h>
 #include <openssl/engine.h>
 #include <openssl/params.h>
 #include <openssl/core_names.h>
@@ -33,8 +34,10 @@ int EVP_MD_CTX_reset(EVP_MD_CTX *ctx)
      * pctx should be freed by the user of EVP_MD_CTX
      * if EVP_MD_CTX_FLAG_KEEP_PKEY_CTX is set
      */
-    if (!EVP_MD_CTX_test_flags(ctx, EVP_MD_CTX_FLAG_KEEP_PKEY_CTX))
+    if (!EVP_MD_CTX_test_flags(ctx, EVP_MD_CTX_FLAG_KEEP_PKEY_CTX)) {
         EVP_PKEY_CTX_free(ctx->pctx);
+        ctx->pctx = NULL;
+    }
 #endif
 
     EVP_MD_free(ctx->fetched_digest);
@@ -72,6 +75,37 @@ int EVP_MD_CTX_reset(EVP_MD_CTX *ctx)
 
     return 1;
 }
+
+#ifndef FIPS_MODULE
+EVP_MD_CTX *evp_md_ctx_new_with_libctx(EVP_PKEY *pkey,
+                                       const ASN1_OCTET_STRING *id,
+                                       OPENSSL_CTX *libctx, const char *propq)
+{
+    EVP_MD_CTX *ctx;
+    EVP_PKEY_CTX *pctx = NULL;
+
+    if ((ctx = EVP_MD_CTX_new()) == NULL
+        || (pctx = EVP_PKEY_CTX_new_from_pkey(libctx, pkey, propq)) == NULL) {
+        ASN1err(0, ERR_R_MALLOC_FAILURE);
+        goto err;
+    }
+
+# ifndef OPENSSL_NO_EC
+    if (id != NULL && EVP_PKEY_CTX_set1_id(pctx, id->data, id->length) <= 0) {
+        ASN1err(0, ERR_R_MALLOC_FAILURE);
+        goto err;
+    }
+# endif
+
+    EVP_MD_CTX_set_pkey_ctx(ctx, pctx);
+    return ctx;
+
+ err:
+    EVP_PKEY_CTX_free(pctx);
+    EVP_MD_CTX_free(ctx);
+    return NULL;
+}
+#endif
 
 EVP_MD_CTX *EVP_MD_CTX_new(void)
 {
@@ -335,11 +369,18 @@ int EVP_DigestFinal(EVP_MD_CTX *ctx, unsigned char *md, unsigned int *size)
 /* The caller can assume that this removes any secret data from the context */
 int EVP_DigestFinal_ex(EVP_MD_CTX *ctx, unsigned char *md, unsigned int *isize)
 {
-    int ret;
+    int ret, sz;
     size_t size = 0;
-    size_t mdsize = EVP_MD_size(ctx->digest);
+    size_t mdsize = 0;
 
-    if (ctx->digest == NULL || ctx->digest->prov == NULL)
+    if (ctx->digest == NULL)
+        return 0;
+
+    sz = EVP_MD_size(ctx->digest);
+    if (sz < 0)
+        return 0;
+    mdsize = sz;
+    if (ctx->digest->prov == NULL)
         goto legacy;
 
     if (ctx->digest->dfinal == NULL) {
@@ -448,10 +489,12 @@ int EVP_MD_CTX_copy_ex(EVP_MD_CTX *out, const EVP_MD_CTX *in)
     if (in->fetched_digest != NULL)
         EVP_MD_up_ref(in->fetched_digest);
 
-    out->provctx = in->digest->dupctx(in->provctx);
-    if (out->provctx == NULL) {
-        EVPerr(EVP_F_EVP_MD_CTX_COPY_EX, EVP_R_NOT_ABLE_TO_COPY_CTX);
-        return 0;
+    if (in->provctx != NULL) {
+        out->provctx = in->digest->dupctx(in->provctx);
+        if (out->provctx == NULL) {
+            EVPerr(EVP_F_EVP_MD_CTX_COPY_EX, EVP_R_NOT_ABLE_TO_COPY_CTX);
+            return 0;
+        }
     }
 
     /* copied EVP_MD_CTX should free the copied EVP_PKEY_CTX */
@@ -567,9 +610,7 @@ int EVP_MD_CTX_set_params(EVP_MD_CTX *ctx, const OSSL_PARAM params[])
 {
     EVP_PKEY_CTX *pctx = ctx->pctx;
 
-    if (ctx->digest != NULL && ctx->digest->set_ctx_params != NULL)
-        return ctx->digest->set_ctx_params(ctx->provctx, params);
-
+    /* If we have a pctx then we should try that first */
     if (pctx != NULL
             && (pctx->operation == EVP_PKEY_OP_VERIFYCTX
                 || pctx->operation == EVP_PKEY_OP_SIGNCTX)
@@ -577,6 +618,10 @@ int EVP_MD_CTX_set_params(EVP_MD_CTX *ctx, const OSSL_PARAM params[])
             && pctx->op.sig.signature->set_ctx_md_params != NULL)
         return pctx->op.sig.signature->set_ctx_md_params(pctx->op.sig.sigprovctx,
                                                          params);
+
+    if (ctx->digest != NULL && ctx->digest->set_ctx_params != NULL)
+        return ctx->digest->set_ctx_params(ctx->provctx, params);
+
     return 0;
 }
 
@@ -594,10 +639,7 @@ const OSSL_PARAM *EVP_MD_CTX_settable_params(EVP_MD_CTX *ctx)
     if (ctx == NULL)
         return NULL;
 
-    if (ctx->digest != NULL && ctx->digest->settable_ctx_params != NULL)
-        return ctx->digest->settable_ctx_params(
-                  ossl_provider_ctx(EVP_MD_provider(ctx->digest)));
-
+    /* If we have a pctx then we should try that first */
     pctx = ctx->pctx;
     if (pctx != NULL
             && (pctx->operation == EVP_PKEY_OP_VERIFYCTX
@@ -607,6 +649,10 @@ const OSSL_PARAM *EVP_MD_CTX_settable_params(EVP_MD_CTX *ctx)
         return pctx->op.sig.signature->settable_ctx_md_params(
                    pctx->op.sig.sigprovctx);
 
+    if (ctx->digest != NULL && ctx->digest->settable_ctx_params != NULL)
+        return ctx->digest->settable_ctx_params(
+                  ossl_provider_ctx(EVP_MD_provider(ctx->digest)));
+
     return NULL;
 }
 
@@ -614,9 +660,7 @@ int EVP_MD_CTX_get_params(EVP_MD_CTX *ctx, OSSL_PARAM params[])
 {
     EVP_PKEY_CTX *pctx = ctx->pctx;
 
-    if (ctx->digest != NULL && ctx->digest->get_params != NULL)
-        return ctx->digest->get_ctx_params(ctx->provctx, params);
-
+    /* If we have a pctx then we should try that first */
     if (pctx != NULL
             && (pctx->operation == EVP_PKEY_OP_VERIFYCTX
                 || pctx->operation == EVP_PKEY_OP_SIGNCTX)
@@ -624,6 +668,9 @@ int EVP_MD_CTX_get_params(EVP_MD_CTX *ctx, OSSL_PARAM params[])
             && pctx->op.sig.signature->get_ctx_md_params != NULL)
         return pctx->op.sig.signature->get_ctx_md_params(pctx->op.sig.sigprovctx,
                                                          params);
+
+    if (ctx->digest != NULL && ctx->digest->get_params != NULL)
+        return ctx->digest->get_ctx_params(ctx->provctx, params);
 
     return 0;
 }
@@ -639,12 +686,10 @@ const OSSL_PARAM *EVP_MD_CTX_gettable_params(EVP_MD_CTX *ctx)
 {
     EVP_PKEY_CTX *pctx;
 
-    if (ctx != NULL
-            && ctx->digest != NULL
-            && ctx->digest->gettable_ctx_params != NULL)
-        return ctx->digest->gettable_ctx_params(
-                   ossl_provider_ctx(EVP_MD_provider(ctx->digest)));
+    if (ctx == NULL)
+        return NULL;
 
+    /* If we have a pctx then we should try that first */
     pctx = ctx->pctx;
     if (pctx != NULL
             && (pctx->operation == EVP_PKEY_OP_VERIFYCTX
@@ -653,6 +698,11 @@ const OSSL_PARAM *EVP_MD_CTX_gettable_params(EVP_MD_CTX *ctx)
             && pctx->op.sig.signature->gettable_ctx_md_params != NULL)
         return pctx->op.sig.signature->gettable_ctx_md_params(
                     pctx->op.sig.sigprovctx);
+
+    if (ctx->digest != NULL
+            && ctx->digest->gettable_ctx_params != NULL)
+        return ctx->digest->gettable_ctx_params(
+                   ossl_provider_ctx(EVP_MD_provider(ctx->digest)));
 
     return NULL;
 }

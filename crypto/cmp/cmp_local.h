@@ -28,6 +28,8 @@
  * this structure is used to store the context for CMP sessions
  */
 struct ossl_cmp_ctx_st {
+    OPENSSL_CTX *libctx;
+    const char *propq;
     OSSL_CMP_log_cb_t log_cb; /* log callback for error/debug/etc. output */
     OSSL_CMP_severity log_verbosity; /* level of verbosity of log output */
 
@@ -58,7 +60,7 @@ struct ossl_cmp_ctx_st {
     X509 *validatedSrvCert; /* caches any already validated server cert */
     X509_NAME *expected_sender; /* expected sender in header of response */
     X509_STORE *trusted; /* trust store maybe w CRLs and cert verify callback */
-    STACK_OF(X509) *untrusted_certs; /* untrusted (intermediate) certs */
+    STACK_OF(X509) *untrusted; /* untrusted (intermediate CA) certs */
     int ignore_keyusage; /* ignore key usage entry when validating certs */
     /*
      * permitTAInExtraCertsForIR allows use of root certs in extracerts
@@ -73,14 +75,14 @@ struct ossl_cmp_ctx_st {
     ASN1_OCTET_STRING *referenceValue; /* optional user name for MSG_MAC_ALG */
     ASN1_OCTET_STRING *secretValue; /* password/shared secret for MSG_MAC_ALG */
     /* PBMParameters for MSG_MAC_ALG */
-    size_t pbm_slen; /* currently fixed to 16 */
-    int pbm_owf; /* NID of one-way function (OWF), default: SHA256 */
-    int pbm_itercnt; /* currently fixed to 500 */
+    size_t pbm_slen; /* salt length, currently fixed to 16 */
+    EVP_MD *pbm_owf; /* one-way function (OWF), default: SHA256 */
+    int pbm_itercnt; /* OWF iteration count, currently fixed to 500 */
     int pbm_mac; /* NID of MAC algorithm, default: HMAC-SHA1 as per RFC 4210 */
 
     /* CMP message header and extra certificates */
     X509_NAME *recipient; /* to set in recipient in pkiheader */
-    int digest; /* NID of digest used in MSG_SIG_ALG and POPO, default SHA256 */
+    EVP_MD *digest; /* digest used in MSG_SIG_ALG and POPO, default SHA256 */
     ASN1_OCTET_STRING *transactionID; /* the current transaction ID */
     ASN1_OCTET_STRING *senderNonce; /* last nonce sent */
     ASN1_OCTET_STRING *recipNonce; /* last nonce received */
@@ -118,6 +120,7 @@ struct ossl_cmp_ctx_st {
     /* TODO: this should be a stack since there could be more than one */
     X509 *newCert; /* newly enrolled cert received from the CA */
     /* TODO: this should be a stack since there could be more than one */
+    STACK_OF(X509) *newChain; /* chain of newly enrolled cert received */
     STACK_OF(X509) *caPubs; /* CA certs received from server (in IP message) */
     STACK_OF(X509) *extraCertsIn; /* extraCerts received from server */
 
@@ -742,7 +745,10 @@ int ossl_cmp_asn1_octet_string_set1(ASN1_OCTET_STRING **tgt,
                                     const ASN1_OCTET_STRING *src);
 int ossl_cmp_asn1_octet_string_set1_bytes(ASN1_OCTET_STRING **tgt,
                                           const unsigned char *bytes, int len);
-STACK_OF(X509) *ossl_cmp_build_cert_chain(STACK_OF(X509) *certs, X509 *cert);
+STACK_OF(X509)
+    *ossl_cmp_build_cert_chain(OPENSSL_CTX *libctx, const char *propq,
+                               X509_STORE *store,
+                               STACK_OF(X509) *certs, X509 *cert);
 
 /* from cmp_ctx.c */
 int ossl_cmp_print_log(OSSL_CMP_severity level, const OSSL_CMP_CTX *ctx,
@@ -776,6 +782,7 @@ int ossl_cmp_ctx_set0_statusString(OSSL_CMP_CTX *ctx,
                                    OSSL_CMP_PKIFREETEXT *text);
 int ossl_cmp_ctx_set_failInfoCode(OSSL_CMP_CTX *ctx, int fail_info);
 int ossl_cmp_ctx_set0_newCert(OSSL_CMP_CTX *ctx, X509 *cert);
+int ossl_cmp_ctx_set1_newChain(OSSL_CMP_CTX *ctx, STACK_OF(X509) *newChain);
 int ossl_cmp_ctx_set1_caPubs(OSSL_CMP_CTX *ctx, STACK_OF(X509) *caPubs);
 int ossl_cmp_ctx_set1_extraCertsIn(OSSL_CMP_CTX *ctx,
                                    STACK_OF(X509) *extraCertsIn);
@@ -890,14 +897,14 @@ ossl_cmp_pollrepcontent_get0_pollrep(const OSSL_CMP_POLLREPCONTENT *prc,
 OSSL_CMP_CERTRESPONSE *
 ossl_cmp_certrepmessage_get0_certresponse(const OSSL_CMP_CERTREPMESSAGE *crm,
                                           int rid);
-X509 *ossl_cmp_certresponse_get1_certificate(EVP_PKEY *privkey,
-                                             const OSSL_CMP_CERTRESPONSE *crep);
+X509 *ossl_cmp_certresponse_get1_cert(const OSSL_CMP_CERTRESPONSE *crep,
+                                      const OSSL_CMP_CTX *ctx, EVP_PKEY *pkey);
+OSSL_CMP_MSG *ossl_cmp_msg_load(const char *file);
 
 /* from cmp_protect.c */
-ASN1_BIT_STRING *ossl_cmp_calc_protection(const OSSL_CMP_MSG *msg,
-                                          const ASN1_OCTET_STRING *secret,
-                                          EVP_PKEY *pkey);
 int ossl_cmp_msg_add_extraCerts(OSSL_CMP_CTX *ctx, OSSL_CMP_MSG *msg);
+ASN1_BIT_STRING *ossl_cmp_calc_protection(const OSSL_CMP_CTX *ctx,
+                                          const OSSL_CMP_MSG *msg);
 int ossl_cmp_msg_protect(OSSL_CMP_CTX *ctx, OSSL_CMP_MSG *msg);
 
 /* from cmp_vfy.c */
@@ -906,7 +913,10 @@ typedef int (*ossl_cmp_allow_unprotected_cb_t)(const OSSL_CMP_CTX *ctx,
                                                int invalid_protection, int arg);
 int ossl_cmp_msg_check_update(OSSL_CMP_CTX *ctx, const OSSL_CMP_MSG *msg,
                               ossl_cmp_allow_unprotected_cb_t cb, int cb_arg);
-int ossl_cmp_verify_popo(const OSSL_CMP_MSG *msg, int accept_RAVerified);
+int ossl_cmp_msg_check_received(OSSL_CMP_CTX *ctx, const OSSL_CMP_MSG *msg,
+                                ossl_cmp_allow_unprotected_cb_t cb, int cb_arg);
+int ossl_cmp_verify_popo(const OSSL_CMP_CTX *ctx,
+                         const OSSL_CMP_MSG *msg, int accept_RAVerified);
 
 /* from cmp_client.c */
 int ossl_cmp_exchange_certConf(OSSL_CMP_CTX *ctx, int fail_info,

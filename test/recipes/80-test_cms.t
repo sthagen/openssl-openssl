@@ -33,10 +33,10 @@ plan skip_all => "CMS is not supported by this OpenSSL build"
 my $provpath = bldtop_dir("providers");
 
 # Some tests require legacy algorithms to be included.
-my @legacyprov = ("-provider_path", $provpath,
+my @legacyprov = ("-provider-path", $provpath,
                   "-provider", "default",
                   "-provider", "legacy" );
-my @defaultprov = ("-provider_path", $provpath,
+my @defaultprov = ("-provider-path", $provpath,
                    "-provider", "default");
 
 my @config = ( );
@@ -59,12 +59,12 @@ unless ($no_fips) {
                 '-out', bldtop_file('providers', 'fipsmodule.cnf'),
                 '-module', $infile])),
        "fipsinstall");
-    @config = ( "-config", srctop_file("test", "fips.cnf") );
+    @config = ( "-config", srctop_file("test", "fips-and-base.cnf") );
     $provname = 'fips';
 }
 
 $ENV{OPENSSL_TEST_LIBCTX} = "1";
-my @prov = ("-provider_path", $provpath,
+my @prov = ("-provider-path", $provpath,
             @config,
             "-provider", $provname);
 
@@ -298,12 +298,24 @@ my @smime_cms_tests = (
       \&final_compare
     ],
 
-    [ "enveloped content test streaming PEM format, KEK",
+    [ "enveloped content test streaming PEM format, AES-256-CBC cipher, KEK",
       [ "{cmd1}", @prov, "-encrypt", "-in", $smcont, "-outform", "PEM", "-aes128",
         "-stream", "-out", "{output}.cms",
         "-secretkey", "000102030405060708090A0B0C0D0E0F",
         "-secretkeyid", "C0FEE0" ],
       [ "{cmd2}", @prov, "-decrypt", "-in", "{output}.cms", "-out", "{output}.txt",
+        "-inform", "PEM",
+        "-secretkey", "000102030405060708090A0B0C0D0E0F",
+        "-secretkeyid", "C0FEE0" ],
+      \&final_compare
+    ],
+
+    [ "enveloped content test streaming PEM format, AES-256-GCM cipher, KEK",
+      [ "{cmd1}", @prov, "-encrypt", "-in", $smcont, "-outform", "PEM", "-aes-128-gcm",
+        "-stream", "-out", "{output}.cms",
+        "-secretkey", "000102030405060708090A0B0C0D0E0F",
+        "-secretkeyid", "C0FEE0" ],
+      [ "{cmd2}", "-decrypt", "-in", "{output}.cms", "-out", "{output}.txt",
         "-inform", "PEM",
         "-secretkey", "000102030405060708090A0B0C0D0E0F",
         "-secretkeyid", "C0FEE0" ],
@@ -373,7 +385,6 @@ my @smime_cms_tests = (
         "-out", "{output}.txt" ],
       \&final_compare
     ],
-
 );
 
 my @smime_cms_cades_tests = (
@@ -560,13 +571,22 @@ my @smime_cms_param_tests = (
       \&final_compare
     ],
 
-    [ "enveloped content test streaming S/MIME format, ECDH, AES128, SHA256 KDF",
+    [ "enveloped content test streaming S/MIME format, ECDH, AES-128-CBC, SHA256 KDF",
       [ "{cmd1}", @prov, "-encrypt", "-in", $smcont,
         "-stream", "-out", "{output}.cms",
         "-recip", catfile($smdir, "smec1.pem"), "-aes128",
         "-keyopt", "ecdh_kdf_md:sha256" ],
       [ "{cmd2}", @prov, "-decrypt", "-recip", catfile($smdir, "smec1.pem"),
         "-in", "{output}.cms", "-out", "{output}.txt" ],
+      \&final_compare
+    ],
+
+    [ "enveloped content test streaming S/MIME format, ECDH, AES-128-GCM cipher, SHA256 KDF",
+      [ "{cmd1}", @prov, "-encrypt", "-in", $smcont,
+        "-stream", "-out", "{output}.cms",
+        "-recip", catfile($smdir, "smec1.pem"), "-aes-128-gcm", "-keyopt", "ecdh_kdf_md:sha256" ],
+      [ "{cmd2}", "-decrypt", "-recip", catfile($smdir, "smec1.pem"),
+	      "-in", "{output}.cms", "-out", "{output}.txt" ],
       \&final_compare
     ],
 

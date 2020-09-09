@@ -27,7 +27,6 @@
 /* TODO(3.0) remove when provider SM2 key generation is implemented */
 #ifdef TMP_SM2_HACK
 # include <openssl/ec.h>
-# include <openssl/serializer.h>
 # include "internal/sizes.h"
 #endif
 
@@ -213,6 +212,12 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
         evp_pkey_free_legacy(*ppkey);
 #endif
 
+    /*
+     * Because we still have legacy keys, and evp_pkey_downgrade()
+     * TODO remove this #legacy internal keys are gone
+     */
+    (*ppkey)->type = ctx->legacy_keytype;
+
 /* TODO remove when SM2 key have been cleanly separated from EC keys */
 #ifdef TMP_SM2_HACK
     /*
@@ -376,7 +381,8 @@ static int fromdata_init(EVP_PKEY_CTX *ctx, int operation)
     return 1;
 
  not_supported:
-    ctx->operation = EVP_PKEY_OP_UNDEFINED;
+    if (ctx != NULL)
+        ctx->operation = EVP_PKEY_OP_UNDEFINED;
     ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return -2;
 }

@@ -725,7 +725,8 @@ static int rsa_digest_signverify_init(void *vprsactx, const char *mdname,
 {
     PROV_RSA_CTX *prsactx = (PROV_RSA_CTX *)vprsactx;
 
-    prsactx->flag_allow_md = 0;
+    if (prsactx != NULL)
+        prsactx->flag_allow_md = 0;
     if (!rsa_signature_init(vprsactx, vrsa, operation)
         || !rsa_setup_md(prsactx, mdname, NULL)) /* TODO RL */
         return 0;
@@ -775,10 +776,11 @@ static int rsa_digest_sign_final(void *vprsactx, unsigned char *sig,
     unsigned char digest[EVP_MAX_MD_SIZE];
     unsigned int dlen = 0;
 
-    prsactx->flag_allow_md = 1;
-    if (prsactx == NULL || prsactx->mdctx == NULL)
+    if (prsactx == NULL)
         return 0;
-
+    prsactx->flag_allow_md = 1;
+    if (prsactx->mdctx == NULL)
+        return 0;
     /*
      * If sig is NULL then we're just finding out the sig size. Other fields
      * are ignored. Defer to rsa_sign.
@@ -810,8 +812,10 @@ int rsa_digest_verify_final(void *vprsactx, const unsigned char *sig,
     unsigned char digest[EVP_MAX_MD_SIZE];
     unsigned int dlen = 0;
 
+    if (prsactx == NULL)
+        return 0;
     prsactx->flag_allow_md = 1;
-    if (prsactx == NULL || prsactx->mdctx == NULL)
+    if (prsactx->mdctx == NULL)
         return 0;
 
     /*
@@ -832,14 +836,14 @@ static void rsa_freectx(void *vprsactx)
     if (prsactx == NULL)
         return;
 
-    RSA_free(prsactx->rsa);
     EVP_MD_CTX_free(prsactx->mdctx);
     EVP_MD_free(prsactx->md);
     EVP_MD_free(prsactx->mgf1_md);
     OPENSSL_free(prsactx->propq);
     free_tbuf(prsactx);
+    RSA_free(prsactx->rsa);
 
-    OPENSSL_clear_free(prsactx, sizeof(prsactx));
+    OPENSSL_clear_free(prsactx, sizeof(*prsactx));
 }
 
 static void *rsa_dupctx(void *vprsactx)

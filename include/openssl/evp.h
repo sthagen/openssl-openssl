@@ -1446,13 +1446,13 @@ void EVP_PKEY_asn1_set_ctrl(EVP_PKEY_ASN1_METHOD *ameth,
 void EVP_PKEY_asn1_set_item(EVP_PKEY_ASN1_METHOD *ameth,
                             int (*item_verify) (EVP_MD_CTX *ctx,
                                                 const ASN1_ITEM *it,
-                                                void *asn,
-                                                X509_ALGOR *a,
-                                                ASN1_BIT_STRING *sig,
+                                                const void *data,
+                                                const X509_ALGOR *a,
+                                                const ASN1_BIT_STRING *sig,
                                                 EVP_PKEY *pkey),
                             int (*item_sign) (EVP_MD_CTX *ctx,
                                               const ASN1_ITEM *it,
-                                              void *asn,
+                                              const void *data,
                                               X509_ALGOR *alg1,
                                               X509_ALGOR *alg2,
                                               ASN1_BIT_STRING *sig));
@@ -1496,6 +1496,10 @@ void EVP_PKEY_asn1_set_security_bits(EVP_PKEY_ASN1_METHOD *ameth,
 int EVP_PKEY_CTX_get_signature_md(EVP_PKEY_CTX *ctx, const EVP_MD **md);
 int EVP_PKEY_CTX_set_signature_md(EVP_PKEY_CTX *ctx, const EVP_MD *md);
 
+int EVP_PKEY_CTX_set1_id(EVP_PKEY_CTX *ctx, const void *id, int len);
+int EVP_PKEY_CTX_get1_id(EVP_PKEY_CTX *ctx, void *id);
+int EVP_PKEY_CTX_get1_id_len(EVP_PKEY_CTX *ctx, size_t *id_len);
+
 # define EVP_PKEY_OP_UNDEFINED           0
 # define EVP_PKEY_OP_PARAMGEN            (1<<1)
 # define EVP_PKEY_OP_KEYGEN              (1<<2)
@@ -1526,34 +1530,27 @@ int EVP_PKEY_CTX_set_signature_md(EVP_PKEY_CTX *ctx, const EVP_MD *md);
 # define EVP_PKEY_OP_TYPE_FROMDATA \
         (EVP_PKEY_OP_PARAMFROMDATA | EVP_PKEY_OP_KEYFROMDATA)
 
-# define  EVP_PKEY_CTX_set_mac_key(ctx, key, len)        \
-                EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_KEYGEN,  \
-                                  EVP_PKEY_CTRL_SET_MAC_KEY, len, (void *)(key))
+int EVP_PKEY_CTX_set_mac_key(EVP_PKEY_CTX *ctx, const unsigned char *key,
+                             int keylen);
 
 # define EVP_PKEY_CTRL_MD                1
 # define EVP_PKEY_CTRL_PEER_KEY          2
-
 # define EVP_PKEY_CTRL_PKCS7_ENCRYPT     3
 # define EVP_PKEY_CTRL_PKCS7_DECRYPT     4
-
 # define EVP_PKEY_CTRL_PKCS7_SIGN        5
-
 # define EVP_PKEY_CTRL_SET_MAC_KEY       6
-
 # define EVP_PKEY_CTRL_DIGESTINIT        7
-
 /* Used by GOST key encryption in TLS */
 # define EVP_PKEY_CTRL_SET_IV            8
-
 # define EVP_PKEY_CTRL_CMS_ENCRYPT       9
 # define EVP_PKEY_CTRL_CMS_DECRYPT       10
 # define EVP_PKEY_CTRL_CMS_SIGN          11
-
 # define EVP_PKEY_CTRL_CIPHER            12
-
 # define EVP_PKEY_CTRL_GET_MD            13
-
 # define EVP_PKEY_CTRL_SET_DIGEST_SIZE   14
+# define EVP_PKEY_CTRL_SET1_ID           15
+# define EVP_PKEY_CTRL_GET1_ID           16
+# define EVP_PKEY_CTRL_GET1_ID_LEN       17
 
 # define EVP_PKEY_ALG_CTRL               0x1000
 
@@ -1644,6 +1641,11 @@ int EVP_PKEY_get_raw_private_key(const EVP_PKEY *pkey, unsigned char *priv,
 int EVP_PKEY_get_raw_public_key(const EVP_PKEY *pkey, unsigned char *pub,
                                 size_t *len);
 
+EVP_PKEY *EVP_PKEY_new_CMAC_key_with_libctx(const unsigned char *priv,
+                                            size_t len,
+                                            const char *cipher_name,
+                                            OPENSSL_CTX *libctx,
+                                            const char *propq);
 EVP_PKEY *EVP_PKEY_new_CMAC_key(ENGINE *e, const unsigned char *priv,
                                 size_t len, const EVP_CIPHER *cipher);
 

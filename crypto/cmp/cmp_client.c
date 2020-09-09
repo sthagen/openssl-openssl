@@ -425,10 +425,8 @@ static X509 *get1_cert_status(OSSL_CMP_CTX *ctx, int bodytype,
         goto err;
     case OSSL_CMP_PKISTATUS_grantedWithMods:
         ossl_cmp_warn(ctx, "received \"grantedWithMods\" for certificate");
-        crt = ossl_cmp_certresponse_get1_certificate(privkey, crep);
         break;
     case OSSL_CMP_PKISTATUS_accepted:
-        crt = ossl_cmp_certresponse_get1_certificate(privkey, crep);
         break;
         /* get all information in case of a rejection before going to error */
     case OSSL_CMP_PKISTATUS_rejection:
@@ -438,19 +436,16 @@ static X509 *get1_cert_status(OSSL_CMP_CTX *ctx, int bodytype,
     case OSSL_CMP_PKISTATUS_revocationWarning:
         ossl_cmp_warn(ctx,
                       "received \"revocationWarning\" - a revocation of the cert is imminent");
-        crt = ossl_cmp_certresponse_get1_certificate(privkey, crep);
         break;
     case OSSL_CMP_PKISTATUS_revocationNotification:
         ossl_cmp_warn(ctx,
                       "received \"revocationNotification\" - a revocation of the cert has occurred");
-        crt = ossl_cmp_certresponse_get1_certificate(privkey, crep);
         break;
     case OSSL_CMP_PKISTATUS_keyUpdateWarning:
         if (bodytype != OSSL_CMP_PKIBODY_KUR) {
             CMPerr(0, CMP_R_ENCOUNTERED_KEYUPDATEWARNING);
             goto err;
         }
-        crt = ossl_cmp_certresponse_get1_certificate(privkey, crep);
         break;
     default:
         ossl_cmp_log1(ERROR, ctx,
@@ -459,6 +454,7 @@ static X509 *get1_cert_status(OSSL_CMP_CTX *ctx, int bodytype,
         CMPerr(0, CMP_R_UNKNOWN_PKISTATUS);
         goto err;
     }
+    crt = ossl_cmp_certresponse_get1_cert(crep, ctx, privkey);
     if (crt == NULL) /* according to PKIStatus, we can expect a cert */
         CMPerr(0, CMP_R_CERTIFICATE_NOT_FOUND);
 
@@ -473,7 +469,7 @@ static X509 *get1_cert_status(OSSL_CMP_CTX *ctx, int bodytype,
 /*-
  * Callback fn validating that the new certificate can be verified, using
  * ctx->certConf_cb_arg, which has been initialized using opt_out_trusted, and
- * ctx->untrusted_certs, which at this point already contains ctx->extraCertsIn.
+ * ctx->untrusted, which at this point already contains ctx->extraCertsIn.
  * Returns 0 on acceptance, else a bit field reflecting PKIFailureInfo.
  * Quoting from RFC 4210 section 5.1. Overall PKI Message:
  *     The extraCerts field can contain certificates that may be useful to
