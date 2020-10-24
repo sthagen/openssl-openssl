@@ -26,11 +26,6 @@
 
 #define COOKIE_SECRET_LENGTH    16
 
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_CRL)
-DEFINE_STACK_OF(X509_NAME)
-DEFINE_STACK_OF_STRING()
-
 VERIFY_CB_ARGS verify_args = { -1, 0, X509_V_OK, 0 };
 
 #ifndef OPENSSL_NO_SOCK
@@ -791,6 +786,7 @@ int generate_cookie_callback(SSL *ssl, unsigned char *cookie,
     /* Create buffer with peer's address and port */
     if (!BIO_ADDR_rawaddress(peer, NULL, &length)) {
         BIO_printf(bio_err, "Failed getting peer address\n");
+        BIO_ADDR_free(lpeer);
         return 0;
     }
     OPENSSL_assert(length != 0);
@@ -1051,15 +1047,15 @@ int load_excert(SSL_EXCERT **pexc)
             return 0;
         if (exc->keyfile != NULL) {
             exc->key = load_key(exc->keyfile, exc->keyform,
-                                0, NULL, NULL, "Server Key");
+                                0, NULL, NULL, "server key");
         } else {
             exc->key = load_key(exc->certfile, exc->certform,
-                                0, NULL, NULL, "Server Key");
+                                0, NULL, NULL, "server key");
         }
         if (exc->key == NULL)
             return 0;
         if (exc->chainfile != NULL) {
-            if (!load_certs(exc->chainfile, &exc->chain, NULL, "Server Chain"))
+            if (!load_certs(exc->chainfile, &exc->chain, NULL, "server chain"))
                 return 0;
         }
     }

@@ -21,13 +21,12 @@
 #include <openssl/kdf.h>
 #include <openssl/params.h>
 #include <openssl/core_names.h>
+#include <openssl/fips_names.h>
 #include "internal/numbers.h"
 #include "internal/nelem.h"
 #include "crypto/evp.h"
 #include "testutil.h"
 #include "evp_test.h"
-
-DEFINE_STACK_OF_STRING()
 
 #define AAD_NUM 4
 
@@ -74,7 +73,7 @@ typedef enum OPTION_choice {
 } OPTION_CHOICE;
 
 static OSSL_PROVIDER *prov_null = NULL;
-static OPENSSL_CTX *libctx = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
 
 /* List of public and private keys */
 static KEY_LIST *private_keys;
@@ -1161,15 +1160,12 @@ static int mac_test_run_pkey(EVP_TEST *t)
             t->err = "MAC_KEY_CREATE_ERROR";
             goto err;
         }
-        key = EVP_PKEY_new_CMAC_key_with_libctx(expected->key,
-                                                expected->key_len,
-                                                EVP_CIPHER_name(cipher),
-                                                libctx, NULL);
+        key = EVP_PKEY_new_CMAC_key_ex(expected->key, expected->key_len,
+                                       EVP_CIPHER_name(cipher), libctx, NULL);
     } else {
-        key = EVP_PKEY_new_raw_private_key_with_libctx(libctx,
-                                                       OBJ_nid2sn(expected->type),
-                                                       NULL, expected->key,
-                                                       expected->key_len);
+        key = EVP_PKEY_new_raw_private_key_ex(libctx,
+                                              OBJ_nid2sn(expected->type), NULL,
+                                              expected->key, expected->key_len);
     }
     if (key == NULL) {
         t->err = "MAC_KEY_CREATE_ERROR";
@@ -1189,7 +1185,7 @@ static int mac_test_run_pkey(EVP_TEST *t)
         t->err = "INTERNAL_ERROR";
         goto err;
     }
-    if (!EVP_DigestSignInit_with_libctx(mctx, &pctx, mdname, libctx, NULL, key)) {
+    if (!EVP_DigestSignInit_ex(mctx, &pctx, mdname, libctx, NULL, key)) {
         t->err = "DIGESTSIGNINIT_ERROR";
         goto err;
     }
@@ -1629,8 +1625,11 @@ static int pderive_test_parse(EVP_TEST *t,
         EVP_PKEY *peer;
         if (find_key(&peer, value, public_keys) == 0)
             return -1;
-        if (EVP_PKEY_derive_set_peer(kdata->ctx, peer) <= 0)
-            return -1;
+        if (EVP_PKEY_derive_set_peer(kdata->ctx, peer) <= 0) {
+            t->err = "DERIVE_SET_PEER_ERROR";
+            return 1;
+        }
+        t->err = NULL;
         return 1;
     }
     if (strcmp(keyword, "SharedSecret") == 0)
@@ -1843,9 +1842,9 @@ static int pbe_test_run(EVP_TEST *t)
     PBE_DATA *expected = t->data;
     unsigned char *key;
     EVP_MD *fetched_digest = NULL;
-    OPENSSL_CTX *save_libctx;
+    OSSL_LIB_CTX *save_libctx;
 
-    save_libctx = OPENSSL_CTX_set0_default(libctx);
+    save_libctx = OSSL_LIB_CTX_set0_default(libctx);
 
     if (!TEST_ptr(key = OPENSSL_malloc(expected->key_len))) {
         t->err = "INTERNAL_ERROR";
@@ -1891,7 +1890,7 @@ static int pbe_test_run(EVP_TEST *t)
 err:
     EVP_MD_free(fetched_digest);
     OPENSSL_free(key);
-    OPENSSL_CTX_set0_default(save_libctx);
+    OSSL_LIB_CTX_set0_default(save_libctx);
     return 1;
 }
 
@@ -2893,13 +2892,13 @@ static int digestsigver_test_parse(EVP_TEST *t,
             return 1;
         }
         if (mdata->is_verify) {
-            if (!EVP_DigestVerifyInit_with_libctx(mdata->ctx, &mdata->pctx,
-                                                  name, libctx, NULL, pkey))
+            if (!EVP_DigestVerifyInit_ex(mdata->ctx, &mdata->pctx, name, libctx,
+                                         NULL, pkey))
                 t->err = "DIGESTVERIFYINIT_ERROR";
             return 1;
         }
-        if (!EVP_DigestSignInit_with_libctx(mdata->ctx, &mdata->pctx,
-                                            name, libctx, NULL, pkey))
+        if (!EVP_DigestSignInit_ex(mdata->ctx, &mdata->pctx, name, libctx, NULL,
+                                   pkey))
             t->err = "DIGESTSIGNINIT_ERROR";
         return 1;
     }
@@ -3256,8 +3255,7 @@ static int key_unsupported(void)
     long err = ERR_peek_last_error();
 
     if (ERR_GET_LIB(err) == ERR_LIB_EVP
-            && (ERR_GET_REASON(err) == EVP_R_UNSUPPORTED_ALGORITHM
-                || ERR_GET_REASON(err) == EVP_R_FETCH_FAILED)) {
+            && (ERR_GET_REASON(err) == EVP_R_UNSUPPORTED_ALGORITHM)) {
         ERR_clear_error();
         return 1;
     }
@@ -3284,6 +3282,33 @@ static char *take_value(PAIR *pp)
 
     pp->value = NULL;
     return p;
+}
+
+static int securitycheck_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled == -1) {
+        if (OSSL_PROVIDER_available(libctx, "fips")) {
+            OSSL_PARAM params[2];
+            OSSL_PROVIDER *prov = NULL;
+            int check = 1;
+
+            prov = OSSL_PROVIDER_load(libctx, "fips");
+            if (prov != NULL) {
+                params[0] =
+                    OSSL_PARAM_construct_int(OSSL_PROV_PARAM_SECURITY_CHECKS,
+                                             &check);
+                params[1] = OSSL_PARAM_construct_end();
+                OSSL_PROVIDER_get_params(prov, params);
+                OSSL_PROVIDER_unload(prov);
+            }
+            enabled = check;
+            return enabled;
+        }
+        enabled = 0;
+    }
+    return enabled;
 }
 
 /*
@@ -3387,11 +3412,11 @@ start:
             return 0;
         }
         if (klist == &private_keys)
-            pkey = EVP_PKEY_new_raw_private_key_with_libctx(libctx, strnid, NULL,
-                                                            keybin, keylen);
+            pkey = EVP_PKEY_new_raw_private_key_ex(libctx, strnid, NULL, keybin,
+                                                   keylen);
         else
-            pkey = EVP_PKEY_new_raw_public_key_with_libctx(libctx, strnid, NULL,
-                                                           keybin, keylen);
+            pkey = EVP_PKEY_new_raw_public_key_ex(libctx, strnid, NULL, keybin,
+                                                  keylen);
         if (pkey == NULL && !key_unsupported()) {
             TEST_info("Can't read %s data", pp->key);
             OPENSSL_free(keybin);
@@ -3443,7 +3468,18 @@ start:
     }
 
     for (pp++, i = 1; i < (t->s.numpairs - skip_availablein); pp++, i++) {
-        if (strcmp(pp->key, "Availablein") == 0) {
+        if (strcmp(pp->key, "Securitycheck") == 0) {
+#if defined(OPENSSL_NO_FIPS_SECURITYCHECKS)
+#else
+            if (!securitycheck_enabled())
+#endif
+            {
+                TEST_info("skipping, Securitycheck is disabled: %s:%d",
+                          t->s.test_file, t->s.start);
+                t->skip = 1;
+                return 0;
+            }
+        } else if (strcmp(pp->key, "Availablein") == 0) {
             TEST_info("Line %d: 'Availablein' should be the first option",
                       t->s.curr);
             return 0;
@@ -3559,9 +3595,9 @@ int setup_tests(void)
     }
 
     /* load the provider via configuration into the created library context */
-    libctx = OPENSSL_CTX_new();
+    libctx = OSSL_LIB_CTX_new();
     if (libctx == NULL
-        || !OPENSSL_CTX_load_config(libctx, config_file)) {
+        || !OSSL_LIB_CTX_load_config(libctx, config_file)) {
         TEST_error("Failed to load config %s\n", config_file);
         return 0;
     }
@@ -3577,7 +3613,7 @@ int setup_tests(void)
 void cleanup_tests(void)
 {
     OSSL_PROVIDER_unload(prov_null);
-    OPENSSL_CTX_free(libctx);
+    OSSL_LIB_CTX_free(libctx);
 }
 
 #define STR_STARTS_WITH(str, pre) strncasecmp(pre, str, strlen(pre)) == 0

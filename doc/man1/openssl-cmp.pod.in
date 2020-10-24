@@ -235,7 +235,7 @@ e.g., C<signKeyPairTypes>.
 =item B<-geninfo> I<OID:int:N>
 
 generalInfo integer values to place in request PKIHeader with given OID,
-e.g., C<1.2.3:int:987>.
+e.g., C<1.2.3.4:int:56789>.
 
 =back
 
@@ -268,19 +268,23 @@ For KUR, it defaults to the subject DN of the reference certificate
 (see B<-oldcert>).
 This default is used for IR and CR only if no SANs are set.
 
-The argument must be formatted as I</type0=value0/type1=value1/type2=...>,
-characters may be escaped by C<\>E<nbsp>(backslash), no spaces are skipped.
-
 The subject DN is also used as fallback sender of outgoing CMP messages
 if no B<-cert> and no B<-oldcert> are given.
+
+The argument must be formatted as I</type0=value0/type1=value1/type2=...>.
+Special characters may be escaped by C<\> (backslash), whitespace is retained.
+Empty values are permitted, but the corresponding type will not be included.
+Giving a single C</> will lead to an empty sequence of RDNs (a NULL-DN).
+Multi-valued RDNs can be formed by placing a C<+> character instead of a C</>
+between the AttributeValueAssertions (AVAs) that specify the members of the set.
+Example:
+
+C</DC=org/DC=OpenSSL/DC=users/UID=123456+CN=John Doe>
 
 =item B<-issuer> I<name>
 
 X509 issuer Distinguished Name (DN) of the CA server
 to place in the requested certificate template in IR/CR/KUR.
-
-The argument must be formatted as I</type0=value0/type1=value1/type2=...>,
-characters may be escaped by C<\>E<nbsp>(backslash), no spaces are skipped.
 
 If neither B<-srvcert> nor B<-recipient> is available,
 the name given in this option is also set as the recipient of the CMP message.
@@ -448,6 +452,7 @@ Defaults to the environment variable C<http_proxy> if set, else C<HTTP_PROXY>
 in case no TLS is used, otherwise C<https_proxy> if set, else C<HTTPS_PROXY>.
 
 =item B<-no_proxy> I<addresses>
+
 List of IP addresses and/or DNS names of servers
 not to use an HTTP(S) proxy for, separated by commas and/or whitespace
 (where in the latter case the whole argument must be enclosed in "...").
@@ -495,11 +500,14 @@ Each source may contain multiple certificates.
 
 =item B<-untrusted> I<sources>
 
-Non-trusted intermediate CA certificate(s) that may be useful for cert path
-construction for the CMP client certificate (to include in the extraCerts field
-of outgoing messages), for the TLS client certificate (if TLS is enabled),
+Non-trusted intermediate CA certificate(s).
+Any extra certificates given with the B<-cert> option are appended to it.
+All these certificates may be useful for cert path construction
+for the CMP client certificate (to include in the extraCerts field of outgoing
+messages) and for the TLS client certificate (if TLS is enabled)
+as well as for chain building
 when verifying the CMP server certificate (checking signature-based
-CMP message protection), and when verifying newly enrolled certificates.
+CMP message protection) and when verifying newly enrolled certificates.
 
 Multiple filenames may be given, separated by commas and/or whitespace.
 Each file may contain multiple certificates.
@@ -519,10 +527,6 @@ and as default value for the expected sender of incoming CMP messages.
 Distinguished Name (DN) to use in the recipient field of CMP request messages,
 i.e., the CMP server (usually the addressed CA).
 
-The argument must be formatted as I</type0=value0/type1=value1/type2=...>,
-characters may be escaped by C<\>E<nbsp>(backslash), no spaces are skipped.
-The empty name (NULL-DN) can be given explicitly as a single slash: 'I</>'.
-
 The recipient field in the header of a CMP message is mandatory.
 If not given explicitly the recipient is determined in the following order:
 the subject of the CMP server certificate given with the B<-srvcert> option,
@@ -535,9 +539,6 @@ as far as any of those is present, else the NULL-DN as last resort.
 
 Distinguished Name (DN) expected in the sender field of incoming CMP messages.
 Defaults to the subject DN of the pinned B<-srvcert>, if any.
-
-The argument must be formatted as I</type0=value0/type1=value1/type2=...>,
-characters may be escaped by C<\>E<nbsp>(backslash), no spaces are skipped.
 
 This can be used to make sure that only a particular entity is accepted as
 CMP message signer, and attackers are not able to use arbitrary certificates
@@ -590,13 +591,13 @@ with a signature key."
 
 =item B<-extracertsout> I<filename>
 
-The file where to save any extra certificates received in the extraCerts field
-of response messages.
+The file where to save all certificates contained in the extraCerts field
+of the last received response message (except for pollRep and PKIConf).
 
 =item B<-cacertsout> I<filename>
 
-The file where to save any CA certificates received in the caPubs field of
-Initialization Response (IP) messages.
+The file where to save any CA certificates contained in the caPubs field of
+the last received certificate response (i.e., IP, CP, or KUP) message.
 
 =back
 
@@ -613,10 +614,11 @@ is typically used when authenticating with pre-shared key (password-based MAC).
 
 =item B<-secret> I<arg>
 
-Source of secret value to use for creating PBM-based protection of outgoing
-messages and for verifying any PBM-based protection of incoming messages.
+Prefer PBM-based message protection with given source of a secret value.
+The secret is used for creating PBM-based protection of outgoing messages
+and (as far as needed) for verifying PBM-based protection of incoming messages.
 PBM stands for Password-Based Message Authentication Code.
-This takes precedence over the B<-cert> option.
+This takes precedence over the B<-cert> and B<-key> options.
 
 For more information about the format of B<arg> see the
 B<PASS PHRASE ARGUMENTS> section in L<openssl(1)>.
@@ -627,13 +629,17 @@ The client's current CMP signer certificate.
 Requires the corresponding key to be given with B<-key>.
 The subject of this certificate will be used as sender of outgoing CMP messages,
 while the subject of B<-oldcert> or B<-subjectName> may provide fallback values.
+The issuer of this certificate is used as one of the recipient fallback values.
 When using signature-based message protection, this "protection certificate"
-will be included first in the extraCerts field of outgoing messages.
+will be included first in the extraCerts field of outgoing messages
+and the signature is done with the corresponding key.
 In Initialization Request (IR) messages this can be used for authenticating
 using an external entity certificate as defined in appendix E.7 of RFC 4210.
 For Key Update Request (KUR) messages this is also used as
 the certificate to be updated if the B<-oldcert> option is not given.
-If the file includes further certs, they are appended to the untrusted certs.
+If the file includes further certs, they are appended to the untrusted certs
+because they typically constitute the chain of the client certificate, which
+is included in the extraCerts field in signature-protected request messages.
 
 =item B<-own_trusted> I<filenames>
 
@@ -681,6 +687,7 @@ Defaults to C<hmac-sha1> as per RFC 4210.
 =item B<-extracerts> I<sources>
 
 Certificates to append in the extraCerts field when sending messages.
+They can be used as the default CMP signer certificate chain to include.
 
 Multiple filenames or URLs may be given, separated by commas and/or whitespace
 (where in the latter case the whole argument must be enclosed in "...").
@@ -710,8 +717,9 @@ The only value with effect is B<ENGINE>.
 =item B<-otherpass> I<arg>
 
 Pass phrase source for certificate given with the B<-trusted>, B<-untrusted>,
-B<-own_trusted>,
-B<-out_trusted>, B<-extracerts>, B<-tls_extra>, or B<-tls_trusted> options.
+B<-own_trusted>, B<-srvcert>, B<-out_trusted>, B<-extracerts>,
+B<-srv_trusted>, B<-srv_untrusted>, B<-rsp_extracerts>, B<-rsp_capubs>,
+B<-tls_extra>, and B<-tls_trusted> options.
 If not given here, the password will be prompted for if needed.
 
 For more information about the format of B<arg> see the
@@ -1019,10 +1027,14 @@ to issue the following shell commands.
 
   cd /path/to/openssl
   export OPENSSL_CONF=openssl.cnf
+
 =begin comment
-  wget 'http://pki.certificate.fi:8080/install-ca-cert.html/ca-certificate.crt\
+
+  wget 'http://pki.certificate.fi:8081/install-ca-cert.html/ca-certificate.crt\
         ?ca-id=632&download-certificate=1' -O insta.ca.crt
+
 =end comment
+
   openssl genrsa -out insta.priv.pem
   openssl cmp -section insta
 

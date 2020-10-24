@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2008-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -83,11 +83,11 @@ int SMIME_write_CMS(BIO *bio, CMS_ContentInfo *cms, BIO *data, int flags)
     else
         mdalgs = NULL;
 
-    return SMIME_write_ASN1_with_libctx(bio, (ASN1_VALUE *)cms, data, flags,
-                                        ctype_nid, econt_nid, mdalgs,
-                                        ASN1_ITEM_rptr(CMS_ContentInfo),
-                                        cms_ctx_get0_libctx(ctx),
-                                        cms_ctx_get0_propq(ctx));
+    return SMIME_write_ASN1_ex(bio, (ASN1_VALUE *)cms, data, flags, ctype_nid,
+                               econt_nid, mdalgs,
+                               ASN1_ITEM_rptr(CMS_ContentInfo),
+                               cms_ctx_get0_libctx(ctx),
+                               cms_ctx_get0_propq(ctx));
 }
 
 CMS_ContentInfo *SMIME_read_CMS_ex(BIO *bio, BIO **bcont, CMS_ContentInfo **cms)

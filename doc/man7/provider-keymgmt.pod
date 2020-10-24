@@ -36,7 +36,7 @@ provider-keymgmt - The KEYMGMT library E<lt>-E<gt> provider functions
  const OSSL_PARAM *OSSL_FUNC_keymgmt_settable_params(void *provctx);
 
  /* Key object content checks */
- int OSSL_FUNC_keymgmt_has(void *keydata, int selection);
+ int OSSL_FUNC_keymgmt_has(const void *keydata, int selection);
  int OSSL_FUNC_keymgmt_match(const void *keydata1, const void *keydata2,
                              int selection);
 
@@ -54,7 +54,7 @@ provider-keymgmt - The KEYMGMT library E<lt>-E<gt> provider functions
  int OSSL_FUNC_keymgmt_copy(void *keydata_to, const void *keydata_from, int selection);
 
  /* Key object validation */
- int OSSL_FUNC_keymgmt_validate(void *keydata, int selection);
+ int OSSL_FUNC_keymgmt_validate(const void *keydata, int selection);
 
 =head1 DESCRIPTION
 

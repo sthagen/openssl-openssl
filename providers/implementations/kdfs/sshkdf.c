@@ -17,9 +17,10 @@
 #include "internal/numbers.h"
 #include "crypto/evp.h"
 #include "prov/provider_ctx.h"
+#include "prov/providercommon.h"
 #include "prov/providercommonerr.h"
 #include "prov/implementations.h"
-# include "prov/provider_util.h"
+#include "prov/provider_util.h"
 
 /* See RFC 4253, Section 7.2 */
 static OSSL_FUNC_kdf_newctx_fn kdf_sshkdf_new;
@@ -52,6 +53,9 @@ typedef struct {
 static void *kdf_sshkdf_new(void *provctx)
 {
     KDF_SSHKDF *ctx;
+
+    if (!ossl_prov_is_running())
+        return NULL;
 
     if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) == NULL)
         ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
@@ -94,8 +98,12 @@ static int kdf_sshkdf_derive(void *vctx, unsigned char *key,
                              size_t keylen)
 {
     KDF_SSHKDF *ctx = (KDF_SSHKDF *)vctx;
-    const EVP_MD *md = ossl_prov_digest_md(&ctx->digest);
+    const EVP_MD *md;
 
+    if (!ossl_prov_is_running())
+        return 0;
+
+    md = ossl_prov_digest_md(&ctx->digest);
     if (md == NULL) {
         ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_MESSAGE_DIGEST);
         return 0;
@@ -126,7 +134,7 @@ static int kdf_sshkdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
     const OSSL_PARAM *p;
     KDF_SSHKDF *ctx = vctx;
-    OPENSSL_CTX *provctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(ctx->provctx);
     int t;
 
     if (!ossl_prov_digest_load_from_params(&ctx->digest, params, provctx))
@@ -192,7 +200,7 @@ static const OSSL_PARAM *kdf_sshkdf_gettable_ctx_params(ossl_unused void *p_ctx)
     return known_gettable_ctx_params;
 }
 
-const OSSL_DISPATCH kdf_sshkdf_functions[] = {
+const OSSL_DISPATCH ossl_kdf_sshkdf_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))kdf_sshkdf_new },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))kdf_sshkdf_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))kdf_sshkdf_reset },

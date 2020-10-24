@@ -26,8 +26,8 @@
 
 /* functions for EC_GROUP objects */
 
-EC_GROUP *ec_group_new_with_libctx(OPENSSL_CTX *libctx, const char *propq,
-                                   const EC_METHOD *meth)
+EC_GROUP *ec_group_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
+                          const EC_METHOD *meth)
 {
     EC_GROUP *ret;
 
@@ -81,7 +81,7 @@ EC_GROUP *ec_group_new_with_libctx(OPENSSL_CTX *libctx, const char *propq,
 # ifndef FIPS_MODULE
 EC_GROUP *EC_GROUP_new(const EC_METHOD *meth)
 {
-    return ec_group_new_with_libctx(NULL, NULL, meth);
+    return ec_group_new_ex(NULL, NULL, meth);
 }
 # endif
 #endif
@@ -243,6 +243,7 @@ int EC_GROUP_copy(EC_GROUP *dest, const EC_GROUP *src)
 
     dest->asn1_flag = src->asn1_flag;
     dest->asn1_form = src->asn1_form;
+    dest->decoded_from_explicit_params = src->decoded_from_explicit_params;
 
     if (src->seed) {
         OPENSSL_free(dest->seed);
@@ -270,7 +271,7 @@ EC_GROUP *EC_GROUP_dup(const EC_GROUP *a)
     if (a == NULL)
         return NULL;
 
-    if ((t = ec_group_new_with_libctx(a->libctx, a->propq, a->meth)) == NULL)
+    if ((t = ec_group_new_ex(a->libctx, a->propq, a->meth)) == NULL)
         return NULL;
     if (!EC_GROUP_copy(t, a))
         goto err;
@@ -1402,7 +1403,7 @@ int EC_GROUP_get_pentanomial_basis(const EC_GROUP *group, unsigned int *k1,
  * mathematically wrong anyway and should not be used.
  */
 static EC_GROUP *ec_group_explicit_to_named(const EC_GROUP *group,
-                                            OPENSSL_CTX *libctx,
+                                            OSSL_LIB_CTX *libctx,
                                             const char *propq,
                                             BN_CTX *ctx)
 {
@@ -1437,8 +1438,7 @@ static EC_GROUP *ec_group_explicit_to_named(const EC_GROUP *group,
             curve_name_nid = NID_secp224r1;
 #endif /* !def(OPENSSL_NO_EC_NISTP_64_GCC_128) */
 
-        ret_group = EC_GROUP_new_by_curve_name_with_libctx(libctx, propq,
-                                                           curve_name_nid);
+        ret_group = EC_GROUP_new_by_curve_name_ex(libctx, propq, curve_name_nid);
         if (ret_group == NULL)
             goto err;
 
@@ -1499,7 +1499,7 @@ static int ec_encoding_param2id(const OSSL_PARAM *p, int *id)
 }
 
 static EC_GROUP *group_new_from_name(const OSSL_PARAM *p,
-                                     OPENSSL_CTX *libctx, const char *propq)
+                                     OSSL_LIB_CTX *libctx, const char *propq)
 {
     int ok = 0, nid;
     const char *curve_name = NULL;
@@ -1521,14 +1521,14 @@ static EC_GROUP *group_new_from_name(const OSSL_PARAM *p,
             ECerr(0, EC_R_INVALID_CURVE);
             return NULL;
         } else {
-            return EC_GROUP_new_by_curve_name_with_libctx(libctx, propq, nid);
+            return EC_GROUP_new_by_curve_name_ex(libctx, propq, nid);
         }
     }
     return NULL;
 }
 
 EC_GROUP *EC_GROUP_new_from_params(const OSSL_PARAM params[],
-                                   OPENSSL_CTX *libctx, const char *propq)
+                                   OSSL_LIB_CTX *libctx, const char *propq)
 {
     const OSSL_PARAM *ptmp, *pa, *pb;
     int ok = 0;

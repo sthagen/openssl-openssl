@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -74,7 +74,7 @@ int PKCS12_key_gen_uni(unsigned char *pass, int passlen, unsigned char *salt,
      * The parameter query isn't available but the library context can be
      * extracted from the passed digest.
      */
-    kdf = EVP_KDF_fetch(ossl_provider_library_context(EVP_MD_provider(md_type)),
+    kdf = EVP_KDF_fetch(ossl_provider_libctx(EVP_MD_provider(md_type)),
                         "PKCS12KDF", NULL);
     if (kdf == NULL)
         return 0;

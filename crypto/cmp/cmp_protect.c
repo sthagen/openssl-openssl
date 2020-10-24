@@ -18,8 +18,6 @@
 #include <openssl/err.h>
 #include <openssl/x509.h>
 
-DEFINE_STACK_OF(X509)
-
 /*
  * This function is also used by the internal verify_PBMAC() in cmp_vfy.c.
  *
@@ -121,9 +119,9 @@ ASN1_BIT_STRING *ossl_cmp_calc_protection(const OSSL_CMP_CTX *ctx,
 
         if ((prot = ASN1_BIT_STRING_new()) == NULL)
             return NULL;
-        if (ASN1_item_sign_with_libctx(ASN1_ITEM_rptr(OSSL_CMP_PROTECTEDPART),
-                                       NULL, NULL, prot, &prot_part, NULL,
-                                       ctx->pkey, md, ctx->libctx, ctx->propq))
+        if (ASN1_item_sign_ex(ASN1_ITEM_rptr(OSSL_CMP_PROTECTEDPART), NULL,
+                              NULL, prot, &prot_part, NULL, ctx->pkey, md,
+                              ctx->libctx, ctx->propq))
             return prot;
         ASN1_BIT_STRING_free(prot);
         return NULL;
@@ -139,32 +137,38 @@ int ossl_cmp_msg_add_extraCerts(OSSL_CMP_CTX *ctx, OSSL_CMP_MSG *msg)
             && (msg->extraCerts = sk_X509_new_null()) == NULL)
         return 0;
 
-    if (ctx->cert != NULL && ctx->pkey != NULL) {
-        /* make sure that our own cert is included in the first position */
-        if (!X509_add_cert(msg->extraCerts, ctx->cert,
-                           X509_ADD_FLAG_UP_REF | X509_ADD_FLAG_NO_DUP
-                           | X509_ADD_FLAG_PREPEND))
-            return 0;
-        /* if we have untrusted certs, try to add intermediate certs */
-        if (ctx->untrusted != NULL) {
-            STACK_OF(X509) *chain;
-            int res;
+    /* Add first ctx->cert and its chain if using signature-based protection */
+    if (!ctx->unprotectedSend && ctx->secretValue == NULL
+            && ctx->cert != NULL && ctx->pkey != NULL) {
+        int flags_prepend = X509_ADD_FLAG_UP_REF | X509_ADD_FLAG_NO_DUP
+            | X509_ADD_FLAG_PREPEND | X509_ADD_FLAG_NO_SS;
 
+        /* if not yet done try to build chain using available untrusted certs */
+        if (ctx->chain == NULL) {
             ossl_cmp_debug(ctx,
                            "trying to build chain for own CMP signer cert");
-            chain = ossl_cmp_build_cert_chain(ctx->libctx, ctx->propq, NULL,
-                                              ctx->untrusted, ctx->cert);
-            res = X509_add_certs(msg->extraCerts, chain,
-                                 X509_ADD_FLAG_UP_REF | X509_ADD_FLAG_NO_DUP
-                                 | X509_ADD_FLAG_NO_SS);
-            sk_X509_pop_free(chain, X509_free);
-            if (res == 0) {
-                ossl_cmp_err(ctx,
-                             "could not build chain for own CMP signer cert");
-                return 0;
+            ctx->chain =
+                ossl_cmp_build_cert_chain(ctx->libctx, ctx->propq, NULL,
+                                          ctx->untrusted, ctx->cert);
+            if (ctx->chain != NULL) {
+                ossl_cmp_debug(ctx,
+                               "success building chain for own CMP signer cert");
+            } else {
+                /* dump errors to avoid confusion when printing further ones */
+                OSSL_CMP_CTX_print_errors(ctx);
+                ossl_cmp_warn(ctx,
+                              "could not build chain for own CMP signer cert");
             }
+        }
+        if (ctx->chain != NULL) {
+            if (!X509_add_certs(msg->extraCerts, ctx->chain, flags_prepend))
+                return 0;
+        } else {
+            /* make sure that at least our own signer cert is included first */
+            if (!X509_add_cert(msg->extraCerts, ctx->cert, flags_prepend))
+                return 0;
             ossl_cmp_debug(ctx,
-                           "succeeded building chain for own CMP signer cert");
+                           "fallback: adding just own CMP signer cert");
         }
     }
 
@@ -173,7 +177,7 @@ int ossl_cmp_msg_add_extraCerts(OSSL_CMP_CTX *ctx, OSSL_CMP_MSG *msg)
                         X509_ADD_FLAG_UP_REF | X509_ADD_FLAG_NO_DUP))
         return 0;
 
-    /* if none was found avoid empty ASN.1 sequence */
+    /* in case extraCerts are empty list avoid empty ASN.1 sequence */
     if (sk_X509_num(msg->extraCerts) == 0) {
         sk_X509_free(msg->extraCerts);
         msg->extraCerts = NULL;
@@ -266,11 +270,11 @@ int ossl_cmp_msg_protect(OSSL_CMP_CTX *ctx, OSSL_CMP_MSG *msg)
     ASN1_BIT_STRING_free(msg->protection);
     msg->protection = NULL;
 
-    if (ctx->unprotectedSend)
-        return 1;
-
-    /* use PasswordBasedMac according to 5.1.3.1 if secretValue is given */
-    if (ctx->secretValue != NULL) {
+    if (ctx->unprotectedSend) {
+        if (!set_senderKID(ctx, msg, NULL))
+            goto err;
+    } else if (ctx->secretValue != NULL) {
+        /* use PasswordBasedMac according to 5.1.3.1 if secretValue is given */
         if (!set_pbmac_algor(ctx, &msg->header->protectionAlg))
             goto err;
         if (!set_senderKID(ctx, msg, NULL))
@@ -304,11 +308,12 @@ int ossl_cmp_msg_protect(OSSL_CMP_CTX *ctx, OSSL_CMP_MSG *msg)
         CMPerr(0, CMP_R_MISSING_KEY_INPUT_FOR_CREATING_PROTECTION);
         goto err;
     }
-    if ((msg->protection = ossl_cmp_calc_protection(ctx, msg)) == NULL)
+    if (!ctx->unprotectedSend
+            && ((msg->protection = ossl_cmp_calc_protection(ctx, msg)) == NULL))
         goto err;
 
     /*
-     * If present, add ctx->cert followed by its chain as far as possible.
+     * For signature-based protection add ctx->cert followed by its chain.
      * Finally add any additional certificates from ctx->extraCertsOut;
      * even if not needed to validate the protection
      * the option to do this might be handy for certain use cases.
@@ -321,11 +326,10 @@ int ossl_cmp_msg_protect(OSSL_CMP_CTX *ctx, OSSL_CMP_MSG *msg)
      * to the client it set to NULL-DN. In this case for identification at least
      * the senderKID must be set, where we took the referenceValue as fallback.
      */
-    if (ossl_cmp_general_name_is_NULL_DN(msg->header->sender)
-            && msg->header->senderKID == NULL)
-        CMPerr(0, CMP_R_MISSING_SENDER_IDENTIFICATION);
-    else
+    if (!(ossl_cmp_general_name_is_NULL_DN(msg->header->sender)
+          && msg->header->senderKID == NULL))
         return 1;
+    CMPerr(0, CMP_R_MISSING_SENDER_IDENTIFICATION);
 
  err:
     CMPerr(0, CMP_R_ERROR_PROTECTING_MESSAGE);

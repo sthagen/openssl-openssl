@@ -46,6 +46,7 @@
 #include "internal/numbers.h"
 #include "crypto/evp.h"
 #include "prov/provider_ctx.h"
+#include "prov/providercommon.h"
 #include "prov/providercommonerr.h"
 #include "prov/implementations.h"
 #include "prov/provider_util.h"
@@ -245,7 +246,7 @@ static int SSKDF_mac_kdm(EVP_MAC_CTX *ctx_init,
     if (!EVP_MAC_init(ctx_init))
         goto end;
 
-    out_len = EVP_MAC_size(ctx_init); /* output size */
+    out_len = EVP_MAC_CTX_get_mac_size(ctx_init); /* output size */
     if (out_len <= 0)
         goto end;
     len = derived_key_len;
@@ -292,6 +293,9 @@ end:
 static void *sskdf_new(void *provctx)
 {
     KDF_SSKDF *ctx;
+
+    if (!ossl_prov_is_running())
+        return NULL;
 
     if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) == NULL)
         ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
@@ -349,12 +353,15 @@ static size_t sskdf_size(KDF_SSKDF *ctx)
 static int sskdf_derive(void *vctx, unsigned char *key, size_t keylen)
 {
     KDF_SSKDF *ctx = (KDF_SSKDF *)vctx;
-    const EVP_MD *md = ossl_prov_digest_md(&ctx->digest);
+    const EVP_MD *md;
 
+    if (!ossl_prov_is_running())
+        return 0;
     if (ctx->secret == NULL) {
         ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_SECRET);
         return 0;
     }
+    md = ossl_prov_digest_md(&ctx->digest);
 
     if (ctx->macctx != NULL) {
         /* H(x) = KMAC or H(x) = HMAC */
@@ -364,11 +371,6 @@ static int sskdf_derive(void *vctx, unsigned char *key, size_t keylen)
         int default_salt_len;
         EVP_MAC *mac = EVP_MAC_CTX_mac(ctx->macctx);
 
-        /*
-         * TODO(3.0) investigate the necessity to have all these controls.
-         * Why does KMAC require a salt length that's shorter than the MD
-         * block size?
-         */
         if (EVP_MAC_is_a(mac, OSSL_MAC_NAME_HMAC)) {
             /* H(x) = HMAC(x, salt, hash) */
             if (md == NULL) {
@@ -420,7 +422,10 @@ static int sskdf_derive(void *vctx, unsigned char *key, size_t keylen)
 static int x963kdf_derive(void *vctx, unsigned char *key, size_t keylen)
 {
     KDF_SSKDF *ctx = (KDF_SSKDF *)vctx;
-    const EVP_MD *md = ossl_prov_digest_md(&ctx->digest);
+    const EVP_MD *md;
+
+    if (!ossl_prov_is_running())
+        return 0;
 
     if (ctx->secret == NULL) {
         ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_SECRET);
@@ -433,6 +438,7 @@ static int x963kdf_derive(void *vctx, unsigned char *key, size_t keylen)
     }
 
     /* H(x) = hash */
+    md = ossl_prov_digest_md(&ctx->digest);
     if (md == NULL) {
         ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_MESSAGE_DIGEST);
         return 0;
@@ -446,7 +452,7 @@ static int sskdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
     const OSSL_PARAM *p;
     KDF_SSKDF *ctx = vctx;
-    OPENSSL_CTX *libctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *libctx = PROV_LIBCTX_OF(ctx->provctx);
     size_t sz;
 
     if (!ossl_prov_digest_load_from_params(&ctx->digest, params, libctx))
@@ -513,7 +519,7 @@ static const OSSL_PARAM *sskdf_gettable_ctx_params(ossl_unused void *provctx)
     return known_gettable_ctx_params;
 }
 
-const OSSL_DISPATCH kdf_sskdf_functions[] = {
+const OSSL_DISPATCH ossl_kdf_sskdf_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))sskdf_new },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))sskdf_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))sskdf_reset },
@@ -527,7 +533,7 @@ const OSSL_DISPATCH kdf_sskdf_functions[] = {
     { 0, NULL }
 };
 
-const OSSL_DISPATCH kdf_x963_kdf_functions[] = {
+const OSSL_DISPATCH ossl_kdf_x963_kdf_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))sskdf_new },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))sskdf_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))sskdf_reset },

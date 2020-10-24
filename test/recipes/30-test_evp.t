@@ -23,6 +23,11 @@ use platform;
 
 my $no_fips = disabled('fips') || ($ENV{NO_FIPS} // 0);
 my $no_legacy = disabled('legacy') || ($ENV{NO_LEGACY} // 0);
+my $no_dh = disabled("dh");
+my $no_dsa = disabled("dsa");
+my $no_ec = disabled("ec");
+my $no_gost = disabled("gost");
+my $no_sm2 = disabled("sm2");
 
 # Default config depends on if the legacy module is built or not
 my $defaultcnf = $no_legacy ? 'default.cnf' : 'default-and-legacy.cnf';
@@ -46,18 +51,20 @@ my @files = qw(
                 evpmac_common.txt
                 evpmd_sha.txt
                 evppbe_pbkdf2.txt
-                evppkey_dsa.txt 
+                evppkey_kdf_hkdf.txt
+                evppkey_rsa_common.txt
+                evprand.txt
+              );
+push @files, qw(evppkey_ffdhe.txt) unless $no_dh;
+push @files, qw(evppkey_dsa.txt) unless $no_dsa;
+push @files, qw(evppkey_ecx.txt) unless $no_ec;
+push @files, qw(
                 evppkey_ecc.txt
                 evppkey_ecdh.txt
                 evppkey_ecdsa.txt
-                evppkey_ecx.txt
-                evppkey_ffdhe.txt
                 evppkey_kas.txt
-                evppkey_kdf_hkdf.txt
                 evppkey_mismatch.txt
-                evppkey_rsa.txt
-                evprand.txt
-              );
+              ) unless $no_ec || $no_gost;
 
 # A list of tests that only run with the default provider
 # (i.e. The algorithms are not present in the fips provider)
@@ -93,16 +100,18 @@ my @defltfiles = qw(
                      evpmd_whirlpool.txt
                      evppbe_scrypt.txt
                      evppbe_pkcs12.txt
-                     evppkey_brainpool.txt
                      evppkey_kdf_scrypt.txt
                      evppkey_kdf_tls1_prf.txt
-                     evppkey_sm2.txt
+                     evppkey_rsa.txt
                     );
+push @defltfiles, qw(evppkey_brainpool.txt) unless $no_ec;
+push @defltfiles, qw(evppkey_sm2.txt) unless $no_sm2;
 
 plan tests =>
     ($no_fips ? 0 : 1)          # FIPS install test
     + (scalar(@configs) * scalar(@files))
-    + scalar(@defltfiles);
+    + scalar(@defltfiles)
+    + 3; # error output tests
 
 unless ($no_fips) {
     my $infile = bldtop_file('providers', platform->dso('fips'));
@@ -130,4 +139,39 @@ foreach my $f ( @defltfiles ) {
                  "-config", $conf,
                  data_file("$f")])),
        "running evp_test -config $conf $f");
+}
+
+sub test_errors { # actually tests diagnostics of OSSL_STORE
+    my ($expected, $key, @opts) = @_;
+    my $infile = srctop_file('test', 'certs', $key);
+    my @args = qw(openssl pkey -in);
+    push(@args, $infile, @opts);
+    my $tmpfile = 'out.txt';
+    my $res = !run(app([@args], stderr => $tmpfile));
+    my $found = 0;
+    open(my $in, '<', $tmpfile) or die "Could not open file $tmpfile";
+    while(<$in>) {
+        print; # this may help debugging
+        $res &&= !m/asn1 encoding/; # output must not include ASN.1 parse errors
+        $found = 1 if m/$expected/; # output must include $expected
+    }
+    close $in;
+    # $tmpfile is kept to help with investigation in case of failure
+    return $res && $found;
+}
+
+SKIP: {
+    skip "DSA not disabled", 2 if !disabled("dsa");
+
+    ok(test_errors("unsupported algorithm", "server-dsa-key.pem"),
+       "error loading unsupported dsa private key");
+    ok(test_errors("unsupported algorithm", "server-dsa-pubkey.pem", "-pubin"),
+       "error loading unsupported dsa public key");
+}
+
+SKIP: {
+    skip "sm2 not disabled", 1 if !disabled("sm2");
+
+    ok(test_errors("unknown group|unsupported algorithm", "sm2.key"),
+       "error loading unsupported sm2 private key");
 }

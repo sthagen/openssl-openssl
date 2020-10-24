@@ -60,12 +60,6 @@ typedef unsigned int u_int;
 #endif
 #include "internal/sockets.h"
 
-DEFINE_STACK_OF(X509_EXTENSION)
-DEFINE_STACK_OF(X509_CRL)
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(SSL_CIPHER)
-DEFINE_STACK_OF_STRING()
-
 static int not_resumable_sess_cb(SSL *s, int is_forward_secure);
 static int sv_body(int s, int stype, int prot, unsigned char *context);
 static int www_body(int s, int stype, int prot, unsigned char *context);
@@ -1746,12 +1740,12 @@ int s_server_main(int argc, char *argv[])
 
     if (nocert == 0) {
         s_key = load_key(s_key_file, s_key_format, 0, pass, engine,
-                         "server certificate private key file");
+                         "server certificate private key");
         if (s_key == NULL)
             goto end;
 
         s_cert = load_cert_pass(s_cert_file, s_cert_format, pass,
-                           "server certificate file");
+                           "server certificate");
 
         if (s_cert == NULL)
             goto end;
@@ -1763,12 +1757,12 @@ int s_server_main(int argc, char *argv[])
 
         if (tlsextcbp.servername != NULL) {
             s_key2 = load_key(s_key_file2, s_key_format, 0, pass, engine,
-                              "second server certificate private key file");
+                              "second server certificate private key");
             if (s_key2 == NULL)
                 goto end;
 
             s_cert2 = load_cert_pass(s_cert_file2, s_cert_format, pass,
-                                "second server certificate file");
+                                "second server certificate");
 
             if (s_cert2 == NULL)
                 goto end;
@@ -1808,12 +1802,12 @@ int s_server_main(int argc, char *argv[])
             s_dkey_file = s_dcert_file;
 
         s_dkey = load_key(s_dkey_file, s_dkey_format,
-                          0, dpass, engine, "second certificate private key file");
+                          0, dpass, engine, "second certificate private key");
         if (s_dkey == NULL)
             goto end;
 
         s_dcert = load_cert_pass(s_dcert_file, s_dcert_format, dpass,
-                            "second server certificate file");
+                            "second server certificate");
 
         if (s_dcert == NULL) {
             ERR_print_errors(bio_err);

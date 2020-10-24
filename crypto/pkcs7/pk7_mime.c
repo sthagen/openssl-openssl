@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2017 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -40,11 +40,10 @@ int SMIME_write_PKCS7(BIO *bio, PKCS7 *p7, BIO *data, int flags)
 
     flags ^= SMIME_OLDMIME;
 
-    return SMIME_write_ASN1_with_libctx(bio, (ASN1_VALUE *)p7, data, flags,
-                                        ctype_nid, NID_undef, mdalgs,
-                                        ASN1_ITEM_rptr(PKCS7),
-                                        pkcs7_ctx_get0_libctx(ctx),
-                                        pkcs7_ctx_get0_propq(ctx));
+    return SMIME_write_ASN1_ex(bio, (ASN1_VALUE *)p7, data, flags, ctype_nid,
+                               NID_undef, mdalgs, ASN1_ITEM_rptr(PKCS7),
+                               pkcs7_ctx_get0_libctx(ctx),
+                               pkcs7_ctx_get0_propq(ctx));
 }
 
 PKCS7 *SMIME_read_PKCS7_ex(BIO *bio, BIO **bcont, PKCS7 **p7)

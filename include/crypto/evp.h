@@ -18,6 +18,22 @@
  */
 #define EVP_MD_CTX_FLAG_KEEP_PKEY_CTX   0x0400
 
+/*
+ * An EVP_PKEY can have the following support states:
+ *
+ * Supports legacy implementations only:
+ *
+ *      engine != NULL || keytype == NULL
+ *
+ * Supports provided implementations:
+ *
+ *      engine == NULL && keytype != NULL
+ */
+#define evp_pkey_ctx_is_legacy(ctx)                             \
+    ((ctx)->engine != NULL || (ctx)->keytype == NULL)
+#define evp_pkey_ctx_is_provided(ctx)                           \
+    (!evp_pkey_ctx_is_legacy(ctx))
+
 struct evp_pkey_ctx_st {
     /* Actual operation */
     int operation;
@@ -26,7 +42,7 @@ struct evp_pkey_ctx_st {
      * Library context, property query, keytype and keymgmt associated with
      * this context
      */
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
     const char *propquery;
     const char *keytype;
     EVP_KEYMGMT *keymgmt;
@@ -50,6 +66,10 @@ struct evp_pkey_ctx_st {
             EVP_ASYM_CIPHER *cipher;
             void *ciphprovctx;
         } ciph;
+        struct {
+            EVP_KEM *kem;
+            void *kemprovctx;
+        } encap;
     } op;
 
     /*
@@ -91,6 +111,13 @@ struct evp_pkey_ctx_st {
     void *data;
     /* Indicator if digest_custom needs to be called */
     unsigned int flag_call_digest_custom:1;
+    /*
+     * Used to support taking custody of memory in the case of a provider being
+     * used with the deprecated EVP_PKEY_CTX_set_rsa_keygen_pubexp() API. This
+     * member should NOT be used for any other purpose and should be removed
+     * when said deprecated API is excised completely.
+     */
+    BIGNUM *rsa_pubexp;
 } /* EVP_PKEY_CTX */ ;
 
 #define EVP_PKEY_FLAG_DYNAMIC   1
@@ -152,13 +179,12 @@ const EVP_PKEY_METHOD *dh_pkey_method(void);
 const EVP_PKEY_METHOD *dhx_pkey_method(void);
 const EVP_PKEY_METHOD *dsa_pkey_method(void);
 const EVP_PKEY_METHOD *ec_pkey_method(void);
-const EVP_PKEY_METHOD *sm2_pkey_method(void);
 const EVP_PKEY_METHOD *ecx25519_pkey_method(void);
 const EVP_PKEY_METHOD *ecx448_pkey_method(void);
 const EVP_PKEY_METHOD *ed25519_pkey_method(void);
 const EVP_PKEY_METHOD *ed448_pkey_method(void);
-const EVP_PKEY_METHOD *rsa_pkey_method(void);
-const EVP_PKEY_METHOD *rsa_pss_pkey_method(void);
+const EVP_PKEY_METHOD *ossl_rsa_pkey_method(void);
+const EVP_PKEY_METHOD *ossl_rsa_pss_pkey_method(void);
 
 struct evp_mac_st {
     OSSL_PROVIDER *prov;
@@ -665,11 +691,15 @@ struct evp_pkey_st {
     ((ctx)->operation == EVP_PKEY_OP_PARAMGEN \
      || (ctx)->operation == EVP_PKEY_OP_KEYGEN)
 
+#define EVP_PKEY_CTX_IS_KEM_OP(ctx) \
+    ((ctx)->operation == EVP_PKEY_OP_ENCAPSULATE \
+     || (ctx)->operation == EVP_PKEY_OP_DECAPSULATE)
+
 void openssl_add_all_ciphers_int(void);
 void openssl_add_all_digests_int(void);
 void evp_cleanup_int(void);
 void evp_app_cleanup_int(void);
-void *evp_pkey_export_to_provider(EVP_PKEY *pk, OPENSSL_CTX *libctx,
+void *evp_pkey_export_to_provider(EVP_PKEY *pk, OSSL_LIB_CTX *libctx,
                                   EVP_KEYMGMT **keymgmt,
                                   const char *propquery);
 #ifndef FIPS_MODULE
@@ -696,6 +726,8 @@ int evp_keymgmt_util_assign_pkey(EVP_PKEY *pkey, EVP_KEYMGMT *keymgmt,
                                  void *keydata);
 EVP_PKEY *evp_keymgmt_util_make_pkey(EVP_KEYMGMT *keymgmt, void *keydata);
 
+int evp_keymgmt_util_export(const EVP_PKEY *pk, int selection,
+                            OSSL_CALLBACK *export_cb, void *export_cbarg);
 void *evp_keymgmt_util_export_to_provider(EVP_PKEY *pk, EVP_KEYMGMT *keymgmt);
 size_t evp_keymgmt_util_find_operation_cache_index(EVP_PKEY *pk,
                                                    EVP_KEYMGMT *keymgmt);
@@ -769,14 +801,15 @@ void evp_encode_ctx_set_flags(EVP_ENCODE_CTX *ctx, unsigned int flags);
 /* Use the SRP base64 alphabet instead of the standard one */
 #define EVP_ENCODE_CTX_USE_SRP_ALPHABET     2
 
-const EVP_CIPHER *evp_get_cipherbyname_ex(OPENSSL_CTX *libctx, const char *name);
-const EVP_MD *evp_get_digestbyname_ex(OPENSSL_CTX *libctx, const char *name);
+const EVP_CIPHER *evp_get_cipherbyname_ex(OSSL_LIB_CTX *libctx,
+                                          const char *name);
+const EVP_MD *evp_get_digestbyname_ex(OSSL_LIB_CTX *libctx,
+                                      const char *name);
 
-int pkcs5_pbkdf2_hmac_with_libctx(const char *pass, int passlen,
-                                  const unsigned char *salt, int saltlen,
-                                  int iter, const EVP_MD *digest, int keylen,
-                                  unsigned char *out,
-                                  OPENSSL_CTX *libctx, const char *propq);
+int pkcs5_pbkdf2_hmac_ex(const char *pass, int passlen,
+                         const unsigned char *salt, int saltlen, int iter,
+                         const EVP_MD *digest, int keylen, unsigned char *out,
+                         OSSL_LIB_CTX *libctx, const char *propq);
 
 #ifndef FIPS_MODULE
 /*
@@ -794,9 +827,8 @@ int pkcs5_pbkdf2_hmac_with_libctx(const char *pass, int passlen,
 int evp_pkey_ctx_set_params_strict(EVP_PKEY_CTX *ctx, OSSL_PARAM *params);
 int evp_pkey_ctx_get_params_strict(EVP_PKEY_CTX *ctx, OSSL_PARAM *params);
 
-EVP_MD_CTX *evp_md_ctx_new_with_libctx(EVP_PKEY *pkey,
-                                       const ASN1_OCTET_STRING *id,
-                                       OPENSSL_CTX *libctx, const char *propq);
+EVP_MD_CTX *evp_md_ctx_new_ex(EVP_PKEY *pkey, const ASN1_OCTET_STRING *id,
+                              OSSL_LIB_CTX *libctx, const char *propq);
 int evp_pkey_name2type(const char *name);
 
 int evp_pkey_ctx_set1_id_prov(EVP_PKEY_CTX *ctx, const void *id, int len);
@@ -805,6 +837,8 @@ int evp_pkey_ctx_get1_id_len_prov(EVP_PKEY_CTX *ctx, size_t *id_len);
 
 int evp_pkey_ctx_use_cached_data(EVP_PKEY_CTX *ctx);
 #endif /* !defined(FIPS_MODULE) */
-void evp_method_store_flush(OPENSSL_CTX *libctx);
-int evp_set_default_properties_int(OPENSSL_CTX *libctx, const char *propq,
+void evp_method_store_flush(OSSL_LIB_CTX *libctx);
+int evp_set_default_properties_int(OSSL_LIB_CTX *libctx, const char *propq,
                                    int loadconfig);
+
+void evp_md_ctx_clear_digest(EVP_MD_CTX *ctx, int force);

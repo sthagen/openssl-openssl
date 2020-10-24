@@ -69,6 +69,9 @@ struct evp_kdf_ctx_st {
 struct evp_rand_ctx_st {
     EVP_RAND *meth;             /* Method structure */
     void *data;                 /* Algorithm-specific data */
+    EVP_RAND_CTX *parent;       /* Parent EVP_RAND or NULL if none */
+    CRYPTO_REF_COUNT refcnt;    /* Context reference count */
+    CRYPTO_RWLOCK *refcnt_lock;
 } /* EVP_RAND_CTX */ ;
 
 struct evp_keymgmt_st {
@@ -181,6 +184,25 @@ struct evp_asym_cipher_st {
     OSSL_FUNC_asym_cipher_settable_ctx_params_fn *settable_ctx_params;
 } /* EVP_ASYM_CIPHER */;
 
+struct evp_kem_st {
+    int name_id;
+    OSSL_PROVIDER *prov;
+    CRYPTO_REF_COUNT refcnt;
+    CRYPTO_RWLOCK *lock;
+
+    OSSL_FUNC_kem_newctx_fn *newctx;
+    OSSL_FUNC_kem_encapsulate_init_fn *encapsulate_init;
+    OSSL_FUNC_kem_encapsulate_fn *encapsulate;
+    OSSL_FUNC_kem_decapsulate_init_fn *decapsulate_init;
+    OSSL_FUNC_kem_decapsulate_fn *decapsulate;
+    OSSL_FUNC_kem_freectx_fn *freectx;
+    OSSL_FUNC_kem_dupctx_fn *dupctx;
+    OSSL_FUNC_kem_get_ctx_params_fn *get_ctx_params;
+    OSSL_FUNC_kem_gettable_ctx_params_fn *gettable_ctx_params;
+    OSSL_FUNC_kem_set_ctx_params_fn *set_ctx_params;
+    OSSL_FUNC_kem_settable_ctx_params_fn *settable_ctx_params;
+} /* EVP_KEM */;
+
 int PKCS5_v2_PBKDF2_keyivgen(EVP_CIPHER_CTX *ctx, const char *pass,
                              int passlen, ASN1_TYPE *param,
                              const EVP_CIPHER *c, const EVP_MD *md,
@@ -210,21 +232,21 @@ int is_partially_overlapping(const void *ptr1, const void *ptr2, int len);
 #include <openssl/types.h>
 #include <openssl/core.h>
 
-void *evp_generic_fetch(OPENSSL_CTX *ctx, int operation_id,
+void *evp_generic_fetch(OSSL_LIB_CTX *ctx, int operation_id,
                         const char *name, const char *properties,
                         void *(*new_method)(int name_id,
                                             const OSSL_DISPATCH *fns,
                                             OSSL_PROVIDER *prov),
                         int (*up_ref_method)(void *),
                         void (*free_method)(void *));
-void *evp_generic_fetch_by_number(OPENSSL_CTX *ctx, int operation_id,
+void *evp_generic_fetch_by_number(OSSL_LIB_CTX *ctx, int operation_id,
                                   int name_id, const char *properties,
                                   void *(*new_method)(int name_id,
                                                       const OSSL_DISPATCH *fns,
                                                       OSSL_PROVIDER *prov),
                                   int (*up_ref_method)(void *),
                                   void (*free_method)(void *));
-void evp_generic_do_all(OPENSSL_CTX *libctx, int operation_id,
+void evp_generic_do_all(OSSL_LIB_CTX *libctx, int operation_id,
                         void (*user_fn)(void *method, void *arg),
                         void *user_arg,
                         void *(*new_method)(int name_id,
@@ -233,7 +255,7 @@ void evp_generic_do_all(OPENSSL_CTX *libctx, int operation_id,
                         void (*free_method)(void *));
 
 /* Internal fetchers for method types that are to be combined with others */
-EVP_KEYMGMT *evp_keymgmt_fetch_by_number(OPENSSL_CTX *ctx, int name_id,
+EVP_KEYMGMT *evp_keymgmt_fetch_by_number(OSSL_LIB_CTX *ctx, int name_id,
                                          const char *properties);
 
 /* Internal structure constructors for fetched methods */

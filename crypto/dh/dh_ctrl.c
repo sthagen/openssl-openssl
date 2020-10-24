@@ -179,7 +179,7 @@ int EVP_PKEY_CTX_set_dh_rfc5114(EVP_PKEY_CTX *ctx, int gen)
     if (ctx->op.keymgmt.genctx == NULL)
         return EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_DHX, EVP_PKEY_OP_PARAMGEN,
                                  EVP_PKEY_CTRL_DH_RFC5114, gen, NULL);
-    name = ffc_named_group_from_uid(gen);
+    name = ossl_ffc_named_group_from_uid(gen);
     if (name == NULL)
         return 0;
 
@@ -208,7 +208,7 @@ int EVP_PKEY_CTX_set_dh_nid(EVP_PKEY_CTX *ctx, int nid)
         return EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_DH,
                                  EVP_PKEY_OP_PARAMGEN | EVP_PKEY_OP_KEYGEN,
                                  EVP_PKEY_CTRL_DH_NID, nid, NULL);
-    name = ffc_named_group_from_uid(nid);
+    name = ossl_ffc_named_group_from_uid(nid);
     if (name == NULL)
         return 0;
 
@@ -499,6 +499,9 @@ int EVP_PKEY_CTX_set0_dh_kdf_ukm(EVP_PKEY_CTX *ctx, unsigned char *ukm, int len)
 {
     int ret;
     OSSL_PARAM params[2], *p = params;
+
+    if (len <= 0)
+        return -1;
 
     ret = dh_param_derive_check(ctx);
     if (ret != 1)

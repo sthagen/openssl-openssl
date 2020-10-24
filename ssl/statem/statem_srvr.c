@@ -26,10 +26,6 @@
 #include <openssl/core_names.h>
 #include <openssl/asn1t.h>
 
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(SSL_COMP)
-DEFINE_STACK_OF_CONST(SSL_CIPHER)
-
 #define TICKET_NONCE_SIZE       8
 
 typedef struct {
@@ -2637,8 +2633,8 @@ int tls_construct_server_key_exchange(SSL *s, WPACKET *pkt)
         }
 
         /* Encode the public key. */
-        encodedlen = EVP_PKEY_get1_tls_encodedpoint(s->s3.tmp.pkey,
-                                                    &encodedPoint);
+        encodedlen = EVP_PKEY_get1_encoded_public_key(s->s3.tmp.pkey,
+                                                      &encodedPoint);
         if (encodedlen == 0) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR,
                      SSL_F_TLS_CONSTRUCT_SERVER_KEY_EXCHANGE, ERR_R_EC_LIB);
@@ -2807,10 +2803,9 @@ int tls_construct_server_key_exchange(SSL *s, WPACKET *pkt)
             goto err;
         }
 
-        if (EVP_DigestSignInit_with_libctx(md_ctx, &pctx,
-                                           md == NULL ? NULL : EVP_MD_name(md),
-                                           s->ctx->libctx, s->ctx->propq,
-                                           pkey) <= 0) {
+        if (EVP_DigestSignInit_ex(md_ctx, &pctx,
+                                  md == NULL ? NULL : EVP_MD_name(md),
+                                  s->ctx->libctx, s->ctx->propq, pkey) <= 0) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR,
                      SSL_F_TLS_CONSTRUCT_SERVER_KEY_EXCHANGE,
                      ERR_R_INTERNAL_ERROR);
@@ -3221,7 +3216,7 @@ static int tls_process_cke_ecdhe(SSL *s, PACKET *pkt)
             goto err;
         }
 
-        if (EVP_PKEY_set1_tls_encodedpoint(ckey, data, i) == 0) {
+        if (EVP_PKEY_set1_encoded_public_key(ckey, data, i) <= 0) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PROCESS_CKE_ECDHE,
                      ERR_R_EC_LIB);
             goto err;
@@ -3677,7 +3672,7 @@ MSG_PROCESS_RETURN tls_process_client_certificate(SSL *s, PACKET *pkt)
         }
 
         certstart = certbytes;
-        x = X509_new_with_libctx(s->ctx->libctx, s->ctx->propq);
+        x = X509_new_ex(s->ctx->libctx, s->ctx->propq);
         if (x == NULL) {
             SSLfatal(s, SSL_AD_DECODE_ERROR,
                      SSL_F_TLS_PROCESS_CLIENT_CERTIFICATE, ERR_R_MALLOC_FAILURE);

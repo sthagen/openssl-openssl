@@ -17,6 +17,7 @@
 #include "cipher_des.h"
 #include <openssl/rand.h>
 #include "prov/implementations.h"
+#include "prov/providercommon.h"
 #include "prov/providercommonerr.h"
 
 /* TODO(3.0) Figure out what flags need to be here */
@@ -32,19 +33,27 @@ static void *des_newctx(void *provctx, size_t kbits, size_t blkbits,
                         size_t ivbits, unsigned int mode, uint64_t flags,
                         const PROV_CIPHER_HW *hw)
 {
-    PROV_DES_CTX *ctx = OPENSSL_zalloc(sizeof(*ctx));
+    PROV_DES_CTX *ctx;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
+    ctx = OPENSSL_zalloc(sizeof(*ctx));
     if (ctx != NULL)
-        cipher_generic_initkey(ctx, kbits, blkbits, ivbits, mode, flags, hw,
-                               provctx);
+        ossl_cipher_generic_initkey(ctx, kbits, blkbits, ivbits, mode, flags,
+                                    hw, provctx);
     return ctx;
 }
 
 static void *des_dupctx(void *ctx)
 {
     PROV_DES_CTX *in = (PROV_DES_CTX *)ctx;
-    PROV_DES_CTX *ret = OPENSSL_malloc(sizeof(*ret));
+    PROV_DES_CTX *ret;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
+    ret = OPENSSL_malloc(sizeof(*ret));
     if (ret == NULL) {
         ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
         return NULL;
@@ -58,7 +67,7 @@ static void des_freectx(void *vctx)
 {
     PROV_DES_CTX *ctx = (PROV_DES_CTX *)vctx;
 
-    cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
+    ossl_cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
     OPENSSL_clear_free(ctx,  sizeof(*ctx));
 }
 
@@ -67,12 +76,15 @@ static int des_init(void *vctx, const unsigned char *key, size_t keylen,
 {
     PROV_CIPHER_CTX *ctx = (PROV_CIPHER_CTX *)vctx;
 
+    if (!ossl_prov_is_running())
+        return 0;
+
     ctx->num = 0;
     ctx->bufsz = 0;
     ctx->enc = enc;
 
     if (iv != NULL) {
-        if (!cipher_generic_initiv(ctx, iv, ivlen))
+        if (!ossl_cipher_generic_initiv(ctx, iv, ivlen))
             return 0;
     }
 
@@ -119,7 +131,7 @@ static int des_get_ctx_params(void *vctx, OSSL_PARAM params[])
     PROV_CIPHER_CTX  *ctx = (PROV_CIPHER_CTX *)vctx;
     OSSL_PARAM *p;
 
-    if (!cipher_generic_get_ctx_params(vctx, params))
+    if (!ossl_cipher_generic_get_ctx_params(vctx, params))
         return 0;
 
     p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_RANDOM_KEY);
@@ -142,16 +154,16 @@ static void *des_##lcmode##_newctx(void *provctx)                              \
 static OSSL_FUNC_cipher_get_params_fn des_##lcmode##_get_params;               \
 static int des_##lcmode##_get_params(OSSL_PARAM params[])                      \
 {                                                                              \
-    return cipher_generic_get_params(params, EVP_CIPH_##UCMODE##_MODE, flags,  \
-                                     kbits, blkbits, ivbits);                  \
+    return ossl_cipher_generic_get_params(params, EVP_CIPH_##UCMODE##_MODE,    \
+                                          flags, kbits, blkbits, ivbits);      \
 }                                                                              \
-const OSSL_DISPATCH des_##lcmode##_functions[] = {                             \
+const OSSL_DISPATCH ossl_##des_##lcmode##_functions[] = {                      \
     { OSSL_FUNC_CIPHER_ENCRYPT_INIT, (void (*)(void))des_einit },              \
     { OSSL_FUNC_CIPHER_DECRYPT_INIT, (void (*)(void))des_dinit },              \
     { OSSL_FUNC_CIPHER_UPDATE,                                                 \
-      (void (*)(void))cipher_generic_##block##_update },                       \
-    { OSSL_FUNC_CIPHER_FINAL, (void (*)(void))cipher_generic_##block##_final },\
-    { OSSL_FUNC_CIPHER_CIPHER, (void (*)(void))cipher_generic_cipher },        \
+      (void (*)(void))ossl_cipher_generic_##block##_update },                  \
+    { OSSL_FUNC_CIPHER_FINAL, (void (*)(void))ossl_cipher_generic_##block##_final },\
+    { OSSL_FUNC_CIPHER_CIPHER, (void (*)(void))ossl_cipher_generic_cipher },   \
     { OSSL_FUNC_CIPHER_NEWCTX,                                                 \
       (void (*)(void))des_##lcmode##_newctx },                                 \
     { OSSL_FUNC_CIPHER_DUPCTX, (void (*)(void))des_dupctx },                   \
@@ -159,26 +171,26 @@ const OSSL_DISPATCH des_##lcmode##_functions[] = {                             \
     { OSSL_FUNC_CIPHER_GET_PARAMS,                                             \
       (void (*)(void))des_##lcmode##_get_params },                             \
     { OSSL_FUNC_CIPHER_GETTABLE_PARAMS,                                        \
-      (void (*)(void))cipher_generic_gettable_params },                        \
+      (void (*)(void))ossl_cipher_generic_gettable_params },                   \
     { OSSL_FUNC_CIPHER_GET_CTX_PARAMS, (void (*)(void))des_get_ctx_params },   \
     { OSSL_FUNC_CIPHER_GETTABLE_CTX_PARAMS,                                    \
       (void (*)(void))des_gettable_ctx_params },                               \
     { OSSL_FUNC_CIPHER_SET_CTX_PARAMS,                                         \
-     (void (*)(void))cipher_generic_set_ctx_params },                          \
+     (void (*)(void))ossl_cipher_generic_set_ctx_params },                     \
     { OSSL_FUNC_CIPHER_SETTABLE_CTX_PARAMS,                                    \
-     (void (*)(void))cipher_generic_settable_ctx_params },                     \
+     (void (*)(void))ossl_cipher_generic_settable_ctx_params },                \
     { 0, NULL }                                                                \
 }
 
-/* des_ecb_functions */
+/* ossl_des_ecb_functions */
 IMPLEMENT_des_cipher(des, ecb, ECB, DES_FLAGS, 64, 64, 0, block);
-/* des_cbc_functions */
+/* ossl_des_cbc_functions */
 IMPLEMENT_des_cipher(des, cbc, CBC, DES_FLAGS, 64, 64, 64, block);
-/* des_ofb64_functions */
+/* ossl_des_ofb64_functions */
 IMPLEMENT_des_cipher(des, ofb64, OFB, DES_FLAGS, 64, 8, 64, stream);
-/* des_cfb64_functions */
+/* ossl_des_cfb64_functions */
 IMPLEMENT_des_cipher(des, cfb64, CFB, DES_FLAGS, 64, 8, 64, stream);
-/* des_cfb1_functions */
+/* ossl_des_cfb1_functions */
 IMPLEMENT_des_cipher(des, cfb1, CFB, DES_FLAGS, 64, 8, 64, stream);
-/* des_cfb8_functions */
+/* ossl_des_cfb8_functions */
 IMPLEMENT_des_cipher(des, cfb8, CFB, DES_FLAGS, 64, 8, 64, stream);

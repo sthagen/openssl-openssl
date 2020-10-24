@@ -26,6 +26,7 @@
 #include "crypto/asn1.h"
 #include "crypto/evp.h"
 #include "crypto/dh.h"
+#include "crypto/ec.h"
 #include "internal/ffc.h"
 #include "internal/numbers.h"
 #include "internal/provider.h"
@@ -49,7 +50,7 @@ static STACK_OF(EVP_PKEY_METHOD) *app_pkey_methods = NULL;
 /* This array needs to be in order of NIDs */
 static pmeth_fn standard_methods[] = {
 # ifndef OPENSSL_NO_RSA
-    rsa_pkey_method,
+    ossl_rsa_pkey_method,
 # endif
 # ifndef OPENSSL_NO_DH
     dh_pkey_method,
@@ -61,7 +62,7 @@ static pmeth_fn standard_methods[] = {
     ec_pkey_method,
 # endif
 # ifndef OPENSSL_NO_RSA
-    rsa_pss_pkey_method,
+    ossl_rsa_pss_pkey_method,
 # endif
 # ifndef OPENSSL_NO_DH
     dhx_pkey_method,
@@ -73,9 +74,6 @@ static pmeth_fn standard_methods[] = {
 # ifndef OPENSSL_NO_EC
     ed25519_pkey_method,
     ed448_pkey_method,
-# endif
-# ifndef OPENSSL_NO_SM2
-    sm2_pkey_method,
 # endif
 };
 
@@ -147,7 +145,9 @@ static int evp_pkey_ctx_state(EVP_PKEY_CTX *ctx)
         || (EVP_PKEY_CTX_IS_ASYM_CIPHER_OP(ctx)
             && ctx->op.ciph.ciphprovctx != NULL)
         || (EVP_PKEY_CTX_IS_GEN_OP(ctx)
-            && ctx->op.keymgmt.genctx != NULL))
+            && ctx->op.keymgmt.genctx != NULL)
+        || (EVP_PKEY_CTX_IS_KEM_OP(ctx)
+            && ctx->op.encap.kemprovctx != NULL))
         return EVP_PKEY_STATE_PROVIDER;
 
     return EVP_PKEY_STATE_LEGACY;
@@ -172,29 +172,7 @@ static int get_legacy_alg_type_from_keymgmt(const EVP_KEYMGMT *keymgmt)
 }
 #endif /* FIPS_MODULE */
 
-static int is_legacy_alg(int id, const char *keytype)
-{
-#ifndef FIPS_MODULE
-    /* Certain EVP_PKEY keytypes are only available in legacy form */
-    if (id == -1)
-        id = evp_pkey_name2type(keytype);
-
-    switch (id) {
-    /*
-     * TODO(3.0): Remove SM2 when they are converted to have provider
-     * support
-     */
-    case EVP_PKEY_SM2:
-        return 1;
-    default:
-        return 0;
-    }
-#else
-    return 0;
-#endif
-}
-
-static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
+static EVP_PKEY_CTX *int_ctx_new(OSSL_LIB_CTX *libctx,
                                  EVP_PKEY *pkey, ENGINE *e,
                                  const char *keytype, const char *propquery,
                                  int id)
@@ -281,16 +259,8 @@ static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
      * implementation.
      */
     if (e == NULL && keytype != NULL) {
-        int legacy = is_legacy_alg(id, keytype);
-
-        /* This could fail so ignore errors */
-        if (legacy)
-            ERR_set_mark();
-
         keymgmt = EVP_KEYMGMT_fetch(libctx, keytype, propquery);
-        if (legacy)
-            ERR_pop_to_mark();
-        else if (keymgmt == NULL)
+        if (keymgmt == NULL)
             return NULL;   /* EVP_KEYMGMT_fetch() recorded an error */
 
 #ifndef FIPS_MODULE
@@ -368,14 +338,14 @@ static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
 
 /*- All methods below can also be used in FIPS_MODULE */
 
-EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_name(OPENSSL_CTX *libctx,
+EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_name(OSSL_LIB_CTX *libctx,
                                          const char *name,
                                          const char *propquery)
 {
     return int_ctx_new(libctx, NULL, NULL, name, propquery, -1);
 }
 
-EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_pkey(OPENSSL_CTX *libctx, EVP_PKEY *pkey,
+EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_pkey(OSSL_LIB_CTX *libctx, EVP_PKEY *pkey,
                                          const char *propquery)
 {
     return int_ctx_new(libctx, pkey, NULL, NULL, propquery, -1);
@@ -395,9 +365,13 @@ void evp_pkey_ctx_free_old_ops(EVP_PKEY_CTX *ctx)
         EVP_KEYEXCH_free(ctx->op.kex.exchange);
         ctx->op.kex.exchprovctx = NULL;
         ctx->op.kex.exchange = NULL;
+    } else if (EVP_PKEY_CTX_IS_KEM_OP(ctx)) {
+        if (ctx->op.encap.kemprovctx != NULL && ctx->op.encap.kem != NULL)
+            ctx->op.encap.kem->freectx(ctx->op.encap.kemprovctx);
+        EVP_KEM_free(ctx->op.encap.kem);
+        ctx->op.encap.kemprovctx = NULL;
+        ctx->op.encap.kem = NULL;
     }
-/* TODO(3.0): add dependancies and uncomment this when available for fips mode */
-#ifndef FIPS_MODULE
     else if (EVP_PKEY_CTX_IS_ASYM_CIPHER_OP(ctx)) {
         if (ctx->op.ciph.ciphprovctx != NULL && ctx->op.ciph.cipher != NULL)
             ctx->op.ciph.cipher->freectx(ctx->op.ciph.ciphprovctx);
@@ -408,7 +382,6 @@ void evp_pkey_ctx_free_old_ops(EVP_PKEY_CTX *ctx)
         if (ctx->op.keymgmt.genctx != NULL && ctx->keymgmt != NULL)
             evp_keymgmt_gen_cleanup(ctx->keymgmt, ctx->op.keymgmt.genctx);
     }
-#endif
 }
 
 void EVP_PKEY_CTX_free(EVP_PKEY_CTX *ctx)
@@ -429,6 +402,7 @@ void EVP_PKEY_CTX_free(EVP_PKEY_CTX *ctx)
 #if !defined(OPENSSL_NO_ENGINE) && !defined(FIPS_MODULE)
     ENGINE_finish(ctx->engine);
 #endif
+    BN_free(ctx->rsa_pubexp);
     OPENSSL_free(ctx);
 }
 
@@ -562,6 +536,26 @@ EVP_PKEY_CTX *EVP_PKEY_CTX_dup(const EVP_PKEY_CTX *pctx)
             }
             return rctx;
         }
+    } else if (EVP_PKEY_CTX_IS_KEM_OP(pctx)) {
+        if (pctx->op.encap.kem != NULL) {
+            rctx->op.encap.kem = pctx->op.encap.kem;
+            if (!EVP_KEM_up_ref(rctx->op.encap.kem)) {
+                OPENSSL_free(rctx);
+                return NULL;
+            }
+        }
+        if (pctx->op.encap.kemprovctx != NULL) {
+            if (!ossl_assert(pctx->op.encap.kem != NULL))
+                return NULL;
+            rctx->op.encap.kemprovctx
+                = pctx->op.encap.kem->dupctx(pctx->op.encap.kemprovctx);
+            if (rctx->op.encap.kemprovctx == NULL) {
+                EVP_KEM_free(rctx->op.encap.kem);
+                OPENSSL_free(rctx);
+                return NULL;
+            }
+            return rctx;
+        }
     }
 
     rctx->pmeth = pctx->pmeth;
@@ -662,6 +656,12 @@ int EVP_PKEY_CTX_set_params(EVP_PKEY_CTX *ctx, OSSL_PARAM *params)
         && ctx->keymgmt->gen_set_params != NULL)
         return evp_keymgmt_gen_set_params(ctx->keymgmt, ctx->op.keymgmt.genctx,
                                           params);
+    if (EVP_PKEY_CTX_IS_KEM_OP(ctx)
+        && ctx->op.encap.kemprovctx != NULL
+        && ctx->op.encap.kem != NULL
+        && ctx->op.encap.kem->set_ctx_params != NULL)
+        return ctx->op.encap.kem->set_ctx_params(ctx->op.encap.kemprovctx,
+                                                 params);
     return 0;
 }
 
@@ -685,6 +685,12 @@ int EVP_PKEY_CTX_get_params(EVP_PKEY_CTX *ctx, OSSL_PARAM *params)
             && ctx->op.ciph.cipher->get_ctx_params != NULL)
         return ctx->op.ciph.cipher->get_ctx_params(ctx->op.ciph.ciphprovctx,
                                                    params);
+    if (EVP_PKEY_CTX_IS_KEM_OP(ctx)
+        && ctx->op.encap.kemprovctx != NULL
+        && ctx->op.encap.kem != NULL
+        && ctx->op.encap.kem->get_ctx_params != NULL)
+        return ctx->op.encap.kem->get_ctx_params(ctx->op.encap.kemprovctx,
+                                                 params);
     return 0;
 }
 
@@ -712,6 +718,12 @@ const OSSL_PARAM *EVP_PKEY_CTX_gettable_params(EVP_PKEY_CTX *ctx)
         provctx = ossl_provider_ctx(
                       EVP_ASYM_CIPHER_provider(ctx->op.ciph.cipher));
         return ctx->op.ciph.cipher->gettable_ctx_params(provctx);
+    }
+    if (EVP_PKEY_CTX_IS_KEM_OP(ctx)
+        && ctx->op.encap.kem != NULL
+        && ctx->op.encap.kem->gettable_ctx_params != NULL) {
+        provctx = ossl_provider_ctx(EVP_KEM_provider(ctx->op.encap.kem));
+        return ctx->op.encap.kem->gettable_ctx_params(provctx);
     }
     return NULL;
 }
@@ -743,7 +755,12 @@ const OSSL_PARAM *EVP_PKEY_CTX_settable_params(EVP_PKEY_CTX *ctx)
     if (EVP_PKEY_CTX_IS_GEN_OP(ctx)
             && ctx->keymgmt != NULL)
         return EVP_KEYMGMT_gen_settable_params(ctx->keymgmt);
-
+    if (EVP_PKEY_CTX_IS_KEM_OP(ctx)
+        && ctx->op.encap.kem != NULL
+        && ctx->op.encap.kem->settable_ctx_params != NULL) {
+        provctx = ossl_provider_ctx(EVP_KEM_provider(ctx->op.encap.kem));
+        return ctx->op.encap.kem->settable_ctx_params(provctx);
+    }
     return NULL;
 }
 
@@ -1099,6 +1116,24 @@ int EVP_PKEY_CTX_set_mac_key(EVP_PKEY_CTX *ctx, const unsigned char *key,
                                           key, keylen);
 }
 
+int EVP_PKEY_CTX_set_kem_op(EVP_PKEY_CTX *ctx, const char *op)
+{
+    OSSL_PARAM params[2], *p = params;
+
+    if (ctx == NULL || op == NULL) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_INVALID_VALUE);
+        return 0;
+    }
+    if (!EVP_PKEY_CTX_IS_KEM_OP(ctx)) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED);
+        return -2;
+    }
+    *p++ = OSSL_PARAM_construct_utf8_string(OSSL_KEM_PARAM_OPERATION,
+                                            (char *)op, 0);
+    *p = OSSL_PARAM_construct_end();
+    return EVP_PKEY_CTX_set_params(ctx, params);
+}
+
 int evp_pkey_ctx_set1_id_prov(EVP_PKEY_CTX *ctx, const void *id, int len)
 {
     OSSL_PARAM params[2], *p = params;
@@ -1248,6 +1283,8 @@ static int legacy_ctrl_to_param(EVP_PKEY_CTX *ctx, int keytype, int optype,
 # ifndef OPENSSL_NO_EC
     if (keytype == EVP_PKEY_EC) {
         switch (cmd) {
+        case EVP_PKEY_CTRL_EC_PARAM_ENC:
+            return evp_pkey_ctx_set_ec_param_enc_prov(ctx, p1);
         case EVP_PKEY_CTRL_EC_PARAMGEN_CURVE_NID:
             return EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx, p1);
         case EVP_PKEY_CTRL_EC_ECDH_COFACTOR:
@@ -1411,11 +1448,6 @@ static int evp_pkey_ctx_ctrl_int(EVP_PKEY_CTX *ctx, int keytype, int optype,
 {
     int ret = 0;
 
-    if (ctx == NULL) {
-        EVPerr(0, EVP_R_COMMAND_NOT_SUPPORTED);
-        return -2;
-    }
-
     /*
      * If the method has a |digest_custom| function, we can relax the
      * operation type check, since this can be called before the operation
@@ -1459,6 +1491,10 @@ int EVP_PKEY_CTX_ctrl(EVP_PKEY_CTX *ctx, int keytype, int optype,
 {
     int ret = 0;
 
+    if (ctx == NULL) {
+        EVPerr(0, EVP_R_COMMAND_NOT_SUPPORTED);
+        return -2;
+    }
     /* If unsupported, we don't want that reported here */
     ERR_set_mark();
     ret = evp_pkey_ctx_store_cached_data(ctx, keytype, optype,
@@ -1475,7 +1511,6 @@ int EVP_PKEY_CTX_ctrl(EVP_PKEY_CTX *ctx, int keytype, int optype,
         if (ret < 1 || ctx->operation == EVP_PKEY_OP_UNDEFINED)
             return ret;
     }
-
     return evp_pkey_ctx_ctrl_int(ctx, keytype, optype, cmd, p1, p2);
 }
 
@@ -1534,7 +1569,7 @@ static int legacy_ctrl_str_to_param(EVP_PKEY_CTX *ctx, const char *name,
         name = OSSL_PKEY_PARAM_GROUP_NAME;
     else if (strcmp(name, "dh_rfc5114") == 0) {
         name = OSSL_PKEY_PARAM_GROUP_NAME;
-        value = ffc_named_group_from_uid(atoi(value));
+        value = ossl_ffc_named_group_from_uid(atoi(value));
     } else if (strcmp(name, "dh_pad") == 0)
         name = OSSL_EXCHANGE_PARAM_PAD;
 # endif
@@ -1725,6 +1760,16 @@ int evp_pkey_ctx_use_cached_data(EVP_PKEY_CTX *ctx)
     }
 
     return ret;
+}
+
+OSSL_LIB_CTX *EVP_PKEY_CTX_get0_libctx(EVP_PKEY_CTX *ctx)
+{
+    return ctx->libctx;
+}
+
+const char *EVP_PKEY_CTX_get0_propq(EVP_PKEY_CTX *ctx)
+{
+    return ctx->propquery;
 }
 
 /* Utility functions to send a string of hex string to a ctrl */

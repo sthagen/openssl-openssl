@@ -14,7 +14,7 @@
 typedef struct prov_gcm_hw_st PROV_GCM_HW;
 
 #define GCM_IV_DEFAULT_SIZE 12 /* IV's for AES_GCM should normally be 12 bytes */
-#define GCM_IV_MAX_SIZE     64
+#define GCM_IV_MAX_SIZE     (1024 / 8)
 #define GCM_TAG_MAX_SIZE    16
 
 #if defined(OPENSSL_CPUID_OBJ) && defined(__s390__)
@@ -72,7 +72,7 @@ typedef struct prov_gcm_ctx_st {
     unsigned char iv[GCM_IV_MAX_SIZE]; /* Buffer to use for IV's */
     unsigned char buf[AES_BLOCK_SIZE]; /* Buffer of partial blocks processed via update calls */
 
-    OPENSSL_CTX *libctx;    /* needed for rand calls */
+    OSSL_LIB_CTX *libctx;    /* needed for rand calls */
     const PROV_GCM_HW *hw;  /* hardware specific methods */
     GCM128_CONTEXT gcm;
     ctr128_f ctr;

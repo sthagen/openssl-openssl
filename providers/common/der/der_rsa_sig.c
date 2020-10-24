@@ -13,23 +13,23 @@
 #include "prov/der_digests.h"
 
 /* Aliases so we can have a uniform MD_with_RSA_CASE */
-#define der_oid_sha3_224WithRSAEncryption \
-    der_oid_id_rsassa_pkcs1_v1_5_with_sha3_224
-#define der_oid_sha3_256WithRSAEncryption \
-    der_oid_id_rsassa_pkcs1_v1_5_with_sha3_256
-#define der_oid_sha3_384WithRSAEncryption \
-    der_oid_id_rsassa_pkcs1_v1_5_with_sha3_384
-#define der_oid_sha3_512WithRSAEncryption \
-    der_oid_id_rsassa_pkcs1_v1_5_with_sha3_512
+#define ossl_der_oid_sha3_224WithRSAEncryption \
+    ossl_der_oid_id_rsassa_pkcs1_v1_5_with_sha3_224
+#define ossl_der_oid_sha3_256WithRSAEncryption \
+    ossl_der_oid_id_rsassa_pkcs1_v1_5_with_sha3_256
+#define ossl_der_oid_sha3_384WithRSAEncryption \
+    ossl_der_oid_id_rsassa_pkcs1_v1_5_with_sha3_384
+#define ossl_der_oid_sha3_512WithRSAEncryption \
+    ossl_der_oid_id_rsassa_pkcs1_v1_5_with_sha3_512
 
 #define MD_with_RSA_CASE(name, var)                                     \
     case NID_##name:                                                    \
-        var = der_oid_##name##WithRSAEncryption;                        \
-        var##_sz = sizeof(der_oid_##name##WithRSAEncryption);           \
+        var = ossl_der_oid_##name##WithRSAEncryption;                   \
+        var##_sz = sizeof(ossl_der_oid_##name##WithRSAEncryption);      \
         break;
 
-int DER_w_algorithmIdentifier_MDWithRSAEncryption(WPACKET *pkt, int tag,
-                                                  RSA *rsa, int mdnid)
+int ossl_DER_w_algorithmIdentifier_MDWithRSAEncryption(WPACKET *pkt, int tag,
+                                                       RSA *rsa, int mdnid)
 {
     const unsigned char *precompiled = NULL;
     size_t precompiled_sz = 0;
@@ -57,8 +57,8 @@ int DER_w_algorithmIdentifier_MDWithRSAEncryption(WPACKET *pkt, int tag,
         return 0;
     }
 
-    return DER_w_begin_sequence(pkt, tag)
+    return ossl_DER_w_begin_sequence(pkt, tag)
         /* No parameters (yet?) */
-        && DER_w_precompiled(pkt, -1, precompiled, precompiled_sz)
-        && DER_w_end_sequence(pkt, tag);
+        && ossl_DER_w_precompiled(pkt, -1, precompiled, precompiled_sz)
+        && ossl_DER_w_end_sequence(pkt, tag);
 }

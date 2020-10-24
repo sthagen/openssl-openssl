@@ -22,7 +22,7 @@ static int aes_siv_initkey(void *vctx, const unsigned char *key, size_t keylen)
     PROV_AES_SIV_CTX *ctx = (PROV_AES_SIV_CTX *)vctx;
     SIV128_CONTEXT *sctx = &ctx->siv;
     size_t klen  = keylen / 2;
-    OPENSSL_CTX *libctx = ctx->libctx;
+    OSSL_LIB_CTX *libctx = ctx->libctx;
     const char *propq = NULL;
 
     EVP_CIPHER_free(ctx->cbc);
@@ -130,7 +130,7 @@ static const PROV_CIPHER_HW_AES_SIV aes_siv_hw =
     aes_siv_dupctx,
 };
 
-const PROV_CIPHER_HW_AES_SIV *PROV_CIPHER_HW_aes_siv(size_t keybits)
+const PROV_CIPHER_HW_AES_SIV *ossl_prov_cipher_hw_aes_siv(size_t keybits)
 {
     return &aes_siv_hw;
 }

@@ -47,11 +47,8 @@ int tls_provider_init(const OSSL_CORE_HANDLE *handle,
                       const OSSL_DISPATCH *in,
                       const OSSL_DISPATCH **out,
                       void **provctx);
-DEFINE_STACK_OF(OCSP_RESPID)
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_NAME)
 
-static OPENSSL_CTX *libctx = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
 static OSSL_PROVIDER *defctxnull = NULL;
 
 #ifndef OPENSSL_NO_TLS1_3
@@ -800,7 +797,7 @@ static int execute_test_large_message(const SSL_METHOD *smeth,
     if (!TEST_ptr(certbio = BIO_new_file(cert, "r")))
         goto end;
 
-    if (!TEST_ptr(chaincert = X509_new_with_libctx(libctx, NULL)))
+    if (!TEST_ptr(chaincert = X509_new_ex(libctx, NULL)))
         goto end;
 
     if (PEM_read_bio_X509(certbio, &chaincert, NULL, NULL) == NULL)
@@ -1549,7 +1546,7 @@ static int test_tlsext_status_type(void)
     if (!TEST_ptr(certbio = BIO_new_file(cert, "r"))
             || !TEST_ptr(id = OCSP_RESPID_new())
             || !TEST_ptr(ids = sk_OCSP_RESPID_new_null())
-            || !TEST_ptr(ocspcert = X509_new_with_libctx(libctx, NULL))
+            || !TEST_ptr(ocspcert = X509_new_ex(libctx, NULL))
             || !TEST_ptr(PEM_read_bio_X509(certbio, &ocspcert, NULL, NULL))
             || !TEST_true(OCSP_RESPID_set_by_key_ex(id, ocspcert, libctx, NULL))
             || !TEST_true(sk_OCSP_RESPID_push(ids, id)))
@@ -2571,7 +2568,7 @@ static int execute_test_ssl_bio(int pop_ssl, bio_change_t change_bio)
     SSL *ssl = NULL;
     int testresult = 0;
 
-    if (!TEST_ptr(ctx = SSL_CTX_new_with_libctx(libctx, NULL, TLS_method()))
+    if (!TEST_ptr(ctx = SSL_CTX_new_ex(libctx, NULL, TLS_method()))
             || !TEST_ptr(ssl = SSL_new(ctx))
             || !TEST_ptr(sslbio = BIO_new(BIO_f_ssl()))
             || !TEST_ptr(membio1 = BIO_new(BIO_s_mem())))
@@ -5282,7 +5279,7 @@ static int test_serverinfo(int tst)
     int ret, expected, testresult = 0;
     SSL_CTX *ctx;
 
-    ctx = SSL_CTX_new_with_libctx(libctx, NULL, TLS_method());
+    ctx = SSL_CTX_new_ex(libctx, NULL, TLS_method());
     if (!TEST_ptr(ctx))
         goto end;
 
@@ -5837,7 +5834,7 @@ static int test_max_fragment_len_ext(int idx_tst)
     int testresult = 0, MFL_mode = 0;
     BIO *rbio, *wbio;
 
-    ctx = SSL_CTX_new_with_libctx(libctx, NULL, TLS_method());
+    ctx = SSL_CTX_new_ex(libctx, NULL, TLS_method());
     if (!TEST_ptr(ctx))
         goto end;
 
@@ -5941,8 +5938,6 @@ static int test_pha_key_update(void)
 #if !defined(OPENSSL_NO_SRP) && !defined(OPENSSL_NO_TLS1_2)
 
 static SRP_VBASE *vbase = NULL;
-
-DEFINE_STACK_OF(SRP_user_pwd)
 
 static int ssl_srp_cb(SSL *s, int *ad, void *arg)
 {
@@ -6570,7 +6565,7 @@ static int int_test_ssl_get_shared_ciphers(int tst, int clnt)
     SSL *clientssl = NULL, *serverssl = NULL;
     int testresult = 0;
     char buf[1024];
-    OPENSSL_CTX *tmplibctx = OPENSSL_CTX_new();
+    OSSL_LIB_CTX *tmplibctx = OSSL_LIB_CTX_new();
 
     if (!TEST_ptr(tmplibctx))
         goto end;
@@ -6583,11 +6578,11 @@ static int int_test_ssl_get_shared_ciphers(int tst, int clnt)
      * having the full set of ciphersuites and once with the server side.
      */
     if (clnt) {
-        cctx = SSL_CTX_new_with_libctx(tmplibctx, NULL, TLS_client_method());
+        cctx = SSL_CTX_new_ex(tmplibctx, NULL, TLS_client_method());
         if (!TEST_ptr(cctx))
             goto end;
     } else {
-        sctx = SSL_CTX_new_with_libctx(tmplibctx, NULL, TLS_server_method());
+        sctx = SSL_CTX_new_ex(tmplibctx, NULL, TLS_server_method());
         if (!TEST_ptr(sctx))
             goto end;
     }
@@ -6635,7 +6630,7 @@ static int int_test_ssl_get_shared_ciphers(int tst, int clnt)
     SSL_free(clientssl);
     SSL_CTX_free(sctx);
     SSL_CTX_free(cctx);
-    OPENSSL_CTX_free(tmplibctx);
+    OSSL_LIB_CTX_free(tmplibctx);
 
     return testresult;
 }
@@ -7193,7 +7188,7 @@ static int cert_cb(SSL *s, void *arg)
             goto out;
         if (!TEST_ptr(in = BIO_new(BIO_s_file()))
                 || !TEST_int_ge(BIO_read_filename(in, rootfile), 0)
-                || !TEST_ptr(rootx = X509_new_with_libctx(libctx, NULL))
+                || !TEST_ptr(rootx = X509_new_ex(libctx, NULL))
                 || !TEST_ptr(PEM_read_bio_X509(in, &rootx, NULL, NULL))
                 || !TEST_true(sk_X509_push(chain, rootx)))
             goto out;
@@ -7201,7 +7196,7 @@ static int cert_cb(SSL *s, void *arg)
         BIO_free(in);
         if (!TEST_ptr(in = BIO_new(BIO_s_file()))
                 || !TEST_int_ge(BIO_read_filename(in, ecdsacert), 0)
-                || !TEST_ptr(x509 = X509_new_with_libctx(libctx, NULL))
+                || !TEST_ptr(x509 = X509_new_ex(libctx, NULL))
                 || !TEST_ptr(PEM_read_bio_X509(in, &x509, NULL, NULL)))
             goto out;
         BIO_free(in);
@@ -7351,7 +7346,7 @@ static int client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
     if (!TEST_ptr(in))
         return 0;
 
-    if (!TEST_ptr(xcert = X509_new_with_libctx(libctx, NULL))
+    if (!TEST_ptr(xcert = X509_new_ex(libctx, NULL))
             || !TEST_ptr(PEM_read_bio_X509(in, &xcert, NULL, NULL))
             || !TEST_ptr(priv_in = BIO_new_file(privkey, "r"))
             || !TEST_ptr(privpkey = PEM_read_bio_PrivateKey_ex(priv_in, NULL,
@@ -7829,8 +7824,8 @@ static int test_sigalgs_available(int idx)
     SSL_CTX *cctx = NULL, *sctx = NULL;
     SSL *clientssl = NULL, *serverssl = NULL;
     int testresult = 0;
-    OPENSSL_CTX *tmpctx = OPENSSL_CTX_new();
-    OPENSSL_CTX *clientctx = libctx, *serverctx = libctx;
+    OSSL_LIB_CTX *tmpctx = OSSL_LIB_CTX_new();
+    OSSL_LIB_CTX *clientctx = libctx, *serverctx = libctx;
     OSSL_PROVIDER *filterprov = NULL;
     int sig, hash;
 
@@ -7870,8 +7865,8 @@ static int test_sigalgs_available(int idx)
             serverctx = tmpctx;
     }
 
-    cctx = SSL_CTX_new_with_libctx(clientctx, NULL, TLS_client_method());
-    sctx = SSL_CTX_new_with_libctx(serverctx, NULL, TLS_server_method());
+    cctx = SSL_CTX_new_ex(clientctx, NULL, TLS_client_method());
+    sctx = SSL_CTX_new_ex(serverctx, NULL, TLS_server_method());
     if (!TEST_ptr(cctx) || !TEST_ptr(sctx))
         goto end;
 
@@ -7933,14 +7928,14 @@ static int test_sigalgs_available(int idx)
     SSL_CTX_free(sctx);
     SSL_CTX_free(cctx);
     OSSL_PROVIDER_unload(filterprov);
-    OPENSSL_CTX_free(tmpctx);
+    OSSL_LIB_CTX_free(tmpctx);
 
     return testresult;
 }
 #endif /* OPENSSL_NO_EC */
 
 #ifndef OPENSSL_NO_TLS1_3
-static int test_pluggable_group(void)
+static int test_pluggable_group(int idx)
 {
     SSL_CTX *cctx = NULL, *sctx = NULL;
     SSL *clientssl = NULL, *serverssl = NULL;
@@ -7948,6 +7943,7 @@ static int test_pluggable_group(void)
     OSSL_PROVIDER *tlsprov = OSSL_PROVIDER_load(libctx, "tls-provider");
     /* Check that we are not impacted by a provider without any groups */
     OSSL_PROVIDER *legacyprov = OSSL_PROVIDER_load(libctx, "legacy");
+    const char *group_name = idx == 0 ? "xorgroup" : "xorkemgroup";
 
     if (!TEST_ptr(tlsprov) || !TEST_ptr(legacyprov))
         goto end;
@@ -7961,8 +7957,8 @@ static int test_pluggable_group(void)
                                              NULL, NULL)))
         goto end;
 
-    if (!TEST_true(SSL_set1_groups_list(serverssl, "xorgroup"))
-            || !TEST_true(SSL_set1_groups_list(clientssl, "xorgroup")))
+    if (!TEST_true(SSL_set1_groups_list(serverssl, group_name))
+            || !TEST_true(SSL_set1_groups_list(clientssl, group_name)))
         goto end;
 
     if (!TEST_true(create_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE)))
@@ -8058,7 +8054,7 @@ int setup_tests(void)
     char *modulename;
     char *configfile;
 
-    libctx = OPENSSL_CTX_new();
+    libctx = OSSL_LIB_CTX_new();
     if (!TEST_ptr(libctx))
         return 0;
 
@@ -8084,7 +8080,7 @@ int setup_tests(void)
             || !TEST_ptr(configfile = test_get_argument(4)))
         return 0;
 
-    if (!TEST_true(OPENSSL_CTX_load_config(libctx, configfile)))
+    if (!TEST_true(OSSL_LIB_CTX_load_config(libctx, configfile)))
         return 0;
 
     /* Check we have the expected provider available */
@@ -8141,10 +8137,10 @@ int setup_tests(void)
         goto err;
 
 #if !defined(OPENSSL_NO_KTLS) && !defined(OPENSSL_NO_SOCK)
-#if !defined(OPENSSL_NO_TLS1_2) || !defined(OPENSSL_NO_TLS1_3)
+# if !defined(OPENSSL_NO_TLS1_2) || !defined(OPENSSL_NO_TLS1_3)
     ADD_ALL_TESTS(test_ktls, 32);
     ADD_ALL_TESTS(test_ktls_sendfile_anytls, 6);
-#endif
+# endif
 #endif
     ADD_TEST(test_large_message_tls);
     ADD_TEST(test_large_message_tls_read_ahead);
@@ -8252,7 +8248,7 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_sigalgs_available, 6);
 #endif
 #ifndef OPENSSL_NO_TLS1_3
-    ADD_TEST(test_pluggable_group);
+    ADD_ALL_TESTS(test_pluggable_group, 2);
 #endif
 #ifndef OPENSSL_NO_TLS1_2
     ADD_TEST(test_ssl_dup);
@@ -8276,5 +8272,5 @@ void cleanup_tests(void)
     bio_s_mempacket_test_free();
     bio_s_always_retry_free();
     OSSL_PROVIDER_unload(defctxnull);
-    OPENSSL_CTX_free(libctx);
+    OSSL_LIB_CTX_free(libctx);
 }

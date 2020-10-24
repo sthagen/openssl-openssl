@@ -1136,17 +1136,10 @@ RAND_F_GET_ENTROPY:106:get_entropy
 RAND_F_RAND_BYTES:100:RAND_bytes
 RAND_F_RAND_BYTES_EX:126:rand_bytes_ex
 RAND_F_RAND_DRBG_ENABLE_LOCKING:119:rand_drbg_enable_locking
-RAND_F_RAND_DRBG_GENERATE:107:RAND_DRBG_generate
 RAND_F_RAND_DRBG_GET_ENTROPY:120:rand_drbg_get_entropy
 RAND_F_RAND_DRBG_GET_NONCE:123:rand_drbg_get_nonce
 RAND_F_RAND_DRBG_INIT_METHOD:130:
-RAND_F_RAND_DRBG_INSTANTIATE:108:RAND_DRBG_instantiate
-RAND_F_RAND_DRBG_NEW:109:RAND_DRBG_new
-RAND_F_RAND_DRBG_RESEED:110:RAND_DRBG_reseed
 RAND_F_RAND_DRBG_RESTART:102:rand_drbg_restart
-RAND_F_RAND_DRBG_SET:104:RAND_DRBG_set
-RAND_F_RAND_DRBG_SET_DEFAULTS:121:RAND_DRBG_set_defaults
-RAND_F_RAND_DRBG_UNINSTANTIATE:118:RAND_DRBG_uninstantiate
 RAND_F_RAND_LOAD_FILE:111:RAND_load_file
 RAND_F_RAND_POOL_ACQUIRE_ENTROPY:122:rand_pool_acquire_entropy
 RAND_F_RAND_POOL_ADD:103:rand_pool_add
@@ -1175,7 +1168,6 @@ RSA_F_RSA_CHECK_KEY:123:RSA_check_key
 RSA_F_RSA_CHECK_KEY_EX:160:RSA_check_key_ex
 RSA_F_RSA_CMS_DECRYPT:159:rsa_cms_decrypt
 RSA_F_RSA_CMS_VERIFY:158:rsa_cms_verify
-RSA_F_RSA_FIPS186_4_GEN_PROB_PRIMES:168:rsa_fips186_4_gen_prob_primes
 RSA_F_RSA_ITEM_VERIFY:148:rsa_item_verify
 RSA_F_RSA_METH_DUP:161:RSA_meth_dup
 RSA_F_RSA_METH_NEW:162:RSA_meth_new
@@ -1219,10 +1211,6 @@ RSA_F_RSA_PUB_DECODE:139:rsa_pub_decode
 RSA_F_RSA_SETUP_BLINDING:136:RSA_setup_blinding
 RSA_F_RSA_SIGN:117:RSA_sign
 RSA_F_RSA_SIGN_ASN1_OCTET_STRING:118:RSA_sign_ASN1_OCTET_STRING
-RSA_F_RSA_SP800_56B_CHECK_KEYPAIR:169:rsa_sp800_56b_check_keypair
-RSA_F_RSA_SP800_56B_CHECK_PUBLIC:170:rsa_sp800_56b_check_public
-RSA_F_RSA_SP800_56B_PAIRWISE_TEST:171:rsa_sp800_56b_pairwise_test
-RSA_F_RSA_SP800_56B_VALIDATE_STRENGTH:172:rsa_sp800_56b_validate_strength
 RSA_F_RSA_VERIFY:119:RSA_verify
 RSA_F_RSA_VERIFY_ASN1_OCTET_STRING:120:RSA_verify_ASN1_OCTET_STRING
 RSA_F_RSA_VERIFY_PKCS1_PSS_MGF1:126:RSA_verify_PKCS1_PSS_mgf1
@@ -1238,6 +1226,8 @@ SM2_F_SM2_COMPUTE_USERID_DIGEST:101:sm2_compute_userid_digest
 SM2_F_SM2_COMPUTE_Z_DIGEST:113:sm2_compute_z_digest
 SM2_F_SM2_DECRYPT:102:sm2_decrypt
 SM2_F_SM2_ENCRYPT:103:sm2_encrypt
+SM2_F_SM2_INTERNAL_SIGN:116:
+SM2_F_SM2_INTERNAL_VERIFY:117:
 SM2_F_SM2_PLAINTEXT_SIZE:104:sm2_plaintext_size
 SM2_F_SM2_SIGN:105:sm2_sign
 SM2_F_SM2_SIG_GEN:106:sm2_sig_gen
@@ -1411,11 +1401,13 @@ SSL_F_SSL_CTX_USE_SERVERINFO_EX:543:SSL_CTX_use_serverinfo_ex
 SSL_F_SSL_CTX_USE_SERVERINFO_FILE:337:SSL_CTX_use_serverinfo_file
 SSL_F_SSL_DANE_DUP:403:ssl_dane_dup
 SSL_F_SSL_DANE_ENABLE:395:SSL_dane_enable
+SSL_F_SSL_DECAPSULATE:643:
 SSL_F_SSL_DERIVE:590:ssl_derive
 SSL_F_SSL_DO_CONFIG:391:ssl_do_config
 SSL_F_SSL_DO_HANDSHAKE:180:SSL_do_handshake
 SSL_F_SSL_DUP_CA_LIST:408:SSL_dup_CA_list
 SSL_F_SSL_ENABLE_CT:402:SSL_enable_ct
+SSL_F_SSL_ENCAPSULATE:644:
 SSL_F_SSL_GENERATE_PKEY_GROUP:559:ssl_generate_pkey_group
 SSL_F_SSL_GENERATE_SESSION_ID:547:ssl_generate_session_id
 SSL_F_SSL_GET_NEW_SESSION:181:ssl_get_new_session
@@ -2004,6 +1996,7 @@ ASN1_R_TYPE_NOT_CONSTRUCTED:156:type not constructed
 ASN1_R_TYPE_NOT_PRIMITIVE:195:type not primitive
 ASN1_R_UNEXPECTED_EOC:159:unexpected eoc
 ASN1_R_UNIVERSALSTRING_IS_WRONG_LENGTH:215:universalstring is wrong length
+ASN1_R_UNKNOWN_DIGEST:229:unknown digest
 ASN1_R_UNKNOWN_FORMAT:160:unknown format
 ASN1_R_UNKNOWN_MESSAGE_DIGEST_ALGORITHM:161:unknown message digest algorithm
 ASN1_R_UNKNOWN_OBJECT_TYPE:162:unknown object type
@@ -2189,6 +2182,7 @@ CMS_R_CONTENT_TYPE_NOT_SIGNED_DATA:108:content type not signed data
 CMS_R_CONTENT_VERIFY_ERROR:109:content verify error
 CMS_R_CTRL_ERROR:110:ctrl error
 CMS_R_CTRL_FAILURE:111:ctrl failure
+CMS_R_DECODE_ERROR:187:decode error
 CMS_R_DECRYPT_ERROR:112:decrypt error
 CMS_R_ERROR_GETTING_PUBLIC_KEY:113:error getting public key
 CMS_R_ERROR_READING_MESSAGEDIGEST_ATTRIBUTE:114:\
@@ -2200,6 +2194,9 @@ CMS_R_ESS_SIGNING_CERTID_MISMATCH_ERROR:183:ess signing certid mismatch error
 CMS_R_INVALID_ENCRYPTED_KEY_LENGTH:117:invalid encrypted key length
 CMS_R_INVALID_KEY_ENCRYPTION_PARAMETER:176:invalid key encryption parameter
 CMS_R_INVALID_KEY_LENGTH:118:invalid key length
+CMS_R_INVALID_LABEL:190:invalid label
+CMS_R_INVALID_OAEP_PARAMETERS:191:invalid oaep parameters
+CMS_R_KDF_PARAMETER_ERROR:186:kdf parameter error
 CMS_R_MD_BIO_INIT_ERROR:119:md bio init error
 CMS_R_MESSAGEDIGEST_ATTRIBUTE_WRONG_LENGTH:120:\
 	messagedigest attribute wrong length
@@ -2231,10 +2228,12 @@ CMS_R_NO_PRIVATE_KEY:133:no private key
 CMS_R_NO_PUBLIC_KEY:134:no public key
 CMS_R_NO_RECEIPT_REQUEST:168:no receipt request
 CMS_R_NO_SIGNERS:135:no signers
+CMS_R_PEER_KEY_ERROR:188:peer key error
 CMS_R_PRIVATE_KEY_DOES_NOT_MATCH_CERTIFICATE:136:\
 	private key does not match certificate
 CMS_R_RECEIPT_DECODE_ERROR:169:receipt decode error
 CMS_R_RECIPIENT_ERROR:137:recipient error
+CMS_R_SHARED_INFO_ERROR:189:shared info error
 CMS_R_SIGNER_CERTIFICATE_NOT_FOUND:138:signer certificate not found
 CMS_R_SIGNFINAL_ERROR:139:signfinal error
 CMS_R_SMIME_TEXT_ERROR:140:smime text error
@@ -2250,9 +2249,11 @@ CMS_R_UNKNOWN_DIGEST_ALGORITHM:149:unknown digest algorithm
 CMS_R_UNKNOWN_ID:150:unknown id
 CMS_R_UNSUPPORTED_COMPRESSION_ALGORITHM:151:unsupported compression algorithm
 CMS_R_UNSUPPORTED_CONTENT_TYPE:152:unsupported content type
+CMS_R_UNSUPPORTED_ENCRYPTION_TYPE:192:unsupported encryption type
 CMS_R_UNSUPPORTED_KEK_ALGORITHM:153:unsupported kek algorithm
 CMS_R_UNSUPPORTED_KEY_ENCRYPTION_ALGORITHM:179:\
 	unsupported key encryption algorithm
+CMS_R_UNSUPPORTED_LABEL_SOURCE:193:unsupported label source
 CMS_R_UNSUPPORTED_RECIPIENTINFO_TYPE:155:unsupported recipientinfo type
 CMS_R_UNSUPPORTED_RECIPIENT_TYPE:154:unsupported recipient type
 CMS_R_UNSUPPORTED_TYPE:156:unsupported type
@@ -2325,11 +2326,13 @@ CRYPTO_R_INVALID_OSSL_PARAM_TYPE:110:invalid ossl param type
 CRYPTO_R_ODD_NUMBER_OF_DIGITS:103:odd number of digits
 CRYPTO_R_PROVIDER_ALREADY_EXISTS:104:provider already exists
 CRYPTO_R_PROVIDER_SECTION_ERROR:105:provider section error
+CRYPTO_R_RANDOM_SECTION_ERROR:119:random section error
 CRYPTO_R_SECURE_MALLOC_FAILURE:111:secure malloc failure
 CRYPTO_R_STRING_TOO_LONG:112:string too long
 CRYPTO_R_TOO_MANY_BYTES:113:too many bytes
 CRYPTO_R_TOO_MANY_RECORDS:114:too many records
 CRYPTO_R_TOO_SMALL_BUFFER:116:too small buffer
+CRYPTO_R_UNKNOWN_NAME_IN_RANDOM_SECTION:120:unknown name in random section
 CRYPTO_R_ZERO_LENGTH_NUMBER:115:zero length number
 CT_R_BASE64_DECODE_ERROR:108:base64 decode error
 CT_R_INVALID_LOG_ID_LENGTH:100:invalid log id length
@@ -2415,7 +2418,6 @@ EC_R_COORDINATES_OUT_OF_RANGE:146:coordinates out of range
 EC_R_CURVE_DOES_NOT_SUPPORT_ECDH:160:curve does not support ecdh
 EC_R_CURVE_DOES_NOT_SUPPORT_ECDSA:170:curve does not support ecdsa
 EC_R_CURVE_DOES_NOT_SUPPORT_SIGNING:159:curve does not support signing
-EC_R_D2I_ECPKPARAMETERS_FAILURE:117:d2i ecpkparameters failure
 EC_R_DECODE_ERROR:142:decode error
 EC_R_DISCRIMINANT_IS_ZERO:118:discriminant is zero
 EC_R_EC_GROUP_NEW_BY_NAME_FAILURE:119:ec group new by name failure
@@ -2465,7 +2467,6 @@ EC_R_NO_PRIVATE_VALUE:154:no private value
 EC_R_OPERATION_NOT_SUPPORTED:152:operation not supported
 EC_R_PASSED_NULL_PARAMETER:134:passed null parameter
 EC_R_PEER_KEY_ERROR:149:peer key error
-EC_R_PKPARAMETERS2GROUP_FAILURE:127:pkparameters2group failure
 EC_R_POINT_ARITHMETIC_FAILURE:155:point arithmetic failure
 EC_R_POINT_AT_INFINITY:106:point at infinity
 EC_R_POINT_COORDINATES_BLIND_FAILURE:163:point coordinates blind failure
@@ -2574,7 +2575,6 @@ EVP_R_INVALID_SALT_LENGTH:186:invalid salt length
 EVP_R_INVALID_SECRET_LENGTH:223:invalid secret length
 EVP_R_INVALID_SEED_LENGTH:220:invalid seed length
 EVP_R_INVALID_VALUE:222:invalid value
-EVP_R_KEYGEN_FAILURE:120:keygen failure
 EVP_R_KEYMGMT_EXPORT_FAILURE:205:keymgmt export failure
 EVP_R_KEY_SETUP_FAILED:180:key setup failed
 EVP_R_LOCKING_NOT_SUPPORTED:213:locking not supported
@@ -2719,6 +2719,7 @@ OCSP_R_UNSUPPORTED_REQUESTORNAME_TYPE:129:unsupported requestorname type
 OSSL_DECODER_R_MISSING_GET_PARAMS:100:missing get params
 OSSL_ENCODER_R_ENCODER_NOT_FOUND:101:encoder not found
 OSSL_ENCODER_R_INCORRECT_PROPERTY_QUERY:100:incorrect property query
+OSSL_ENCODER_R_MISSING_GET_PARAMS:102:missing get params
 OSSL_STORE_R_AMBIGUOUS_CONTENT_TYPE:107:ambiguous content type
 OSSL_STORE_R_BAD_PASSWORD_READ:115:bad password read
 OSSL_STORE_R_ERROR_VERIFYING_PKCS12_MAC:113:error verifying pkcs12 mac
@@ -2793,9 +2794,7 @@ PKCS12_R_MAC_SETUP_ERROR:110:mac setup error
 PKCS12_R_MAC_STRING_SET_ERROR:111:mac string set error
 PKCS12_R_MAC_VERIFY_FAILURE:113:mac verify failure
 PKCS12_R_PARSE_ERROR:114:parse error
-PKCS12_R_PKCS12_ALGOR_CIPHERINIT_ERROR:115:pkcs12 algor cipherinit error
 PKCS12_R_PKCS12_CIPHERFINAL_ERROR:116:pkcs12 cipherfinal error
-PKCS12_R_PKCS12_PBE_CRYPT_ERROR:117:pkcs12 pbe crypt error
 PKCS12_R_UNKNOWN_DIGEST_ALGORITHM:118:unknown digest algorithm
 PKCS12_R_UNSUPPORTED_PKCS12_MODE:119:unsupported pkcs12 mode
 PKCS7_R_CERTIFICATE_VERIFY_ERROR:117:certificate verify error
@@ -2877,6 +2876,9 @@ PROV_R_FAILED_TO_GENERATE_KEY:121:failed to generate key
 PROV_R_FAILED_TO_GET_PARAMETER:103:failed to get parameter
 PROV_R_FAILED_TO_SET_PARAMETER:104:failed to set parameter
 PROV_R_FAILED_TO_SIGN:175:failed to sign
+PROV_R_FIPS_MODULE_CONDITIONAL_ERROR:227:fips module conditional error
+PROV_R_FIPS_MODULE_ENTERING_ERROR_STATE:224:fips module entering error state
+PROV_R_FIPS_MODULE_IN_ERROR_STATE:225:fips module in error state
 PROV_R_GENERATE_ERROR:191:generate error
 PROV_R_ILLEGAL_OR_UNSUPPORTED_PADDING_MODE:165:\
 	illegal or unsupported padding mode
@@ -2934,6 +2936,7 @@ PROV_R_MODULE_INTEGRITY_FAILURE:214:module integrity failure
 PROV_R_NOT_A_PRIVATE_KEY:221:not a private key
 PROV_R_NOT_A_PUBLIC_KEY:220:not a public key
 PROV_R_NOT_INSTANTIATED:193:not instantiated
+PROV_R_NOT_PARAMETERS:226:not parameters
 PROV_R_NOT_SUPPORTED:136:not supported
 PROV_R_NOT_XOF_OR_INVALID_LENGTH:113:not xof or invalid length
 PROV_R_NO_KEY_SET:114:no key set
@@ -3486,6 +3489,7 @@ X509V3_R_BN_TO_ASN1_INTEGER_ERROR:101:bn to asn1 integer error
 X509V3_R_DIRNAME_ERROR:149:dirname error
 X509V3_R_DISTPOINT_ALREADY_SET:160:distpoint already set
 X509V3_R_DUPLICATE_ZONE_ID:133:duplicate zone id
+X509V3_R_EMPTY_KEY_USAGE:169:empty key usage
 X509V3_R_ERROR_CONVERTING_ZONE:131:error converting zone
 X509V3_R_ERROR_CREATING_EXTENSION:144:error creating extension
 X509V3_R_ERROR_IN_EXTENSION:128:error in extension
@@ -3500,6 +3504,7 @@ X509V3_R_INCORRECT_POLICY_SYNTAX_TAG:152:incorrect policy syntax tag
 X509V3_R_INVALID_ASNUMBER:162:invalid asnumber
 X509V3_R_INVALID_ASRANGE:163:invalid asrange
 X509V3_R_INVALID_BOOLEAN_STRING:104:invalid boolean string
+X509V3_R_INVALID_CERTIFICATE:158:invalid certificate
 X509V3_R_INVALID_EMPTY_NAME:108:invalid empty name
 X509V3_R_INVALID_EXTENSION_STRING:105:invalid extension string
 X509V3_R_INVALID_INHERITANCE:165:invalid inheritance
@@ -3521,6 +3526,7 @@ X509V3_R_INVALID_SYNTAX:143:invalid syntax
 X509V3_R_ISSUER_DECODE_ERROR:126:issuer decode error
 X509V3_R_MISSING_VALUE:124:missing value
 X509V3_R_NEED_ORGANIZATION_AND_NUMBERS:142:need organization and numbers
+X509V3_R_NEGATIVE_PATHLEN:168:negative pathlen
 X509V3_R_NO_CONFIG_DATABASE:136:no config database
 X509V3_R_NO_ISSUER_CERTIFICATE:121:no issuer certificate
 X509V3_R_NO_ISSUER_DETAILS:127:no issuer details
@@ -3556,9 +3562,12 @@ X509_R_CERTIFICATE_VERIFICATION_FAILED:139:certificate verification failed
 X509_R_CERT_ALREADY_IN_HASH_TABLE:101:cert already in hash table
 X509_R_CRL_ALREADY_DELTA:127:crl already delta
 X509_R_CRL_VERIFY_FAILURE:131:crl verify failure
+X509_R_ERROR_GETTING_MD_BY_NID:141:error getting md by nid
+X509_R_ERROR_USING_SIGINF_SET:142:error using siginf set
 X509_R_IDP_MISMATCH:128:idp mismatch
 X509_R_INVALID_ATTRIBUTES:138:invalid attributes
 X509_R_INVALID_DIRECTORY:113:invalid directory
+X509_R_INVALID_DISTPOINT:143:invalid distpoint
 X509_R_INVALID_FIELD_NAME:119:invalid field name
 X509_R_INVALID_TRUST:123:invalid trust
 X509_R_ISSUER_MISMATCH:129:issuer mismatch
@@ -3582,6 +3591,7 @@ X509_R_UNABLE_TO_GET_CERTS_PUBLIC_KEY:108:unable to get certs public key
 X509_R_UNKNOWN_KEY_TYPE:117:unknown key type
 X509_R_UNKNOWN_NID:109:unknown nid
 X509_R_UNKNOWN_PURPOSE_ID:121:unknown purpose id
+X509_R_UNKNOWN_SIGID_ALGS:144:unknown sigid algs
 X509_R_UNKNOWN_TRUST_ID:120:unknown trust id
 X509_R_UNSUPPORTED_ALGORITHM:111:unsupported algorithm
 X509_R_WRONG_LOOKUP_TYPE:112:wrong lookup type

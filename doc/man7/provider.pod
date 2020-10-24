@@ -154,6 +154,12 @@ The number for this operation is B<OSSL_OP_ASYM_CIPHER>.
 The functions the provider can offer are described in
 L<provider-asym_cipher(7)>
 
+=item Asymmetric Key Encapsulation
+
+In the OpenSSL libraries, the corresponding method object is B<EVP_KEM>.
+The number for this operation is B<OSSL_OP_KEM>.
+The functions the provider can offer are described in L<provider-kem(7)>
+
 =item Encoding
 
 In the OpenSSL libraries, the corresponding method object is
@@ -185,7 +191,7 @@ arguments are passed:
 
 =item The library context
 
-See L<OPENSSL_CTX(3)> for a more detailed description.
+See L<OSSL_LIB_CTX(3)> for a more detailed description.
 This may be NULL to signify the default (global) library context, or a
 context created by the user.
 Only providers loaded in this library context (see
@@ -377,7 +383,7 @@ other providers:
 =head1 SEE ALSO
 
 L<EVP_DigestInit_ex(3)>, L<EVP_EncryptInit_ex(3)>,
-L<OPENSSL_CTX(3)>,
+L<OSSL_LIB_CTX(3)>,
 L<EVP_set_default_properties(3)>,
 L<EVP_MD_fetch(3)>,
 L<EVP_CIPHER_fetch(3)>,

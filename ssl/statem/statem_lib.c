@@ -21,10 +21,6 @@
 #include <openssl/x509.h>
 #include <openssl/trace.h>
 
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_NAME)
-DEFINE_STACK_OF_CONST(SSL_CIPHER)
-
 /*
  * Map error codes to TLS/SSL alart types.
  */
@@ -320,10 +316,8 @@ int tls_construct_cert_verify(SSL *s, WPACKET *pkt)
         goto err;
     }
 
-    if (EVP_DigestSignInit_with_libctx(mctx, &pctx,
-                                       md == NULL ? NULL : EVP_MD_name(md),
-                                       s->ctx->libctx, s->ctx->propq,
-                                       pkey) <= 0) {
+    if (EVP_DigestSignInit_ex(mctx, &pctx, md == NULL ? NULL : EVP_MD_name(md),
+                              s->ctx->libctx, s->ctx->propq, pkey) <= 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
                  ERR_R_EVP_LIB);
         goto err;
@@ -516,10 +510,9 @@ MSG_PROCESS_RETURN tls_process_cert_verify(SSL *s, PACKET *pkt)
     OSSL_TRACE1(TLS, "Using client verify alg %s\n",
                 md == NULL ? "n/a" : EVP_MD_name(md));
 
-    if (EVP_DigestVerifyInit_with_libctx(mctx, &pctx,
-                                         md == NULL ? NULL : EVP_MD_name(md),
-                                         s->ctx->libctx, s->ctx->propq,
-                                         pkey) <= 0) {
+    if (EVP_DigestVerifyInit_ex(mctx, &pctx,
+                                md == NULL ? NULL : EVP_MD_name(md),
+                                s->ctx->libctx, s->ctx->propq, pkey) <= 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PROCESS_CERT_VERIFY,
                  ERR_R_EVP_LIB);
         goto err;
@@ -1007,8 +1000,8 @@ static int ssl_add_cert_chain(SSL *s, WPACKET *pkt, CERT_PKEY *cpk)
         chain_store = s->ctx->cert_store;
 
     if (chain_store != NULL) {
-        X509_STORE_CTX *xs_ctx = X509_STORE_CTX_new_with_libctx(s->ctx->libctx,
-                                                                s->ctx->propq);
+        X509_STORE_CTX *xs_ctx = X509_STORE_CTX_new_ex(s->ctx->libctx,
+                                                       s->ctx->propq);
 
         if (xs_ctx == NULL) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_ADD_CERT_CHAIN,
@@ -1412,6 +1405,7 @@ int tls_get_message_body(SSL *s, size_t *len)
 static const X509ERR2ALERT x509table[] = {
     {X509_V_ERR_APPLICATION_VERIFICATION, SSL_AD_HANDSHAKE_FAILURE},
     {X509_V_ERR_CA_KEY_TOO_SMALL, SSL_AD_BAD_CERTIFICATE},
+    {X509_V_ERR_EC_KEY_EXPLICIT_PARAMS, SSL_AD_BAD_CERTIFICATE},
     {X509_V_ERR_CA_MD_TOO_WEAK, SSL_AD_BAD_CERTIFICATE},
     {X509_V_ERR_CERT_CHAIN_TOO_LONG, SSL_AD_UNKNOWN_CA},
     {X509_V_ERR_CERT_HAS_EXPIRED, SSL_AD_CERTIFICATE_EXPIRED},

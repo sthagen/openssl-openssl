@@ -23,6 +23,7 @@
 #include <openssl/rsa.h>
 #include <openssl/dsa.h>
 #include <openssl/encoder.h>
+#include "internal/provider.h"
 
 struct X509_pubkey_st {
     X509_ALGOR *algor;
@@ -30,7 +31,7 @@ struct X509_pubkey_st {
     EVP_PKEY *pkey;
 
     /* extra data for the callback, used by d2i_PUBKEY_ex */
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
     const char *propq;
 };
 
@@ -40,12 +41,12 @@ static int x509_pubkey_decode(EVP_PKEY **pk, const X509_PUBKEY *key);
 static int pubkey_cb(int operation, ASN1_VALUE **pval, const ASN1_ITEM *it,
                      void *exarg)
 {
+    X509_PUBKEY *pubkey = (X509_PUBKEY *)*pval;
+
     if (operation == ASN1_OP_FREE_POST) {
-        X509_PUBKEY *pubkey = (X509_PUBKEY *)*pval;
         EVP_PKEY_free(pubkey->pkey);
     } else if (operation == ASN1_OP_D2I_POST) {
         /* Attempt to decode public key and cache in pubkey structure. */
-        X509_PUBKEY *pubkey = (X509_PUBKEY *)*pval;
         EVP_PKEY_free(pubkey->pkey);
         pubkey->pkey = NULL;
         /*
@@ -54,8 +55,10 @@ static int pubkey_cb(int operation, ASN1_VALUE **pval, const ASN1_ITEM *it,
          * will return an appropriate error.
          */
         ERR_set_mark();
-        if (x509_pubkey_decode(&pubkey->pkey, pubkey) == -1)
+        if (x509_pubkey_decode(&pubkey->pkey, pubkey) == -1) {
+            ERR_clear_last_mark();
             return 0;
+        }
         ERR_pop_to_mark();
     }
     return 1;
@@ -95,21 +98,25 @@ int X509_PUBKEY_set(X509_PUBKEY **x, EVP_PKEY *pkey)
             X509err(X509_F_X509_PUBKEY_SET, X509_R_METHOD_NOT_SUPPORTED);
             goto error;
         }
-    } else if (pkey->keymgmt != NULL) {
-        BIO *bmem = BIO_new(BIO_s_mem());
-        const char *encprop = OSSL_ENCODER_PUBKEY_TO_DER_PQ;
+    } else if (evp_pkey_is_provided(pkey)) {
+        const OSSL_PROVIDER *pkprov = EVP_KEYMGMT_provider(pkey->keymgmt);
+        OSSL_LIB_CTX *libctx = ossl_provider_libctx(pkprov);
+        unsigned char *der = NULL;
+        size_t derlen = 0;
+        int selection = (OSSL_KEYMGMT_SELECT_PUBLIC_KEY
+                         | OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS);
         OSSL_ENCODER_CTX *ectx =
-            OSSL_ENCODER_CTX_new_by_EVP_PKEY(pkey, encprop);
+            OSSL_ENCODER_CTX_new_by_EVP_PKEY(pkey, "DER", selection,
+                                             libctx, NULL);
 
-        if (OSSL_ENCODER_to_bio(ectx, bmem)) {
-            const unsigned char *der = NULL;
-            long derlen = BIO_get_mem_data(bmem, (char **)&der);
+        if (OSSL_ENCODER_to_data(ectx, &der, &derlen)) {
+            const unsigned char *pder = der;
 
-            pk = d2i_X509_PUBKEY(NULL, &der, derlen);
+            pk = d2i_X509_PUBKEY(NULL, &pder, (long)derlen);
         }
 
         OSSL_ENCODER_CTX_free(ectx);
-        BIO_free(bmem);
+        OPENSSL_free(der);
     }
 
     if (pk == NULL)
@@ -175,10 +182,8 @@ static int x509_pubkey_decode(EVP_PKEY **ppkey, const X509_PUBKEY *key)
          * future we could have different return codes for decode
          * errors and fatal errors such as malloc failure.
          */
-        if (!pkey->ameth->pub_decode(pkey, key)) {
-            X509err(X509_F_X509_PUBKEY_DECODE, X509_R_PUBLIC_KEY_DECODE_ERROR);
+        if (!pkey->ameth->pub_decode(pkey, key))
             goto error;
-        }
     } else {
         X509err(X509_F_X509_PUBKEY_DECODE, X509_R_METHOD_NOT_SUPPORTED);
         goto error;
@@ -237,7 +242,7 @@ EVP_PKEY *X509_PUBKEY_get(const X509_PUBKEY *key)
  */
 
 EVP_PKEY *d2i_PUBKEY_ex(EVP_PKEY **a, const unsigned char **pp, long length,
-                        OPENSSL_CTX *libctx, const char *propq)
+                        OSSL_LIB_CTX *libctx, const char *propq)
 {
     X509_PUBKEY *xpk, *xpk2 = NULL, **pxpk = NULL;
     EVP_PKEY *pktmp = NULL;
@@ -303,15 +308,17 @@ int i2d_PUBKEY(const EVP_PKEY *a, unsigned char **pp)
         }
         X509_PUBKEY_free(xpk);
     } else if (a->keymgmt != NULL) {
-        const char *encprop = OSSL_ENCODER_PUBKEY_TO_DER_PQ;
+        const OSSL_PROVIDER *pkprov = EVP_KEYMGMT_provider(a->keymgmt);
+        OSSL_LIB_CTX *libctx = ossl_provider_libctx(pkprov);
+        int selection = (OSSL_KEYMGMT_SELECT_PUBLIC_KEY
+                         | OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS);
         OSSL_ENCODER_CTX *ctx =
-            OSSL_ENCODER_CTX_new_by_EVP_PKEY(a, encprop);
+            OSSL_ENCODER_CTX_new_by_EVP_PKEY(a, "DER", selection, libctx, NULL);
         BIO *out = BIO_new(BIO_s_mem());
         BUF_MEM *buf = NULL;
 
-        if (ctx != NULL
+        if (OSSL_ENCODER_CTX_get_num_encoders(ctx) != 0
             && out != NULL
-            && OSSL_ENCODER_CTX_get_encoder(ctx) != NULL
             && OSSL_ENCODER_to_bio(ctx, out)
             && BIO_get_mem_ptr(out, &buf) > 0) {
             ret = buf->length;
@@ -523,7 +530,7 @@ int X509_PUBKEY_eq(const X509_PUBKEY *a, const X509_PUBKEY *b)
     return EVP_PKEY_eq(pA, pB);
 }
 
-int X509_PUBKEY_get0_libctx(OPENSSL_CTX **plibctx, const char **ppropq,
+int X509_PUBKEY_get0_libctx(OSSL_LIB_CTX **plibctx, const char **ppropq,
                             const X509_PUBKEY *key)
 {
     if (plibctx)

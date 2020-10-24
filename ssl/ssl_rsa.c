@@ -17,8 +17,6 @@
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
 
-DEFINE_STACK_OF(X509)
-
 static int ssl_set_cert(CERT *c, X509 *x509);
 static int ssl_set_pkey(CERT *c, EVP_PKEY *pkey);
 
@@ -66,7 +64,7 @@ int SSL_use_certificate_file(SSL *ssl, const char *file, int type)
         SSLerr(SSL_F_SSL_USE_CERTIFICATE_FILE, SSL_R_BAD_SSL_FILETYPE);
         goto end;
     }
-    x = X509_new_with_libctx(ssl->ctx->libctx, ssl->ctx->propq);
+    x = X509_new_ex(ssl->ctx->libctx, ssl->ctx->propq);
     if (x == NULL) {
         SSLerr(0, ERR_R_MALLOC_FAILURE);
         goto end;
@@ -100,7 +98,7 @@ int SSL_use_certificate_ASN1(SSL *ssl, const unsigned char *d, int len)
     X509 *x;
     int ret;
 
-    x = X509_new_with_libctx(ssl->ctx->libctx, ssl->ctx->propq);
+    x = X509_new_ex(ssl->ctx->libctx, ssl->ctx->propq);
     if (x == NULL) {
         SSLerr(0, ERR_R_MALLOC_FAILURE);
         return 0;
@@ -168,15 +166,6 @@ static int ssl_set_pkey(CERT *c, EVP_PKEY *pkey)
         EVP_PKEY_copy_parameters(pktmp, pkey);
         ERR_clear_error();
 
-#ifndef OPENSSL_NO_RSA
-        /*
-         * Don't check the public/private key, this is mostly for smart
-         * cards.
-         */
-        if (EVP_PKEY_id(pkey) == EVP_PKEY_RSA
-            && RSA_flags(EVP_PKEY_get0_RSA(pkey)) & RSA_METHOD_FLAG_NO_CHECK) ;
-        else
-#endif
         if (!X509_check_private_key(c->pkeys[i].x509, pkey)) {
             X509_free(c->pkeys[i].x509);
             c->pkeys[i].x509 = NULL;
@@ -367,16 +356,6 @@ static int ssl_set_cert(CERT *c, X509 *x)
         EVP_PKEY_copy_parameters(pkey, c->pkeys[i].privatekey);
         ERR_clear_error();
 
-#ifndef OPENSSL_NO_RSA
-        /*
-         * Don't check the public/private key, this is mostly for smart
-         * cards.
-         */
-        if (EVP_PKEY_id(c->pkeys[i].privatekey) == EVP_PKEY_RSA
-            && RSA_flags(EVP_PKEY_get0_RSA(c->pkeys[i].privatekey)) &
-            RSA_METHOD_FLAG_NO_CHECK) ;
-        else
-#endif                          /* OPENSSL_NO_RSA */
         if (!X509_check_private_key(x, c->pkeys[i].privatekey)) {
             /*
              * don't fail for a cert/key mismatch, just free current private
@@ -419,7 +398,7 @@ int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type)
         SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, SSL_R_BAD_SSL_FILETYPE);
         goto end;
     }
-    x = X509_new_with_libctx(ctx->libctx, ctx->propq);
+    x = X509_new_ex(ctx->libctx, ctx->propq);
     if (x == NULL) {
         SSLerr(0, ERR_R_MALLOC_FAILURE);
         goto end;
@@ -449,7 +428,7 @@ int SSL_CTX_use_certificate_ASN1(SSL_CTX *ctx, int len, const unsigned char *d)
     X509 *x;
     int ret;
 
-    x = X509_new_with_libctx(ctx->libctx, ctx->propq);
+    x = X509_new_ex(ctx->libctx, ctx->propq);
     if (x == NULL) {
         SSLerr(0, ERR_R_MALLOC_FAILURE);
         return 0;
@@ -655,7 +634,7 @@ static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
         goto end;
     }
 
-    x = X509_new_with_libctx(real_ctx->libctx, real_ctx->propq);
+    x = X509_new_ex(real_ctx->libctx, real_ctx->propq);
     if (x == NULL) {
         SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_MALLOC_FAILURE);
         goto end;
@@ -694,7 +673,7 @@ static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
         }
 
         while (1) {
-            ca = X509_new_with_libctx(real_ctx->libctx, real_ctx->propq);
+            ca = X509_new_ex(real_ctx->libctx, real_ctx->propq);
             if (ca == NULL) {
                 SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_MALLOC_FAILURE);
                 goto end;
@@ -1136,13 +1115,6 @@ static int ssl_set_cert_and_key(SSL *ssl, SSL_CTX *ctx, X509 *x509, EVP_PKEY *pr
             EVP_PKEY_copy_parameters(pubkey, privatekey);
         } /* else both have parameters */
 
-        /* Copied from ssl_set_cert/pkey */
-#ifndef OPENSSL_NO_RSA
-        if ((EVP_PKEY_id(privatekey) == EVP_PKEY_RSA) &&
-            ((RSA_flags(EVP_PKEY_get0_RSA(privatekey)) & RSA_METHOD_FLAG_NO_CHECK)))
-            /* no-op */ ;
-        else
-#endif
         /* check that key <-> cert match */
         if (EVP_PKEY_eq(pubkey, privatekey) != 1) {
             SSLerr(SSL_F_SSL_SET_CERT_AND_KEY, SSL_R_PRIVATE_KEY_MISMATCH);

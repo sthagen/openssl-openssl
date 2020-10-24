@@ -391,7 +391,7 @@ EC_GROUP *EC_GROUP_new_curve_GF2m(const BIGNUM *p, const BIGNUM *a,
  *          if an error occurred
  */
 EC_GROUP *EC_GROUP_new_from_params(const OSSL_PARAM params[],
-                                   OPENSSL_CTX *libctx, const char *propq);
+                                   OSSL_LIB_CTX *libctx, const char *propq);
 
 /**
  * Creates a EC_GROUP object with a curve specified by a NID
@@ -402,12 +402,12 @@ EC_GROUP *EC_GROUP_new_from_params(const OSSL_PARAM params[],
  *  \return newly created EC_GROUP object with specified curve or NULL
  *          if an error occurred
  */
-EC_GROUP *EC_GROUP_new_by_curve_name_with_libctx(OPENSSL_CTX *libctx,
-                                                 const char *propq, int nid);
+EC_GROUP *EC_GROUP_new_by_curve_name_ex(OSSL_LIB_CTX *libctx, const char *propq,
+                                        int nid);
 
 /**
  * Creates a EC_GROUP object with a curve specified by a NID. Same as
- * EC_GROUP_new_by_curve_name_with_libctx but the libctx and propq are always
+ * EC_GROUP_new_by_curve_name_ex but the libctx and propq are always
  * NULL.
  *  \param  nid    NID of the OID of the curve name
  *  \return newly created EC_GROUP object with specified curve or NULL
@@ -874,6 +874,7 @@ int ECPKParameters_print_fp(FILE *fp, const EC_GROUP *x, int off);
 #  define EC_FLAG_NON_FIPS_ALLOW  0x1
 #  define EC_FLAG_FIPS_CHECKED    0x2
 #  define EC_FLAG_COFACTOR_ECDH   0x1000
+#  define EC_FLAG_SM2_RANGE       0x4
 
 /**
  *  Creates a new EC_KEY object.
@@ -881,10 +882,10 @@ int ECPKParameters_print_fp(FILE *fp, const EC_GROUP *x, int off);
  *               which case the default library context is used.
  *  \return EC_KEY object or NULL if an error occurred.
  */
-EC_KEY *EC_KEY_new_with_libctx(OPENSSL_CTX *ctx, const char *propq);
+EC_KEY *EC_KEY_new_ex(OSSL_LIB_CTX *ctx, const char *propq);
 
 /**
- *  Creates a new EC_KEY object. Same as calling EC_KEY_new_with_libctx with a
+ *  Creates a new EC_KEY object. Same as calling EC_KEY_new_ex with a
  *  NULL library context
  *  \return EC_KEY object or NULL if an error occurred.
  */
@@ -896,6 +897,8 @@ void EC_KEY_set_flags(EC_KEY *key, int flags);
 
 void EC_KEY_clear_flags(EC_KEY *key, int flags);
 
+int EC_KEY_decoded_from_explicit_params(const EC_KEY *key);
+
 /**
  *  Creates a new EC_KEY object using a named curve as underlying
  *  EC_GROUP object.
@@ -905,8 +908,8 @@ void EC_KEY_clear_flags(EC_KEY *key, int flags);
  *  \param  nid   NID of the named curve.
  *  \return EC_KEY object or NULL if an error occurred.
  */
-EC_KEY *EC_KEY_new_by_curve_name_with_libctx(OPENSSL_CTX *ctx, const char *propq,
-                                             int nid);
+EC_KEY *EC_KEY_new_by_curve_name_ex(OSSL_LIB_CTX *ctx, const char *propq,
+                                    int nid);
 
 /**
  *  Creates a new EC_KEY object using a named curve as underlying
@@ -1470,12 +1473,7 @@ DEPRECATEDIN_3_0(void EC_KEY_METHOD_get_verify
 #  endif
 
 int EVP_PKEY_CTX_set_ec_paramgen_curve_nid(EVP_PKEY_CTX *ctx, int nid);
-
-#  define EVP_PKEY_CTX_set_ec_param_enc(ctx, flag) \
-        EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_EC, \
-                          EVP_PKEY_OP_PARAMGEN|EVP_PKEY_OP_KEYGEN, \
-                          EVP_PKEY_CTRL_EC_PARAM_ENC, flag, NULL)
-
+int EVP_PKEY_CTX_set_ec_param_enc(EVP_PKEY_CTX *ctx, int param_enc);
 int EVP_PKEY_CTX_set_ecdh_cofactor_mode(EVP_PKEY_CTX *ctx, int cofactor_mode);
 int EVP_PKEY_CTX_get_ecdh_cofactor_mode(EVP_PKEY_CTX *ctx);
 

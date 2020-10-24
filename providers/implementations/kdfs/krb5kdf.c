@@ -28,6 +28,7 @@
 #include "prov/implementations.h"
 #include "prov/provider_ctx.h"
 #include "prov/provider_util.h"
+#include "prov/providercommon.h"
 #include "prov/providercommonerr.h"
 
 /* KRB5 KDF defined in RFC 3961, Section 5.1 */
@@ -58,6 +59,9 @@ typedef struct {
 static void *krb5kdf_new(void *provctx)
 {
     KRB5KDF_CTX *ctx;
+
+    if (!ossl_prov_is_running())
+        return NULL;
 
     if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) == NULL)
         ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
@@ -99,9 +103,13 @@ static int krb5kdf_derive(void *vctx, unsigned char *key,
                               size_t keylen)
 {
     KRB5KDF_CTX *ctx = (KRB5KDF_CTX *)vctx;
-    const EVP_CIPHER *cipher = ossl_prov_cipher_cipher(&ctx->cipher);
-    ENGINE *engine = ossl_prov_cipher_engine(&ctx->cipher);
+    const EVP_CIPHER *cipher;
+    ENGINE *engine;
 
+    if (!ossl_prov_is_running())
+        return 0;
+
+    cipher = ossl_prov_cipher_cipher(&ctx->cipher);
     if (cipher == NULL) {
         ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_CIPHER);
         return 0;
@@ -114,6 +122,7 @@ static int krb5kdf_derive(void *vctx, unsigned char *key,
         ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_CONSTANT);
         return 0;
     }
+    engine = ossl_prov_cipher_engine(&ctx->cipher);
     return KRB5KDF(cipher, engine, ctx->key, ctx->key_len,
                    ctx->constant, ctx->constant_len,
                    key, keylen);
@@ -123,7 +132,7 @@ static int krb5kdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
     const OSSL_PARAM *p;
     KRB5KDF_CTX *ctx = vctx;
-    OPENSSL_CTX *provctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(ctx->provctx);
 
     if (!ossl_prov_cipher_load_from_params(&ctx->cipher, params, provctx))
         return 0;
@@ -179,7 +188,7 @@ static const OSSL_PARAM *krb5kdf_gettable_ctx_params(ossl_unused void *provctx)
     return known_gettable_ctx_params;
 }
 
-const OSSL_DISPATCH kdf_krb5kdf_functions[] = {
+const OSSL_DISPATCH ossl_kdf_krb5kdf_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))krb5kdf_new },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))krb5kdf_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))krb5kdf_reset },

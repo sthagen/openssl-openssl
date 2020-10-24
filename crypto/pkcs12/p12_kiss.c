@@ -12,10 +12,6 @@
 #include <openssl/pkcs12.h>
 #include "crypto/x509.h" /* for X509_add_cert_new() */
 
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(PKCS7)
-DEFINE_STACK_OF(PKCS12_SAFEBAG)
-
 /* Simplified PKCS#12 routines */
 
 static int parse_pk12(PKCS12 *p12, const char *pass, int passlen,
@@ -84,7 +80,11 @@ int PKCS12_parse(PKCS12 *p12, const char *pass, EVP_PKEY **pkey, X509 **cert,
     }
 
     if (!parse_pk12(p12, pass, -1, pkey, ocerts)) {
-        PKCS12err(PKCS12_F_PKCS12_PARSE, PKCS12_R_PARSE_ERROR);
+        int err = ERR_peek_last_error();
+
+        if (ERR_GET_LIB(err) != ERR_LIB_EVP
+                && ERR_GET_REASON(err) != EVP_R_UNSUPPORTED_ALGORITHM)
+            PKCS12err(0, PKCS12_R_PARSE_ERROR);
         goto err;
     }
 

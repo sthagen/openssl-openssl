@@ -421,6 +421,7 @@ my @disablables = (
     "external-tests",
     "filenames",
     "fips",
+    "fips-securitychecks",
     "fuzz-libfuzzer",
     "fuzz-afl",
     "gost",
@@ -578,7 +579,7 @@ my @disable_cascades = (
     # or modules.
     "pic"               => [ "shared", "module" ],
 
-    "module"            => [ "fips" ],
+    "module"            => [ "fips", "dso" ],
 
     "engine"            => [ grep /eng$/, @disablables ],
     "hw"                => [ "padlockeng" ],
@@ -1443,7 +1444,7 @@ unless($disabled{threads}) {
 }
 
 my $no_shared_warn=0;
-if ($target{shared_target} eq "")
+if (($target{shared_target} // '') eq "")
         {
         $no_shared_warn = 1
             if (!$disabled{shared} || !$disabled{"dynamic-engine"});
@@ -3161,6 +3162,8 @@ sub print_table_entry
         "loutflag",
         "ex_libs",
         "bn_ops",
+        "enable",
+        "disable",
         "poly1035_asm_src",
         "thread_scheme",
         "perlasm_scheme",

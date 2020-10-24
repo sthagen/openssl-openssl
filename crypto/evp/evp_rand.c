@@ -263,7 +263,7 @@ static void *evp_rand_from_dispatch(int name_id,
     return rand;
 }
 
-EVP_RAND *EVP_RAND_fetch(OPENSSL_CTX *libctx, const char *algorithm,
+EVP_RAND *EVP_RAND_fetch(OSSL_LIB_CTX *libctx, const char *algorithm,
                          const char *properties)
 {
     return evp_generic_fetch(libctx, OSSL_OP_RAND, algorithm, properties,
@@ -308,6 +308,13 @@ int EVP_RAND_get_params(EVP_RAND *rand, OSSL_PARAM params[])
     return 1;
 }
 
+static int evp_rand_ctx_up_ref(EVP_RAND_CTX *ctx)
+{
+    int ref = 0;
+
+    return CRYPTO_UP_REF(&ctx->refcnt, &ref, ctx->refcnt_lock);
+}
+
 EVP_RAND_CTX *EVP_RAND_CTX_new(EVP_RAND *rand, EVP_RAND_CTX *parent)
 {
     EVP_RAND_CTX *ctx;
@@ -320,13 +327,21 @@ EVP_RAND_CTX *EVP_RAND_CTX_new(EVP_RAND *rand, EVP_RAND_CTX *parent)
     }
 
     ctx = OPENSSL_zalloc(sizeof(*ctx));
-    if (ctx == NULL) {
+    if (ctx == NULL || (ctx->refcnt_lock = CRYPTO_THREAD_lock_new()) == NULL) {
+        OPENSSL_free(ctx);
         EVPerr(0, ERR_R_MALLOC_FAILURE);
         return NULL;
     }
     if (parent != NULL) {
         if (!EVP_RAND_enable_locking(parent)) {
             EVPerr(0, EVP_R_UNABLE_TO_ENABLE_PARENT_LOCKING);
+            CRYPTO_THREAD_lock_free(ctx->refcnt_lock);
+            OPENSSL_free(ctx);
+            return NULL;
+        }
+        if (!evp_rand_ctx_up_ref(parent)) {
+            EVPerr(0, ERR_R_INTERNAL_ERROR);
+            CRYPTO_THREAD_lock_free(ctx->refcnt_lock);
             OPENSSL_free(ctx);
             return NULL;
         }
@@ -338,20 +353,33 @@ EVP_RAND_CTX *EVP_RAND_CTX_new(EVP_RAND *rand, EVP_RAND_CTX *parent)
             || !EVP_RAND_up_ref(rand)) {
         EVPerr(0, ERR_R_MALLOC_FAILURE);
         rand->freectx(ctx->data);
+        CRYPTO_THREAD_lock_free(ctx->refcnt_lock);
         OPENSSL_free(ctx);
+        EVP_RAND_CTX_free(parent);
         return NULL;
     }
     ctx->meth = rand;
+    ctx->parent = parent;
+    ctx->refcnt = 1;
     return ctx;
 }
 
 void EVP_RAND_CTX_free(EVP_RAND_CTX *ctx)
 {
     if (ctx != NULL) {
-        ctx->meth->freectx(ctx->data);
-        ctx->data = NULL;
-        EVP_RAND_free(ctx->meth);
-        OPENSSL_free(ctx);
+        int ref = 0;
+
+        CRYPTO_DOWN_REF(&ctx->refcnt, &ref, ctx->refcnt_lock);
+        if (ref <= 0) {
+            EVP_RAND_CTX *parent = ctx->parent;
+
+            ctx->meth->freectx(ctx->data);
+            ctx->data = NULL;
+            EVP_RAND_free(ctx->meth);
+            CRYPTO_THREAD_lock_free(ctx->refcnt_lock);
+            OPENSSL_free(ctx);
+            EVP_RAND_CTX_free(parent);
+        }
     }
 }
 
@@ -405,7 +433,7 @@ const OSSL_PARAM *EVP_RAND_gettable_params(const EVP_RAND *rand)
 
 const OSSL_PARAM *EVP_RAND_gettable_ctx_params(const EVP_RAND *rand)
 {
-    if (rand->gettable_params == NULL)
+    if (rand->gettable_ctx_params == NULL)
         return NULL;
     return rand->gettable_ctx_params(
                ossl_provider_ctx(EVP_RAND_provider(rand)));
@@ -413,13 +441,13 @@ const OSSL_PARAM *EVP_RAND_gettable_ctx_params(const EVP_RAND *rand)
 
 const OSSL_PARAM *EVP_RAND_settable_ctx_params(const EVP_RAND *rand)
 {
-    if (rand->gettable_params == NULL)
+    if (rand->settable_ctx_params == NULL)
         return NULL;
     return rand->settable_ctx_params(
                ossl_provider_ctx(EVP_RAND_provider(rand)));
 }
 
-void EVP_RAND_do_all_provided(OPENSSL_CTX *libctx,
+void EVP_RAND_do_all_provided(OSSL_LIB_CTX *libctx,
                               void (*fn)(EVP_RAND *rand, void *arg),
                               void *arg)
 {

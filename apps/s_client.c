@@ -8,9 +8,6 @@
  * https://www.openssl.org/source/license.html
  */
 
-/* We need to use some engine deprecated APIs */
-#define OPENSSL_SUPPRESS_DEPRECATED
-
 #include "e_os.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -58,12 +55,6 @@ typedef unsigned int u_int;
 #  include <sanitizer/msan_interface.h>
 # endif
 #endif
-
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_CRL)
-DEFINE_STACK_OF(X509_NAME)
-DEFINE_STACK_OF(SCT)
-DEFINE_STACK_OF_STRING()
 
 #undef BUFSIZZ
 #define BUFSIZZ 1024*8
@@ -1210,7 +1201,7 @@ int s_client_main(int argc, char **argv)
             break;
         case OPT_SSL_CLIENT_ENGINE:
 #ifndef OPENSSL_NO_ENGINE
-            ssl_client_engine = ENGINE_by_id(opt_arg());
+            ssl_client_engine = setup_engine(opt_arg(), 0);
             if (ssl_client_engine == NULL) {
                 BIO_printf(bio_err, "Error getting client auth engine\n");
                 goto opthelp;
@@ -1734,13 +1725,13 @@ int s_client_main(int argc, char **argv)
 
     if (key_file != NULL) {
         key = load_key(key_file, key_format, 0, pass, e,
-                       "client certificate private key file");
+                       "client certificate private key");
         if (key == NULL)
             goto end;
     }
 
     if (cert_file != NULL) {
-        cert = load_cert_pass(cert_file, cert_format, pass, "client certificate file");
+        cert = load_cert_pass(cert_file, cert_format, pass, "client certificate");
         if (cert == NULL)
             goto end;
     }
@@ -1887,10 +1878,10 @@ int s_client_main(int argc, char **argv)
         if (!SSL_CTX_set_client_cert_engine(ctx, ssl_client_engine)) {
             BIO_puts(bio_err, "Error setting client auth engine\n");
             ERR_print_errors(bio_err);
-            ENGINE_free(ssl_client_engine);
+            release_engine(ssl_client_engine);
             goto end;
         }
-        ENGINE_free(ssl_client_engine);
+        release_engine(ssl_client_engine);
     }
 #endif
 

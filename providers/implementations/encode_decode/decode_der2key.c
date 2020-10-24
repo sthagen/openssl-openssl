@@ -17,13 +17,90 @@
 #include <openssl/core_names.h>
 #include <openssl/core_object.h>
 #include <openssl/crypto.h>
+#include <openssl/err.h>
 #include <openssl/params.h>
+#include <openssl/pem.h>         /* PEM_BUFSIZE and public PEM functions */
+#include <openssl/pkcs12.h>
 #include <openssl/x509.h>
+#include "internal/cryptlib.h"   /* ossl_assert() */
+#include "internal/asn1.h"
+#include "crypto/ecx.h"
 #include "prov/bio.h"
 #include "prov/implementations.h"
-#include "encoder_local.h"
+#include "prov/providercommonerr.h"
+#include "endecoder_local.h"
 
-static OSSL_FUNC_decoder_newctx_fn der2rsa_newctx;
+#define SET_ERR_MARK() ERR_set_mark()
+#define CLEAR_ERR_MARK()                                                \
+    do {                                                                \
+        int err = ERR_peek_last_error();                                \
+                                                                        \
+        if (ERR_GET_LIB(err) == ERR_LIB_ASN1                            \
+            && (ERR_GET_REASON(err) == ASN1_R_HEADER_TOO_LONG           \
+                || ERR_GET_REASON(err) == ASN1_R_UNSUPPORTED_TYPE       \
+                || ERR_GET_REASON(err) == ERR_R_NESTED_ASN1_ERROR))     \
+            ERR_pop_to_mark();                                          \
+        else                                                            \
+            ERR_clear_last_mark();                                      \
+    } while(0)
+#define RESET_ERR_MARK()                                                \
+    do {                                                                \
+        CLEAR_ERR_MARK();                                               \
+        SET_ERR_MARK();                                                 \
+    } while(0)
+
+static int read_der(PROV_CTX *provctx, OSSL_CORE_BIO *cin,
+                    unsigned char **data, long *len)
+{
+    BUF_MEM *mem = NULL;
+    BIO *in = bio_new_from_core_bio(provctx, cin);
+    int ok = (asn1_d2i_read_bio(in, &mem) >= 0);
+
+    if (ok) {
+        *data = (unsigned char *)mem->data;
+        *len = (long)mem->length;
+        OPENSSL_free(mem);
+    }
+    BIO_free(in);
+    return ok;
+}
+
+static int der_from_p8(unsigned char **new_der, long *new_der_len,
+                       unsigned char *input_der, long input_der_len,
+                       OSSL_PASSPHRASE_CALLBACK *pw_cb, void *pw_cbarg)
+{
+    const unsigned char *derp;
+    X509_SIG *p8 = NULL;
+    int ok = 0;
+
+    if (!ossl_assert(new_der != NULL && *new_der == NULL)
+        || !ossl_assert(new_der_len != NULL))
+        return 0;
+
+    derp = input_der;
+    if ((p8 = d2i_X509_SIG(NULL, &derp, input_der_len)) != NULL) {
+        char pbuf[PEM_BUFSIZE];
+        size_t plen = 0;
+
+        if (!pw_cb(pbuf, sizeof(pbuf), &plen, NULL, pw_cbarg)) {
+            ERR_raise(ERR_LIB_PROV, PROV_R_READ_KEY);
+        } else {
+            const X509_ALGOR *alg = NULL;
+            const ASN1_OCTET_STRING *oct = NULL;
+            int len = 0;
+
+            X509_SIG_get0(p8, &alg, &oct);
+            if (PKCS12_pbe_crypt(alg, pbuf, plen, oct->data, oct->length,
+                                 new_der, &len, 0) != NULL)
+                ok = 1;
+            *new_der_len = len;
+        }
+    }
+    X509_SIG_free(p8);
+    return ok;
+}
+
+/* ---------------------------------------------------------------------- */
 
 static OSSL_FUNC_decoder_freectx_fn der2key_freectx;
 static OSSL_FUNC_decoder_gettable_params_fn der2key_gettable_params;
@@ -99,7 +176,7 @@ static int der2key_decode(void *vctx, OSSL_CORE_BIO *cin,
                           OSSL_PASSPHRASE_CALLBACK *pw_cb, void *pw_cbarg)
 {
     struct der2key_ctx_st *ctx = vctx;
-    void *libctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    void *libctx = PROV_LIBCTX_OF(ctx->provctx);
     unsigned char *der = NULL;
     const unsigned char *derp;
     long der_len = 0;
@@ -109,32 +186,41 @@ static int der2key_decode(void *vctx, OSSL_CORE_BIO *cin,
     void *key = NULL;
     int ok = 0;
 
-    if (!ossl_prov_read_der(ctx->provctx, cin, &der, &der_len))
-        return 0;
+    SET_ERR_MARK();
+    if (!read_der(ctx->provctx, cin, &der, &der_len))
+        goto err;
 
     /*
      * Opportunistic attempt to decrypt.  If it doesn't work, we try to
      * decode our input unencrypted.
      */
-    if (ossl_prov_der_from_p8(&new_der, &new_der_len, der, der_len,
-                              pw_cb, pw_cbarg)) {
+    if (der_from_p8(&new_der, &new_der_len, der, der_len, pw_cb, pw_cbarg)) {
         OPENSSL_free(der);
         der = new_der;
         der_len = new_der_len;
     }
+    RESET_ERR_MARK();
 
     derp = der;
     pkey = d2i_PrivateKey_ex(ctx->desc->type, NULL, &derp, der_len,
                              libctx, NULL);
     if (pkey == NULL) {
+        RESET_ERR_MARK();
         derp = der;
         pkey = d2i_PUBKEY_ex(NULL, &derp, der_len, libctx, NULL);
     }
 
     if (pkey == NULL) {
+        RESET_ERR_MARK();
         derp = der;
         pkey = d2i_KeyParams(ctx->desc->type, NULL, &derp, der_len);
     }
+ err:
+    /*
+     * Prune low-level ASN.1 parse errors from error queue, assuming that
+     * this is called by decoder_process() in a loop trying several formats.
+     */
+    CLEAR_ERR_MARK();
 
     if (pkey != NULL) {
         /*
@@ -200,14 +286,16 @@ static int der2key_export_object(void *vctx,
 
 #define IMPLEMENT_NEWCTX(KEYTYPEstr, KEYTYPE, keytype, extract, free)   \
     static const struct keytype_desc_st keytype##_desc =                \
-        { EVP_PKEY_##KEYTYPE, KEYTYPEstr, keytype##_keymgmt_functions,  \
+        { EVP_PKEY_##KEYTYPE, KEYTYPEstr,                               \
+          ossl_##keytype##_keymgmt_functions,                           \
           (extract_key_fn *)extract,                                    \
           (free_key_fn *)free };                                        \
+    static OSSL_FUNC_decoder_newctx_fn der2##keytype##_newctx;          \
     static void *der2##keytype##_newctx(void *provctx)                  \
     {                                                                   \
         return der2key_newctx(provctx, &keytype##_desc);                \
     }                                                                   \
-    const OSSL_DISPATCH der_to_##keytype##_decoder_functions[] = {      \
+    const OSSL_DISPATCH ossl_der_to_##keytype##_decoder_functions[] = { \
         { OSSL_FUNC_DECODER_NEWCTX,                                     \
           (void (*)(void))der2##keytype##_newctx },                     \
         { OSSL_FUNC_DECODER_FREECTX,                                    \
@@ -233,12 +321,12 @@ IMPLEMENT_NEWCTX("DSA", DSA, dsa, EVP_PKEY_get1_DSA, DSA_free);
 #ifndef OPENSSL_NO_EC
 IMPLEMENT_NEWCTX("EC", EC, ec, EVP_PKEY_get1_EC_KEY, EC_KEY_free);
 IMPLEMENT_NEWCTX("X25519", X25519, x25519,
-                 EVP_PKEY_get1_X25519, ecx_key_free);
+                 evp_pkey_get1_X25519, ecx_key_free);
 IMPLEMENT_NEWCTX("X448", X448, x448,
-                 EVP_PKEY_get1_X448, ecx_key_free);
+                 evp_pkey_get1_X448, ecx_key_free);
 IMPLEMENT_NEWCTX("ED25519", ED25519, ed25519,
-                 EVP_PKEY_get1_ED25519, ecx_key_free);
-IMPLEMENT_NEWCTX("ED448", ED448, ed448, EVP_PKEY_get1_ED448, ecx_key_free);
+                 evp_pkey_get1_ED25519, ecx_key_free);
+IMPLEMENT_NEWCTX("ED448", ED448, ed448, evp_pkey_get1_ED448, ecx_key_free);
 #endif
 IMPLEMENT_NEWCTX("RSA", RSA, rsa, EVP_PKEY_get1_RSA, RSA_free);
 IMPLEMENT_NEWCTX("RSA-PSS", RSA_PSS, rsapss, EVP_PKEY_get1_RSA, RSA_free);

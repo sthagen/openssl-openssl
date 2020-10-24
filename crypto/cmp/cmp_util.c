@@ -16,10 +16,6 @@
 #include <openssl/err.h> /* should be implied by cmperr.h */
 #include <openssl/x509v3.h>
 
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_OBJECT)
-DEFINE_STACK_OF(ASN1_UTF8STRING)
-
 /*
  * use trace API for CMP-specific logging, prefixed by "CMP " and severity
  */
@@ -221,7 +217,7 @@ int ossl_cmp_X509_STORE_add1_certs(X509_STORE *store, STACK_OF(X509) *certs,
  */
 /* TODO this should be of more general interest and thus be exported. */
 STACK_OF(X509)
-    *ossl_cmp_build_cert_chain(OPENSSL_CTX *libctx, const char *propq,
+    *ossl_cmp_build_cert_chain(OSSL_LIB_CTX *libctx, const char *propq,
                                X509_STORE *store,
                                STACK_OF(X509) *certs, X509 *cert)
 {
@@ -234,7 +230,7 @@ STACK_OF(X509)
         goto err;
     }
 
-    if ((csc = X509_STORE_CTX_new_with_libctx(libctx, propq)) == NULL)
+    if ((csc = X509_STORE_CTX_new_ex(libctx, propq)) == NULL)
         goto err;
     if (store == NULL && certs != NULL
             && !ossl_cmp_X509_STORE_add1_certs(ts, certs, 0))

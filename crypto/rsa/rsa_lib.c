@@ -27,7 +27,7 @@
 #include "crypto/security_bits.h"
 #include "rsa_local.h"
 
-static RSA *rsa_new_intern(ENGINE *engine, OPENSSL_CTX *libctx);
+static RSA *rsa_new_intern(ENGINE *engine, OSSL_LIB_CTX *libctx);
 
 #ifndef FIPS_MODULE
 RSA *RSA_new(void)
@@ -66,12 +66,12 @@ RSA *RSA_new_method(ENGINE *engine)
 }
 #endif
 
-RSA *rsa_new_with_ctx(OPENSSL_CTX *libctx)
+RSA *ossl_rsa_new_with_ctx(OSSL_LIB_CTX *libctx)
 {
     return rsa_new_intern(NULL, libctx);
 }
 
-static RSA *rsa_new_intern(ENGINE *engine, OPENSSL_CTX *libctx)
+static RSA *rsa_new_intern(ENGINE *engine, OSSL_LIB_CTX *libctx)
 {
     RSA *ret = OPENSSL_zalloc(sizeof(*ret));
 
@@ -189,7 +189,7 @@ int RSA_up_ref(RSA *r)
     return i > 1 ? 1 : 0;
 }
 
-OPENSSL_CTX *rsa_get0_libctx(RSA *r)
+OSSL_LIB_CTX *ossl_rsa_get0_libctx(RSA *r)
 {
     return r->libctx;
 }
@@ -654,7 +654,7 @@ const RSA_PSS_PARAMS *RSA_get0_pss_params(const RSA *r)
 }
 
 /* Internal */
-RSA_PSS_PARAMS_30 *rsa_get0_pss_params_30(RSA *r)
+RSA_PSS_PARAMS_30 *ossl_rsa_get0_pss_params_30(RSA *r)
 {
     return &r->pss_params;
 }
@@ -699,9 +699,9 @@ int RSA_pkey_ctx_ctrl(EVP_PKEY_CTX *ctx, int optype, int cmd, int p1, void *p2)
 
 DEFINE_STACK_OF(BIGNUM)
 
-int rsa_set0_all_params(RSA *r, const STACK_OF(BIGNUM) *primes,
-                        const STACK_OF(BIGNUM) *exps,
-                        const STACK_OF(BIGNUM) *coeffs)
+int ossl_rsa_set0_all_params(RSA *r, const STACK_OF(BIGNUM) *primes,
+                             const STACK_OF(BIGNUM) *exps,
+                             const STACK_OF(BIGNUM) *coeffs)
 {
 #ifndef FIPS_MODULE
     STACK_OF(RSA_PRIME_INFO) *prime_infos, *old_infos = NULL;
@@ -797,9 +797,9 @@ int rsa_set0_all_params(RSA *r, const STACK_OF(BIGNUM) *primes,
 
 DEFINE_SPECIAL_STACK_OF_CONST(BIGNUM_const, BIGNUM)
 
-int rsa_get0_all_params(RSA *r, STACK_OF(BIGNUM_const) *primes,
-                        STACK_OF(BIGNUM_const) *exps,
-                        STACK_OF(BIGNUM_const) *coeffs)
+int ossl_rsa_get0_all_params(RSA *r, STACK_OF(BIGNUM_const) *primes,
+                             STACK_OF(BIGNUM_const) *exps,
+                             STACK_OF(BIGNUM_const) *coeffs)
 {
 #ifndef FIPS_MODULE
     RSA_PRIME_INFO *pinfo;
@@ -1345,7 +1345,9 @@ int EVP_PKEY_CTX_set_rsa_keygen_bits(EVP_PKEY_CTX *ctx, int bits)
     return 1;
 }
 
-int EVP_PKEY_CTX_set_rsa_keygen_pubexp(EVP_PKEY_CTX *ctx, BIGNUM *pubexp)
+static int evp_pkey_ctx_set_rsa_keygen_pubexp_intern(EVP_PKEY_CTX *ctx,
+                                                     BIGNUM *pubexp,
+                                                     int copy)
 {
     OSSL_PARAM_BLD *tmpl;
     OSSL_PARAM *params;
@@ -1362,9 +1364,15 @@ int EVP_PKEY_CTX_set_rsa_keygen_pubexp(EVP_PKEY_CTX *ctx, BIGNUM *pubexp)
         return -1;
 
     /* TODO(3.0): Remove this eventually when no more legacy */
-    if (ctx->op.keymgmt.genctx == NULL)
-        return EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_RSA, EVP_PKEY_OP_KEYGEN,
-                                 EVP_PKEY_CTRL_RSA_KEYGEN_PUBEXP, 0, pubexp);
+    if (ctx->op.keymgmt.genctx == NULL) {
+        if (copy == 1)
+            pubexp = BN_dup(pubexp);
+        ret = EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_RSA, EVP_PKEY_OP_KEYGEN,
+                                EVP_PKEY_CTRL_RSA_KEYGEN_PUBEXP, 0, pubexp);
+        if ((copy == 1) && (ret <= 0))
+            BN_free(pubexp);
+        return ret;
+    }
 
     if ((tmpl = OSSL_PARAM_BLD_new()) == NULL)
         return 0;
@@ -1377,7 +1385,26 @@ int EVP_PKEY_CTX_set_rsa_keygen_pubexp(EVP_PKEY_CTX *ctx, BIGNUM *pubexp)
 
     ret = EVP_PKEY_CTX_set_params(ctx, params);
     OSSL_PARAM_BLD_free_params(params);
+
+    /*
+     * Satisfy memory semantics for pre-3.0 callers of
+     * EVP_PKEY_CTX_set_rsa_keygen_pubexp(): their expectation is that input
+     * pubexp BIGNUM becomes managed by the EVP_PKEY_CTX on success.
+     */
+    if ((copy == 0) && (ret > 0))
+        ctx->rsa_pubexp = pubexp;
+
     return ret;
+}
+
+int EVP_PKEY_CTX_set_rsa_keygen_pubexp(EVP_PKEY_CTX *ctx, BIGNUM *pubexp)
+{
+    return evp_pkey_ctx_set_rsa_keygen_pubexp_intern(ctx, pubexp, 0);
+}
+
+int EVP_PKEY_CTX_set1_rsa_keygen_pubexp(EVP_PKEY_CTX *ctx, BIGNUM *pubexp)
+{
+    return evp_pkey_ctx_set_rsa_keygen_pubexp_intern(ctx, pubexp, 1);
 }
 
 int EVP_PKEY_CTX_set_rsa_keygen_primes(EVP_PKEY_CTX *ctx, int primes)

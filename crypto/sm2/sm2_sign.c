@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2017-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright 2017 Ribose Inc. All Rights Reserved.
  * Ported from Ribose contributions from Botan.
  *
@@ -147,7 +147,7 @@ static BIGNUM *sm2_compute_msg_hash(const EVP_MD *digest,
     uint8_t *z = NULL;
     BIGNUM *e = NULL;
     EVP_MD *fetched_digest = NULL;
-    OPENSSL_CTX *libctx = ec_key_get_libctx(key);
+    OSSL_LIB_CTX *libctx = ec_key_get_libctx(key);
     const char *propq = ec_key_get0_propq(key);
 
     if (md_size < 0) {
@@ -206,7 +206,7 @@ static ECDSA_SIG *sm2_sig_gen(const EC_KEY *key, const BIGNUM *e)
     BIGNUM *s = NULL;
     BIGNUM *x1 = NULL;
     BIGNUM *tmp = NULL;
-    OPENSSL_CTX *libctx = ec_key_get_libctx(key);
+    OSSL_LIB_CTX *libctx = ec_key_get_libctx(key);
 
     kG = EC_POINT_new(group);
     ctx = BN_CTX_new_ex(libctx);
@@ -306,7 +306,7 @@ static int sm2_sig_verify(const EC_KEY *key, const ECDSA_SIG *sig,
     BIGNUM *x1 = NULL;
     const BIGNUM *r = NULL;
     const BIGNUM *s = NULL;
-    OPENSSL_CTX *libctx = ec_key_get_libctx(key);
+    OSSL_LIB_CTX *libctx = ec_key_get_libctx(key);
 
     ctx = BN_CTX_new_ex(libctx);
     pt = EC_POINT_new(group);
@@ -418,8 +418,8 @@ int sm2_do_verify(const EC_KEY *key,
     return ret;
 }
 
-int sm2_sign(const unsigned char *dgst, int dgstlen,
-             unsigned char *sig, unsigned int *siglen, EC_KEY *eckey)
+int sm2_internal_sign(const unsigned char *dgst, int dgstlen,
+                      unsigned char *sig, unsigned int *siglen, EC_KEY *eckey)
 {
     BIGNUM *e = NULL;
     ECDSA_SIG *s = NULL;
@@ -428,19 +428,19 @@ int sm2_sign(const unsigned char *dgst, int dgstlen,
 
     e = BN_bin2bn(dgst, dgstlen, NULL);
     if (e == NULL) {
-       SM2err(SM2_F_SM2_SIGN, ERR_R_BN_LIB);
+       SM2err(0, ERR_R_BN_LIB);
        goto done;
     }
 
     s = sm2_sig_gen(eckey, e);
     if (s == NULL) {
-        SM2err(SM2_F_SM2_SIGN, ERR_R_INTERNAL_ERROR);
+        SM2err(0, ERR_R_INTERNAL_ERROR);
         goto done;
     }
 
     sigleni = i2d_ECDSA_SIG(s, &sig);
     if (sigleni < 0) {
-       SM2err(SM2_F_SM2_SIGN, ERR_R_INTERNAL_ERROR);
+       SM2err(0, ERR_R_INTERNAL_ERROR);
        goto done;
     }
     *siglen = (unsigned int)sigleni;
@@ -453,8 +453,8 @@ int sm2_sign(const unsigned char *dgst, int dgstlen,
     return ret;
 }
 
-int sm2_verify(const unsigned char *dgst, int dgstlen,
-               const unsigned char *sig, int sig_len, EC_KEY *eckey)
+int sm2_internal_verify(const unsigned char *dgst, int dgstlen,
+                        const unsigned char *sig, int sig_len, EC_KEY *eckey)
 {
     ECDSA_SIG *s = NULL;
     BIGNUM *e = NULL;
@@ -465,23 +465,23 @@ int sm2_verify(const unsigned char *dgst, int dgstlen,
 
     s = ECDSA_SIG_new();
     if (s == NULL) {
-        SM2err(SM2_F_SM2_VERIFY, ERR_R_MALLOC_FAILURE);
+        SM2err(0, ERR_R_MALLOC_FAILURE);
         goto done;
     }
     if (d2i_ECDSA_SIG(&s, &p, sig_len) == NULL) {
-        SM2err(SM2_F_SM2_VERIFY, SM2_R_INVALID_ENCODING);
+        SM2err(0, SM2_R_INVALID_ENCODING);
         goto done;
     }
     /* Ensure signature uses DER and doesn't have trailing garbage */
     derlen = i2d_ECDSA_SIG(s, &der);
     if (derlen != sig_len || memcmp(sig, der, derlen) != 0) {
-        SM2err(SM2_F_SM2_VERIFY, SM2_R_INVALID_ENCODING);
+        SM2err(0, SM2_R_INVALID_ENCODING);
         goto done;
     }
 
     e = BN_bin2bn(dgst, dgstlen, NULL);
     if (e == NULL) {
-        SM2err(SM2_F_SM2_VERIFY, ERR_R_BN_LIB);
+        SM2err(0, ERR_R_BN_LIB);
         goto done;
     }
 

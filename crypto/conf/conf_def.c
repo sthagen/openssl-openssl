@@ -11,6 +11,9 @@
 
 #include <stdio.h>
 #include <string.h>
+#ifdef __TANDEM
+# include <strings.h> /* strcasecmp */
+#endif
 #include "internal/cryptlib.h"
 #include "internal/o_dir.h"
 #include <openssl/lhash.h>
@@ -26,8 +29,6 @@
 #  define strcasecmp _stricmp
 # endif
 #endif
-
-DEFINE_STACK_OF(BIO)
 
 #ifndef S_ISDIR
 # define S_ISDIR(a) (((a) & S_IFMT) == S_IFDIR)

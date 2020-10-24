@@ -22,12 +22,6 @@
 #include "crypto/ess.h"
 #include "crypto/x509.h" /* for X509_add_cert_new() */
 
-DEFINE_STACK_OF(CMS_RevocationInfoChoice)
-DEFINE_STACK_OF(CMS_SignerInfo)
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_ALGOR)
-DEFINE_STACK_OF(X509_ATTRIBUTE)
-
 /* CMS SignedData Utilities */
 
 static CMS_SignedData *cms_get0_signed(CMS_ContentInfo *cms)
@@ -239,6 +233,15 @@ static int cms_sd_asn1_ctrl(CMS_SignerInfo *si, int cmd)
     EVP_PKEY *pkey = si->pkey;
     int i;
 
+#if !defined(OPENSSL_NO_DSA) || !defined(OPENSSL_NO_EC)
+    if (EVP_PKEY_is_a(pkey, "DSA") || EVP_PKEY_is_a(pkey, "EC"))
+        return cms_ecdsa_dsa_sign(si, cmd);
+    else
+#endif
+    if (EVP_PKEY_is_a(pkey, "RSA") || EVP_PKEY_is_a(pkey, "RSA-PSS"))
+        return cms_rsa_sign(si, cmd);
+
+    /* Something else? We'll give engines etc a chance to handle this */
     if (pkey->ameth == NULL || pkey->ameth->pkey_ctrl == NULL)
         return 1;
     i = pkey->ameth->pkey_ctrl(pkey, ASN1_PKEY_CTRL_CMS_SIGN, cmd, si);
@@ -417,10 +420,8 @@ CMS_SignerInfo *CMS_add1_signer(CMS_ContentInfo *cms,
                 goto err;
             if (EVP_PKEY_CTX_set_signature_md(si->pctx, md) <= 0)
                 goto err;
-        } else if (EVP_DigestSignInit_with_libctx(si->mctx, &si->pctx,
-                                                  EVP_MD_name(md),
-                                                  ctx->libctx, ctx->propq,
-                                                  pk) <= 0) {
+        } else if (EVP_DigestSignInit_ex(si->mctx, &si->pctx, EVP_MD_name(md),
+                                         ctx->libctx, ctx->propq, pk) <= 0) {
             goto err;
         }
     }
@@ -682,8 +683,8 @@ static int cms_SignerInfo_content_sign(CMS_ContentInfo *cms,
             CMSerr(CMS_F_CMS_SIGNERINFO_CONTENT_SIGN, ERR_R_MALLOC_FAILURE);
             goto err;
         }
-        if (!EVP_SignFinal_with_libctx(mctx, sig, &siglen, si->pkey,
-                                       ctx->libctx, ctx->propq)) {
+        if (!EVP_SignFinal_ex(mctx, sig, &siglen, si->pkey, ctx->libctx,
+                              ctx->propq)) {
             CMSerr(CMS_F_CMS_SIGNERINFO_CONTENT_SIGN, CMS_R_SIGNFINAL_ERROR);
             OPENSSL_free(sig);
             goto err;
@@ -741,9 +742,8 @@ int CMS_SignerInfo_sign(CMS_SignerInfo *si)
         pctx = si->pctx;
     else {
         EVP_MD_CTX_reset(mctx);
-        if (EVP_DigestSignInit_with_libctx(mctx, &pctx,
-                                           md_name, ctx->libctx, ctx->propq,
-                                           si->pkey) <= 0)
+        if (EVP_DigestSignInit_ex(mctx, &pctx, md_name, ctx->libctx, ctx->propq,
+                                  si->pkey) <= 0)
             goto err;
         si->pctx = pctx;
     }
@@ -850,9 +850,8 @@ int CMS_SignerInfo_verify(CMS_SignerInfo *si)
         goto err;
     }
     mctx = si->mctx;
-    if (EVP_DigestVerifyInit_with_libctx(mctx, &si->pctx,
-                                         EVP_MD_name(md), ctx->libctx, NULL,
-                                         si->pkey) <= 0)
+    if (EVP_DigestVerifyInit_ex(mctx, &si->pctx, EVP_MD_name(md), ctx->libctx,
+                                NULL, si->pkey) <= 0)
         goto err;
 
     if (!cms_sd_asn1_ctrl(si, 1))
@@ -860,7 +859,7 @@ int CMS_SignerInfo_verify(CMS_SignerInfo *si)
 
     alen = ASN1_item_i2d((ASN1_VALUE *)si->signedAttrs, &abuf,
                          ASN1_ITEM_rptr(CMS_Attributes_Verify));
-    if (!abuf)
+    if (abuf == NULL || alen < 0)
         goto err;
     r = EVP_DigestVerifyUpdate(mctx, abuf, alen);
     OPENSSL_free(abuf);

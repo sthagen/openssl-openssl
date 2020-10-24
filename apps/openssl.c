@@ -7,7 +7,6 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include <internal/cryptlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -68,7 +67,7 @@ static int apps_startup(void)
                           | OPENSSL_INIT_LOAD_CONFIG, NULL))
         return 0;
 
-    setup_ui_method();
+    (void)setup_ui_method();
 
     /*
      * NOTE: This is an undocumented feature required for testing only.
@@ -89,7 +88,7 @@ static int apps_startup(void)
 static void apps_shutdown(void)
 {
     app_providers_cleanup();
-    OPENSSL_CTX_free(app_get0_libctx());
+    OSSL_LIB_CTX_free(app_get0_libctx());
     destroy_ui_method();
 }
 
@@ -110,8 +109,10 @@ static size_t internal_trace_cb(const char *buf, size_t cnt,
 
     switch (cmd) {
     case OSSL_TRACE_CTRL_BEGIN:
-        if (!ossl_assert(!trace_data->ingroup))
+        if (trace_data->ingroup) {
+            BIO_printf(bio_err, "ERROR: tracing already started\n");
             return 0;
+        }
         trace_data->ingroup = 1;
 
         tid = CRYPTO_THREAD_get_current_id();
@@ -123,14 +124,18 @@ static size_t internal_trace_cb(const char *buf, size_t cnt,
         BIO_set_prefix(trace_data->bio, buffer);
         break;
     case OSSL_TRACE_CTRL_WRITE:
-        if (!ossl_assert(trace_data->ingroup))
+        if (!trace_data->ingroup) {
+            BIO_printf(bio_err, "ERROR: writing when tracing not started\n");
             return 0;
+        }
 
         ret = BIO_write(trace_data->bio, buf, cnt);
         break;
     case OSSL_TRACE_CTRL_END:
-        if (!ossl_assert(trace_data->ingroup))
+        if (!trace_data->ingroup) {
+            BIO_printf(bio_err, "ERROR: finishing when tracing not started\n");
             return 0;
+        }
         trace_data->ingroup = 0;
 
         BIO_set_prefix(trace_data->bio, NULL);

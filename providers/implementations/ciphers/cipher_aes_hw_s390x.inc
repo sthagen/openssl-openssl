@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2001-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -17,9 +17,9 @@
 #define s390x_aes_cbc_initkey    cipher_hw_aes_initkey
 #define s390x_aes_cfb1_initkey   cipher_hw_aes_initkey
 #define s390x_aes_ctr_initkey    cipher_hw_aes_initkey
-#define s390x_aes_cbc_cipher_hw  cipher_hw_generic_cbc
-#define s390x_aes_cfb1_cipher_hw cipher_hw_generic_cfb1
-#define s390x_aes_ctr_cipher_hw  cipher_hw_generic_ctr
+#define s390x_aes_cbc_cipher_hw  ossl_cipher_hw_generic_cbc
+#define s390x_aes_cfb1_cipher_hw ossl_cipher_hw_generic_cfb1
+#define s390x_aes_ctr_cipher_hw  ossl_cipher_hw_generic_ctr
 
 #define S390X_aes_128_ofb128_CAPABLE S390X_aes_128_ofb_CAPABLE
 #define S390X_aes_192_ofb128_CAPABLE S390X_aes_192_ofb_CAPABLE

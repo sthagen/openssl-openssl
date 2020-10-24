@@ -29,6 +29,13 @@ int f(void) /*
         /* entire-line comment may have same indent as normal code */
     }
 
+    for (;;)
+        ;
+    for (i = 0;;)
+        ;
+    for (i = 0; i < 1;)
+        ;
+
 #if X
     if (1) /* bad style: just part of control structure depends on #if */
 #else
@@ -275,10 +282,17 @@ static void *fun(void)
         /* comment */
         return NULL;
 
+label0:
+ label1: /* allow special indent 1 for label at outermost level in body */
     do {
+    label2:
         size_t available_len, data_len;
         const char *curr = txt, *next = txt;
         char *tmp;
+
+        {
+        label3:
+        }
     } while (1);
 
     char *intraline_string_with_comment_delimiters_and_dbl_space = "1  /*1";

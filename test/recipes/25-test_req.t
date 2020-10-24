@@ -29,14 +29,6 @@ if (disabled("rsa")) {
     note("There should not be more that at most 80 per line");
 }
 
-# TODO(3.0) This should be removed as soon as missing support is added
-# Identified problems:
-# - SM2 lacks provider-native keymgmt and decoder
-# - ED25519, ED448, X25519 and X448 signature implementations do not
-#   respond to the "algorithm-id" parameter request.
-my @tmp_loader_hack = qw(-engine loader_attic)
-    unless disabled('dynamic-engine') || disabled('deprecated-3.0');
-
 # Check for duplicate -addext parameters, and one "working" case.
 my @addext_args = ( "openssl", "req", "-new", "-out", "testreq.pem",
     "-config", srctop_file("test", "test.cnf"), @req_new );
@@ -143,15 +135,15 @@ subtest "generating certificate requests with Ed25519" => sub {
 
     SKIP: {
         skip "Ed25519 is not supported by this OpenSSL build", 2
-            if disabled("ec") || !@tmp_loader_hack;
+            if disabled("ec");
 
-        ok(run(app(["openssl", "req", @tmp_loader_hack,
+        ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-new", "-out", "testreq-ed25519.pem", "-utf8",
                     "-key", srctop_file("test", "tested25519.pem")])),
            "Generating request");
 
-        ok(run(app(["openssl", "req", @tmp_loader_hack,
+        ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-verify", "-in", "testreq-ed25519.pem", "-noout"])),
            "Verifying signature on request");
@@ -163,15 +155,15 @@ subtest "generating certificate requests with Ed448" => sub {
 
     SKIP: {
         skip "Ed448 is not supported by this OpenSSL build", 2
-            if disabled("ec") || !@tmp_loader_hack;
+            if disabled("ec");
 
-        ok(run(app(["openssl", "req", @tmp_loader_hack,
+        ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-new", "-out", "testreq-ed448.pem", "-utf8",
                     "-key", srctop_file("test", "tested448.pem")])),
            "Generating request");
 
-        ok(run(app(["openssl", "req", @tmp_loader_hack,
+        ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-verify", "-in", "testreq-ed448.pem", "-noout"])),
            "Verifying signature on request");
@@ -195,28 +187,28 @@ subtest "generating SM2 certificate requests" => sub {
 
     SKIP: {
         skip "SM2 is not supported by this OpenSSL build", 4
-        if disabled("sm2") || !@tmp_loader_hack;
-        ok(run(app(["openssl", "req", @tmp_loader_hack,
+        if disabled("sm2");
+        ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-new", "-key", srctop_file("test", "certs", "sm2.key"),
                     "-sigopt", "distid:1234567812345678",
                     "-out", "testreq-sm2.pem", "-sm3"])),
            "Generating SM2 certificate request");
 
-        ok(run(app(["openssl", "req", @tmp_loader_hack,
+        ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-verify", "-in", "testreq-sm2.pem", "-noout",
                     "-vfyopt", "distid:1234567812345678", "-sm3"])),
            "Verifying signature on SM2 certificate request");
 
-        ok(run(app(["openssl", "req", @tmp_loader_hack,
+        ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-new", "-key", srctop_file("test", "certs", "sm2.key"),
                     "-sigopt", "hexdistid:DEADBEEF",
                     "-out", "testreq-sm2.pem", "-sm3"])),
            "Generating SM2 certificate request with hex id");
 
-        ok(run(app(["openssl", "req", @tmp_loader_hack,
+        ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-verify", "-in", "testreq-sm2.pem", "-noout",
                     "-vfyopt", "hexdistid:DEADBEEF", "-sm3"])),
@@ -245,7 +237,8 @@ sub run_conversion {
             plan skip_all => "skipping req conversion test for $reqfile"
                 if grep /Unknown Public Key/, map { s/\R//; } <DATA>;
 
-            tconversion("req", $reqfile, @openssl_args);
+            tconversion( -type => 'req', -in => $reqfile,
+                         -args => [ @openssl_args ] );
         }
         close DATA;
         unlink "req-check.err";

@@ -15,10 +15,6 @@
 #include <openssl/x509v3.h>
 #include "crypto/x509.h"
 
-#ifndef OPENSSL_NO_RFC3779
-DEFINE_STACK_OF(IPAddressFamily)
-#endif
-
 ASN1_SEQUENCE_enc(X509_CINF, enc, 0) = {
         ASN1_EXP_OPT(X509_CINF, version, ASN1_INTEGER, 0),
         ASN1_EMBED(X509_CINF, serialNumber, ASN1_INTEGER),
@@ -136,9 +132,9 @@ int i2d_X509(const X509 *a, unsigned char **out)
 /*
  * This should only be used if the X509 object was embedded inside another
  * asn1 object and it needs a libctx to operate.
- * Use X509_new_with_libctx() instead if possible.
+ * Use X509_new_ex() instead if possible.
  */
-int x509_set0_libctx(X509 *x, OPENSSL_CTX *libctx, const char *propq)
+int x509_set0_libctx(X509 *x, OSSL_LIB_CTX *libctx, const char *propq)
 {
     if (x != NULL) {
         x->libctx = libctx;
@@ -147,7 +143,7 @@ int x509_set0_libctx(X509 *x, OPENSSL_CTX *libctx, const char *propq)
     return 1;
 }
 
-X509 *X509_new_with_libctx(OPENSSL_CTX *libctx, const char *propq)
+X509 *X509_new_ex(OSSL_LIB_CTX *libctx, const char *propq)
 {
     X509 *cert = NULL;
 

@@ -20,9 +20,6 @@
 # define strcasecmp _stricmp
 #endif
 
-DEFINE_STACK_OF(CONF_VALUE)
-DEFINE_STACK_OF(X509_NAME)
-
 static const int default_app_data_size = 256;
 /* Default set to be as small as possible to exercise fragmentation. */
 static const int default_max_fragment_size = 512;
@@ -609,14 +606,15 @@ __owur static int parse_expected_client_sign_hash(SSL_TEST_CTX *test_ctx,
 }
 
 __owur static int parse_expected_ca_names(STACK_OF(X509_NAME) **pnames,
-                                          const char *value, OPENSSL_CTX *libctx)
+                                          const char *value,
+                                          OSSL_LIB_CTX *libctx)
 {
     if (value == NULL)
         return 0;
     if (!strcmp(value, "empty"))
         *pnames = sk_X509_NAME_new_null();
     else
-        *pnames = SSL_load_client_CA_file_with_libctx(value, libctx, NULL);
+        *pnames = SSL_load_client_CA_file_ex(value, libctx, NULL);
     return *pnames != NULL;
 }
 __owur static int parse_expected_server_ca_names(SSL_TEST_CTX *test_ctx,
@@ -721,7 +719,7 @@ static const ssl_test_server_option ssl_test_server_options[] = {
     { "SessionTicketAppData", &parse_server_session_ticket_app_data },
 };
 
-SSL_TEST_CTX *SSL_TEST_CTX_new(OPENSSL_CTX *libctx)
+SSL_TEST_CTX *SSL_TEST_CTX_new(OSSL_LIB_CTX *libctx)
 {
     SSL_TEST_CTX *ret;
 
@@ -840,7 +838,7 @@ static int parse_server_options(SSL_TEST_SERVER_CONF *server, const CONF *conf,
 }
 
 SSL_TEST_CTX *SSL_TEST_CTX_create(const CONF *conf, const char *test_section,
-                                  OPENSSL_CTX *libctx)
+                                  OSSL_LIB_CTX *libctx)
 {
     STACK_OF(CONF_VALUE) *sk_conf = NULL;
     SSL_TEST_CTX *ctx = NULL;

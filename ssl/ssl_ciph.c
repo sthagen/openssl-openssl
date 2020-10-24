@@ -9,9 +9,6 @@
  * https://www.openssl.org/source/license.html
  */
 
-/* We need to use some engine deprecated APIs */
-#define OPENSSL_SUPPRESS_DEPRECATED
-
 #include <stdio.h>
 #include <ctype.h>
 #include <openssl/objects.h>
@@ -24,9 +21,6 @@
 #include "ssl_local.h"
 #include "internal/thread_once.h"
 #include "internal/cryptlib.h"
-
-DEFINE_STACK_OF(SSL_COMP)
-DEFINE_STACK_OF_CONST(SSL_CIPHER)
 
 /* NB: make sure indices in these tables match values above */
 
@@ -319,7 +313,7 @@ static int get_optional_pkey_id(const char *pkey_name)
                                     ameth) <= 0)
             pkey_id = 0;
     }
-    ENGINE_finish(tmpeng);
+    tls_engine_finish(tmpeng);
     return pkey_id;
 }
 
@@ -1382,7 +1376,7 @@ static int update_cipher_list(STACK_OF(SSL_CIPHER) **cipher_list,
     while (sk_SSL_CIPHER_num(tmp_cipher_list) > 0
            && sk_SSL_CIPHER_value(tmp_cipher_list, 0)->min_tls
               == TLS1_3_VERSION)
-        sk_SSL_CIPHER_delete(tmp_cipher_list, 0);
+        (void)sk_SSL_CIPHER_delete(tmp_cipher_list, 0);
 
     /* Insert the new TLSv1.3 ciphersuites */
     for (i = 0; i < sk_SSL_CIPHER_num(tls13_ciphersuites); i++)

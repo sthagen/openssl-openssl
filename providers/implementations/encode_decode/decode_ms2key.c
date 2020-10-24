@@ -13,16 +13,51 @@
  */
 #include "internal/deprecated.h"
 
+#include <string.h>
+
 #include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/core_object.h>
 #include <openssl/crypto.h>
 #include <openssl/params.h>
+#include <openssl/pem.h>         /* For public PVK functions */
 #include <openssl/x509.h>
-#include "internal/pem.h"        /* For PVK and "blob" PEM headers */
+#include "internal/passphrase.h"
+#include "crypto/pem.h"          /* For internal PVK and "blob" headers */
 #include "prov/bio.h"
 #include "prov/implementations.h"
-#include "encoder_local.h"
+#include "endecoder_local.h"
+
+#ifndef OPENSSL_NO_DSA
+static EVP_PKEY *read_msblob(PROV_CTX *provctx, OSSL_CORE_BIO *cin, int *ispub)
+{
+    BIO *in = bio_new_from_core_bio(provctx, cin);
+    EVP_PKEY *pkey = ossl_b2i_bio(in, ispub);
+
+    BIO_free(in);
+    return pkey;
+}
+
+# ifndef OPENSSL_NO_RC4
+static EVP_PKEY *read_pvk(PROV_CTX *provctx, OSSL_CORE_BIO *cin,
+                          OSSL_PASSPHRASE_CALLBACK *pw_cb, void *pw_cbarg)
+{
+    BIO *in = NULL;
+    EVP_PKEY *pkey = NULL;
+    struct ossl_passphrase_data_st pwdata;
+
+    memset(&pwdata, 0, sizeof(pwdata));
+    if (!ossl_pw_set_ossl_passphrase_cb(&pwdata, pw_cb, pw_cbarg))
+        return NULL;
+
+    in = bio_new_from_core_bio(provctx, cin);
+    pkey = b2i_PVK_bio(in, ossl_pw_pem_password, &pwdata);
+    BIO_free(in);
+
+    return pkey;
+}
+# endif
+#endif
 
 static OSSL_FUNC_decoder_freectx_fn ms2key_freectx;
 static OSSL_FUNC_decoder_gettable_params_fn ms2key_gettable_params;
@@ -159,7 +194,7 @@ static int msblob2key_decode(void *vctx, OSSL_CORE_BIO *cin,
 {
     struct ms2key_ctx_st *ctx = vctx;
     int ispub = -1;
-    EVP_PKEY *pkey = ossl_prov_read_msblob(ctx->provctx, cin, &ispub);
+    EVP_PKEY *pkey = read_msblob(ctx->provctx, cin, &ispub);
     int ok = ms2key_post(ctx, pkey, data_cb, data_cbarg);
 
     EVP_PKEY_free(pkey);
@@ -172,7 +207,7 @@ static int pvk2key_decode(void *vctx, OSSL_CORE_BIO *cin,
                           OSSL_PASSPHRASE_CALLBACK *pw_cb, void *pw_cbarg)
 {
     struct ms2key_ctx_st *ctx = vctx;
-    EVP_PKEY *pkey = ossl_prov_read_pvk(ctx->provctx, cin, pw_cb, pw_cbarg);
+    EVP_PKEY *pkey = read_pvk(ctx->provctx, cin, pw_cb, pw_cbarg);
     int ok = ms2key_post(ctx, pkey, data_cb, data_cbarg);
 
     EVP_PKEY_free(pkey);
@@ -207,13 +242,14 @@ static int ms2key_export_object(void *vctx,
         return ms2key_newctx(provctx, &keytype##_desc);                 \
     }                                                                   \
     static const struct keytype_desc_st keytype##_desc =                \
-        { EVP_PKEY_##KEYTYPE, KEYTYPEstr, keytype##_keymgmt_functions,  \
+        { EVP_PKEY_##KEYTYPE, KEYTYPEstr,                               \
+          ossl_##keytype##_keymgmt_functions,                           \
           (extract_key_fn *)extract,                                    \
           (free_key_fn *)free }
 
 #define IMPLEMENT_MS(mstype, keytype)                                   \
     const OSSL_DISPATCH                                                 \
-        mstype##_to_##keytype##_decoder_functions[] = {                 \
+        ossl_##mstype##_to_##keytype##_decoder_functions[] = {          \
         { OSSL_FUNC_DECODER_NEWCTX,                                     \
           (void (*)(void))ms2##keytype##_newctx },                      \
         { OSSL_FUNC_DECODER_FREECTX,                                    \

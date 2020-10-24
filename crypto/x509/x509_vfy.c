@@ -25,13 +25,6 @@
 #include "crypto/x509.h"
 #include "x509_local.h"
 
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_REVOKED)
-DEFINE_STACK_OF(GENERAL_NAME)
-DEFINE_STACK_OF(X509_CRL)
-DEFINE_STACK_OF(DIST_POINT)
-DEFINE_STACK_OF_STRING()
-
 /* CRL score values */
 
 /* No unhandled critical extensions */
@@ -76,7 +69,7 @@ static int dane_verify(X509_STORE_CTX *ctx);
 static int null_callback(int ok, X509_STORE_CTX *e);
 static int check_issued(X509_STORE_CTX *ctx, X509 *x, X509 *issuer);
 static X509 *find_issuer(X509_STORE_CTX *ctx, STACK_OF(X509) *sk, X509 *x);
-static int check_chain_extensions(X509_STORE_CTX *ctx);
+static int check_chain(X509_STORE_CTX *ctx);
 static int check_name_constraints(X509_STORE_CTX *ctx);
 static int check_id(X509_STORE_CTX *ctx);
 static int check_trust(X509_STORE_CTX *ctx, int num_untrusted);
@@ -87,6 +80,7 @@ static int get_issuer_sk(X509 **issuer, X509_STORE_CTX *ctx, X509 *x);
 static int check_dane_issuer(X509_STORE_CTX *ctx, int depth);
 static int check_key_level(X509_STORE_CTX *ctx, X509 *cert);
 static int check_sig_level(X509_STORE_CTX *ctx, X509 *cert);
+static int check_curve(X509 *cert);
 
 static int get_crl_score(X509_STORE_CTX *ctx, X509 **pissuer,
                          unsigned int *preasons, X509_CRL *crl, X509 *x);
@@ -228,7 +222,7 @@ static int verify_chain(X509_STORE_CTX *ctx)
      * instantiate chain public key parameters.
      */
     if ((ok = build_chain(ctx)) == 0 ||
-        (ok = check_chain_extensions(ctx)) == 0 ||
+        (ok = check_chain(ctx)) == 0 ||
         (ok = check_auth_level(ctx)) == 0 ||
         (ok = check_id(ctx)) == 0 || 1)
         X509_get_pubkey_parameters(NULL, ctx->chain);
@@ -447,7 +441,7 @@ static int check_purpose(X509_STORE_CTX *ctx, X509 *x, int purpose, int depth,
  * purpose
  */
 
-static int check_chain_extensions(X509_STORE_CTX *ctx)
+static int check_chain(X509_STORE_CTX *ctx)
 {
     int i, must_be_ca, plen = 0;
     X509 *x;
@@ -479,6 +473,7 @@ static int check_chain_extensions(X509_STORE_CTX *ctx)
 
     for (i = 0; i < num; i++) {
         int ret;
+
         x = sk_X509_value(ctx->chain, i);
         if (!(ctx->param->flags & X509_V_FLAG_IGNORE_CRITICAL)
             && (x->ex_flags & EXFLAG_CRITICAL)) {
@@ -519,12 +514,86 @@ static int check_chain_extensions(X509_STORE_CTX *ctx)
                 ret = 1;
             break;
         }
-        if ((x->ex_flags & EXFLAG_CA) == 0
-            && x->ex_pathlen != -1
-            && (ctx->param->flags & X509_V_FLAG_X509_STRICT)) {
-            ctx->error = X509_V_ERR_INVALID_EXTENSION;
-            ret = 0;
+        if (num > 1) {
+            /* Check for presence of explicit elliptic curve parameters */
+            ret = check_curve(x);
+            if (ret < 0)
+                ctx->error = X509_V_ERR_UNSPECIFIED;
+            else if (ret == 0)
+                ctx->error = X509_V_ERR_EC_KEY_EXPLICIT_PARAMS;
         }
+        /*
+         * Do the following set of checks only if strict checking is requrested
+         * and not for self-issued (including self-signed) EE (non-CA) certs
+         * because RFC 5280 does not apply to them according RFC 6818 section 2.
+         */
+        if ((ctx->param->flags & X509_V_FLAG_X509_STRICT) != 0
+            && num > 1) { /*
+                           * this should imply
+                           * !(i == 0 && (x->ex_flags & EXFLAG_CA) == 0
+                           *          && (x->ex_flags & EXFLAG_SI) != 0)
+                           */
+            /* Check Basic Constraints according to RFC 5280 section 4.2.1.9 */
+            if (x->ex_pathlen != -1) {
+                if ((x->ex_flags & EXFLAG_CA) == 0)
+                    ctx->error = X509_V_ERR_PATHLEN_INVALID_FOR_NON_CA;
+                if ((x->ex_kusage & KU_KEY_CERT_SIGN) == 0)
+                    ctx->error = X509_V_ERR_PATHLEN_WITHOUT_KU_KEY_CERT_SIGN;
+            }
+            if ((x->ex_flags & EXFLAG_CA) != 0
+                    && (x->ex_flags & EXFLAG_BCONS) != 0
+                    && (x->ex_flags & EXFLAG_BCONS_CRITICAL) == 0)
+                ctx->error = X509_V_ERR_CA_BCONS_NOT_CRITICAL;
+            /* Check Key Usage according to RFC 5280 section 4.2.1.3 */
+            if ((x->ex_flags & EXFLAG_CA) != 0) {
+                if ((x->ex_flags & EXFLAG_KUSAGE) == 0)
+                    ctx->error = X509_V_ERR_CA_CERT_MISSING_KEY_USAGE;
+            } else {
+                if ((x->ex_kusage & KU_KEY_CERT_SIGN) != 0)
+                    ctx->error = X509_V_ERR_KU_KEY_CERT_SIGN_INVALID_FOR_NON_CA;
+            }
+            /* Check issuer is non-empty acc. to RFC 5280 section 4.1.2.4 */
+            if (X509_NAME_entry_count(X509_get_issuer_name(x)) == 0)
+                ctx->error = X509_V_ERR_ISSUER_NAME_EMPTY;
+            /* Check subject is non-empty acc. to RFC 5280 section 4.1.2.6 */
+            if (((x->ex_flags & EXFLAG_CA) != 0
+                 || (x->ex_kusage & KU_CRL_SIGN) != 0
+                 || x->altname == NULL
+                 ) && X509_NAME_entry_count(X509_get_subject_name(x)) == 0)
+                ctx->error = X509_V_ERR_SUBJECT_NAME_EMPTY;
+            if (X509_NAME_entry_count(X509_get_subject_name(x)) == 0
+                    && x->altname != NULL
+                    && (x->ex_flags & EXFLAG_SAN_CRITICAL) == 0)
+                ctx->error = X509_V_ERR_EMPTY_SUBJECT_SAN_NOT_CRITICAL;
+            /* Check SAN is non-empty according to RFC 5280 section 4.2.1.6 */
+            if (x->altname != NULL && sk_GENERAL_NAME_num(x->altname) <= 0)
+                ctx->error = X509_V_ERR_EMPTY_SUBJECT_ALT_NAME;
+            /* TODO add more checks on SAN entries */
+            /* Check sig alg consistency acc. to RFC 5280 section 4.1.1.2 */
+            if (X509_ALGOR_cmp(&x->sig_alg, &x->cert_info.signature) != 0)
+                ctx->error = X509_V_ERR_SIGNATURE_ALGORITHM_INCONSISTENCY;
+            if (x->akid != NULL && (x->ex_flags & EXFLAG_AKID_CRITICAL) != 0)
+                ctx->error = X509_V_ERR_AUTHORITY_KEY_IDENTIFIER_CRITICAL;
+            if (x->skid != NULL && (x->ex_flags & EXFLAG_SKID_CRITICAL) != 0)
+                ctx->error = X509_V_ERR_SUBJECT_KEY_IDENTIFIER_CRITICAL;
+            if (X509_get_version(x) >= 2) { /* at least X.509v3 */
+                /* Check AKID presence acc. to RFC 5280 section 4.2.1.1 */
+                if (i + 1 < num /*
+                                 * this means not last cert in chain,
+                                 * taken as "generated by conforming CAs"
+                                 */
+                        && (x->akid == NULL || x->akid->keyid == NULL))
+                    ctx->error = X509_V_ERR_MISSING_AUTHORITY_KEY_IDENTIFIER;
+                /* Check SKID presence acc. to RFC 5280 section 4.2.1.2 */
+                if ((x->ex_flags & EXFLAG_CA) != 0 && x->skid == NULL)
+                    ctx->error = X509_V_ERR_MISSING_SUBJECT_KEY_IDENTIFIER;
+            } else {
+                if (sk_X509_EXTENSION_num(X509_get0_extensions(x)) > 0)
+                    ctx->error = X509_V_ERR_EXTENSIONS_REQUIRE_VERSION_3;
+            }
+        }
+        if (ctx->error != X509_V_OK)
+            ret = 0;
         if (ret == 0 && !verify_cb_cert(ctx, x, i, X509_V_OK))
             return 0;
         /* check_purpose() makes the callback as needed */
@@ -1623,7 +1692,7 @@ static int check_policy(X509_STORE_CTX *ctx)
     ret = X509_policy_check(&ctx->tree, &ctx->explicit_policy, ctx->chain,
                             ctx->param->policies, ctx->param->flags);
     if (ctx->bare_ta_signed)
-        sk_X509_pop(ctx->chain);
+        (void)sk_X509_pop(ctx->chain);
 
     if (ret == X509_PCY_TREE_INTERNAL) {
         X509err(X509_F_CHECK_POLICY, ERR_R_MALLOC_FAILURE);
@@ -1735,9 +1804,15 @@ static int internal_verify(X509_STORE_CTX *ctx)
             xs = xi;
             goto check_cert_time;
         }
-        if (n <= 0)
-            return verify_cb_cert(ctx, xi, 0,
-                                  X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE);
+        if (n <= 0) {
+            if (!verify_cb_cert(ctx, xi, 0,
+                                X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE))
+                return 0;
+
+            xs = xi;
+            goto check_cert_time;
+        }
+
         n--;
         ctx->error_depth = n;
         xs = sk_X509_value(ctx->chain, n);
@@ -2247,8 +2322,7 @@ int X509_STORE_CTX_purpose_inherit(X509_STORE_CTX *ctx, int def_purpose,
     return 1;
 }
 
-X509_STORE_CTX *X509_STORE_CTX_new_with_libctx(OPENSSL_CTX *libctx,
-                                               const char *propq)
+X509_STORE_CTX *X509_STORE_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq)
 {
     X509_STORE_CTX *ctx = OPENSSL_zalloc(sizeof(*ctx));
 
@@ -2272,7 +2346,7 @@ X509_STORE_CTX *X509_STORE_CTX_new_with_libctx(OPENSSL_CTX *libctx,
 
 X509_STORE_CTX *X509_STORE_CTX_new(void)
 {
-    return X509_STORE_CTX_new_with_libctx(NULL, NULL);
+    return X509_STORE_CTX_new_ex(NULL, NULL);
 }
 
 
@@ -3154,6 +3228,7 @@ static int build_chain(X509_STORE_CTX *ctx)
                     }
                     self_signed = X509_self_signed(x, 0);
                     if (self_signed < 0) {
+                        sk_X509_free(sktmp);
                         ctx->error = X509_V_ERR_UNSPECIFIED;
                         return 0;
                     }
@@ -3370,6 +3445,32 @@ static int check_key_level(X509_STORE_CTX *ctx, X509 *cert)
         level = NUM_AUTH_LEVELS;
 
     return EVP_PKEY_security_bits(pkey) >= minbits_table[level - 1];
+}
+
+/*
+ * Check whether the public key of ``cert`` does not use explicit params
+ * for an elliptic curve.
+ *
+ * Returns 1 on success, 0 if check fails, -1 for other errors.
+ */
+static int check_curve(X509 *cert)
+{
+#ifndef OPENSSL_NO_EC
+    EVP_PKEY *pkey = X509_get0_pubkey(cert);
+
+    /* Unsupported or malformed key */
+    if (pkey == NULL)
+        return -1;
+
+    if (EVP_PKEY_id(pkey) == EVP_PKEY_EC) {
+        int ret;
+
+        ret = EC_KEY_decoded_from_explicit_params(EVP_PKEY_get0_EC_KEY(pkey));
+        return ret < 0 ? ret : !ret;
+    }
+#endif
+
+    return 1;
 }
 
 /*

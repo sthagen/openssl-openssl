@@ -24,6 +24,7 @@ extern "C" {
 #define OSSL_PROV_PARAM_VERSION         "version"             /* utf8_string */
 #define OSSL_PROV_PARAM_BUILDINFO       "buildinfo"           /* utf8_string */
 #define OSSL_PROV_PARAM_STATUS          "status"              /* uint */
+#define OSSL_PROV_PARAM_SECURITY_CHECKS "security-checks"     /* uint */
 
 /* Self test callback parameters */
 #define OSSL_PROV_PARAM_SELF_TEST_PHASE  "st-phase" /* utf8_string */
@@ -141,6 +142,7 @@ extern "C" {
 #define OSSL_DIGEST_NAME_SHA3_512       "SHA3-512"
 #define OSSL_DIGEST_NAME_KECCAK_KMAC128 "KECCAK-KMAC-128"
 #define OSSL_DIGEST_NAME_KECCAK_KMAC256 "KECCAK-KMAC-256"
+#define OSSL_DIGEST_NAME_SM3            "SM3"
 
 /* MAC parameters */
 #define OSSL_MAC_PARAM_KEY          "key"        /* octet string */
@@ -227,7 +229,7 @@ extern "C" {
 #define OSSL_DRBG_PARAM_MAX_NONCELEN            "max_noncelen"
 #define OSSL_DRBG_PARAM_MAX_PERSLEN             "max_perslen"
 #define OSSL_DRBG_PARAM_MAX_ADINLEN             "max_adinlen"
-#define OSSL_DRBG_PARAM_RESEED_CTR              "reseed_counter"
+#define OSSL_DRBG_PARAM_RESEED_COUNTER          "reseed_counter"
 #define OSSL_DRBG_PARAM_RESEED_TIME             "reseed_time"
 #define OSSL_DRBG_PARAM_PROPERTIES              OSSL_ALG_PARAM_PROPERTIES
 #define OSSL_DRBG_PARAM_DIGEST                  OSSL_ALG_PARAM_DIGEST
@@ -259,7 +261,7 @@ extern "C" {
 #define OSSL_PKEY_PARAM_MASKGENFUNC         "mgf"
 #define OSSL_PKEY_PARAM_MGF1_DIGEST         "mgf1-digest"
 #define OSSL_PKEY_PARAM_MGF1_PROPERTIES     "mgf1-properties"
-#define OSSL_PKEY_PARAM_TLS_ENCODED_PT      "tls-encoded-pt"
+#define OSSL_PKEY_PARAM_ENCODED_PUBLIC_KEY  "encoded-pub-key"
 #define OSSL_PKEY_PARAM_GROUP_NAME          "group"
 #define OSSL_PKEY_PARAM_DIST_ID             "distid"
 #define OSSL_PKEY_PARAM_PUB_KEY             "pub"
@@ -377,6 +379,7 @@ extern "C" {
 #define OSSL_PKEY_PARAM_RSA_BITS            OSSL_PKEY_PARAM_BITS
 #define OSSL_PKEY_PARAM_RSA_PRIMES          "primes"
 #define OSSL_PKEY_PARAM_RSA_DIGEST          OSSL_PKEY_PARAM_DIGEST
+#define OSSL_PKEY_PARAM_RSA_DIGEST_PROPS    OSSL_PKEY_PARAM_PROPERTIES
 #define OSSL_PKEY_PARAM_RSA_MASKGENFUNC     OSSL_PKEY_PARAM_MASKGENFUNC
 #define OSSL_PKEY_PARAM_RSA_MGF1_DIGEST     OSSL_PKEY_PARAM_MGF1_DIGEST
 #define OSSL_PKEY_PARAM_RSA_PSS_SALTLEN     "saltlen"
@@ -429,6 +432,9 @@ extern "C" {
 #define OSSL_SIGNATURE_PARAM_DIGEST_SIZE        OSSL_PKEY_PARAM_DIGEST_SIZE
 
 /* Asym cipher parameters */
+#define OSSL_ASYM_CIPHER_PARAM_DIGEST                   OSSL_PKEY_PARAM_DIGEST
+#define OSSL_ASYM_CIPHER_PARAM_PROPERTIES               OSSL_PKEY_PARAM_PROPERTIES
+#define OSSL_ASYM_CIPHER_PARAM_ENGINE                   OSSL_PKEY_PARAM_ENGINE
 #define OSSL_ASYM_CIPHER_PARAM_PAD_MODE                 OSSL_PKEY_PARAM_PAD_MODE
 #define OSSL_ASYM_CIPHER_PARAM_MGF1_DIGEST              \
     OSSL_PKEY_PARAM_MGF1_DIGEST
@@ -444,14 +450,12 @@ extern "C" {
 /*
  * Encoder / decoder parameters
  */
-/* The passphrase may be passed as a utf8 string or an octet string */
 #define OSSL_ENCODER_PARAM_CIPHER       OSSL_ALG_PARAM_CIPHER
 #define OSSL_ENCODER_PARAM_PROPERTIES   OSSL_ALG_PARAM_PROPERTIES
-#define OSSL_ENCODER_PARAM_PASS         "passphrase"
+#define OSSL_ENCODER_PARAM_INPUT_TYPE   "input-type"
+#define OSSL_ENCODER_PARAM_OUTPUT_TYPE  "output-type"
 
-#define OSSL_DECODER_PARAM_CIPHER       OSSL_ALG_PARAM_CIPHER
 #define OSSL_DECODER_PARAM_PROPERTIES   OSSL_ALG_PARAM_PROPERTIES
-#define OSSL_DECODER_PARAM_PASS         "passphrase"
 #define OSSL_DECODER_PARAM_INPUT_TYPE   "input-type"
 
 /* Passphrase callback parameters */
@@ -474,14 +478,21 @@ extern "C" {
 #define OSSL_PKEY_PARAM_RSA_TEST_Q2  "q2"
 #define OSSL_SIGNATURE_PARAM_KAT "kat"
 
+/* KEM parameters */
+#define OSSL_KEM_PARAM_OPERATION            "operation"
+
+/* OSSL_KEM_PARAM_OPERATION values */
+#define OSSL_KEM_PARAM_OPERATION_RSASVE     "RSASVE"
+
 /* Capabilities */
 
-/* TLS-GROUP Capbility */
+/* TLS-GROUP Capability */
 #define OSSL_CAPABILITY_TLS_GROUP_NAME              "tls-group-name"
 #define OSSL_CAPABILITY_TLS_GROUP_NAME_INTERNAL     "tls-group-name-internal"
 #define OSSL_CAPABILITY_TLS_GROUP_ID                "tls-group-id"
 #define OSSL_CAPABILITY_TLS_GROUP_ALG               "tls-group-alg"
 #define OSSL_CAPABILITY_TLS_GROUP_SECURITY_BITS     "tls-group-sec-bits"
+#define OSSL_CAPABILITY_TLS_GROUP_IS_KEM            "tls-group-is-kem"
 #define OSSL_CAPABILITY_TLS_GROUP_MIN_TLS           "tls-min-tls"
 #define OSSL_CAPABILITY_TLS_GROUP_MAX_TLS           "tls-max-tls"
 #define OSSL_CAPABILITY_TLS_GROUP_MIN_DTLS          "tls-min-dtls"

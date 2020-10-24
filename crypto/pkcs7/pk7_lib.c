@@ -16,12 +16,6 @@
 #include "crypto/x509.h" /* for sk_X509_add1_cert() */
 #include "pk7_local.h"
 
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_CRL)
-DEFINE_STACK_OF(X509_ALGOR)
-DEFINE_STACK_OF(PKCS7_RECIP_INFO)
-DEFINE_STACK_OF(PKCS7_SIGNER_INFO)
-
 long PKCS7_ctrl(PKCS7 *p7, int cmd, long larg, char *parg)
 {
     int nid;
@@ -438,7 +432,7 @@ const PKCS7_CTX *pkcs7_get0_ctx(const PKCS7 *p7)
     return p7 != NULL ? &p7->ctx : NULL;
 }
 
-OPENSSL_CTX *pkcs7_ctx_get0_libctx(const PKCS7_CTX *ctx)
+OSSL_LIB_CTX *pkcs7_ctx_get0_libctx(const PKCS7_CTX *ctx)
 {
     return ctx != NULL ? ctx->libctx : NULL;
 }

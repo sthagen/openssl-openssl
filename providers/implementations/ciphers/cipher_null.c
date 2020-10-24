@@ -12,6 +12,7 @@
 #include <openssl/core_dispatch.h>
 #include "prov/implementations.h"
 #include "prov/ciphercommon.h"
+#include "prov/providercommon.h"
 #include "prov/providercommonerr.h"
 
 typedef struct prov_cipher_null_ctx_st {
@@ -23,6 +24,9 @@ typedef struct prov_cipher_null_ctx_st {
 static OSSL_FUNC_cipher_newctx_fn null_newctx;
 static void *null_newctx(void *provctx)
 {
+    if (!ossl_prov_is_running())
+        return NULL;
+
     return OPENSSL_zalloc(sizeof(PROV_CIPHER_NULL_CTX));
 }
 
@@ -38,6 +42,9 @@ static int null_einit(void *vctx, const unsigned char *key, size_t keylen,
 {
     PROV_CIPHER_NULL_CTX *ctx = (PROV_CIPHER_NULL_CTX *)vctx;
 
+    if (!ossl_prov_is_running())
+        return 0;
+
     ctx->enc = 1;
     return 1;
 }
@@ -46,6 +53,9 @@ static OSSL_FUNC_cipher_decrypt_init_fn null_dinit;
 static int null_dinit(void *vctx, const unsigned char *key, size_t keylen,
                       const unsigned char *iv, size_t ivlen)
 {
+    if (!ossl_prov_is_running())
+        return 0;
+
     return 1;
 }
 
@@ -54,6 +64,9 @@ static int null_cipher(void *vctx, unsigned char *out, size_t *outl,
                        size_t outsize, const unsigned char *in, size_t inl)
 {
     PROV_CIPHER_NULL_CTX *ctx = (PROV_CIPHER_NULL_CTX *)vctx;
+
+    if (!ossl_prov_is_running())
+        return 0;
 
     if (!ctx->enc && ctx->tlsmacsize > 0) {
         /*
@@ -77,6 +90,9 @@ static OSSL_FUNC_cipher_final_fn null_final;
 static int null_final(void *vctx, unsigned char *out, size_t *outl,
                       size_t outsize)
 {
+    if (!ossl_prov_is_running())
+        return 0;
+
     *outl = 0;
     return 1;
 }
@@ -84,7 +100,7 @@ static int null_final(void *vctx, unsigned char *out, size_t *outl,
 static OSSL_FUNC_cipher_get_params_fn null_get_params;
 static int null_get_params(OSSL_PARAM params[])
 {
-    return cipher_generic_get_params(params, 0, 0, 0, 8, 0);
+    return ossl_cipher_generic_get_params(params, 0, 0, 0, 8, 0);
 }
 
 static const OSSL_PARAM null_known_gettable_ctx_params[] = {
@@ -154,7 +170,7 @@ static int null_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     return 1;
 }
 
-const OSSL_DISPATCH null_functions[] = {
+const OSSL_DISPATCH ossl_null_functions[] = {
     { OSSL_FUNC_CIPHER_NEWCTX,
       (void (*)(void)) null_newctx },
     { OSSL_FUNC_CIPHER_FREECTX, (void (*)(void)) null_freectx },
@@ -166,7 +182,7 @@ const OSSL_DISPATCH null_functions[] = {
     { OSSL_FUNC_CIPHER_CIPHER, (void (*)(void))null_cipher },
     { OSSL_FUNC_CIPHER_GET_PARAMS, (void (*)(void)) null_get_params },
     { OSSL_FUNC_CIPHER_GETTABLE_PARAMS,
-        (void (*)(void))cipher_generic_gettable_params },
+        (void (*)(void))ossl_cipher_generic_gettable_params },
     { OSSL_FUNC_CIPHER_GET_CTX_PARAMS, (void (*)(void))null_get_ctx_params },
     { OSSL_FUNC_CIPHER_GETTABLE_CTX_PARAMS,
       (void (*)(void))null_gettable_ctx_params },

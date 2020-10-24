@@ -12,9 +12,7 @@
 #include "cmp_testlib.h"
 #include <openssl/rsa.h> /* needed in case config no-deprecated */
 
-DEFINE_STACK_OF(X509)
-
-EVP_PKEY *load_pem_key(const char *file, OPENSSL_CTX *libctx)
+EVP_PKEY *load_pem_key(const char *file, OSSL_LIB_CTX *libctx)
 {
     EVP_PKEY *key = NULL;
     BIO *bio = NULL;
@@ -29,7 +27,7 @@ EVP_PKEY *load_pem_key(const char *file, OPENSSL_CTX *libctx)
     return key;
 }
 
-X509 *load_pem_cert(const char *file, OPENSSL_CTX *libctx)
+X509 *load_pem_cert(const char *file, OSSL_LIB_CTX *libctx)
 {
     X509 *cert = NULL;
     BIO *bio = NULL;
@@ -37,7 +35,7 @@ X509 *load_pem_cert(const char *file, OPENSSL_CTX *libctx)
     if (!TEST_ptr(bio = BIO_new(BIO_s_file())))
         return NULL;
     if (TEST_int_gt(BIO_read_filename(bio, file), 0)
-            && TEST_ptr(cert = X509_new_with_libctx(libctx, NULL)))
+            && TEST_ptr(cert = X509_new_ex(libctx, NULL)))
         (void)TEST_ptr(cert = PEM_read_bio_X509(bio, &cert, NULL, NULL));
 
     BIO_free(bio);

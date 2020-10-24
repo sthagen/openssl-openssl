@@ -11,13 +11,21 @@
 
 #include "cipher_aria_gcm.h"
 #include "prov/implementations.h"
+#include "prov/providercommon.h"
+
+#define ARIA_GCM_IV_MIN_SIZE     (32 / 8) /* size in bytes */
 
 static void *aria_gcm_newctx(void *provctx, size_t keybits)
 {
-    PROV_ARIA_GCM_CTX *ctx = OPENSSL_zalloc(sizeof(*ctx));
+    PROV_ARIA_GCM_CTX *ctx;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
+    ctx = OPENSSL_zalloc(sizeof(*ctx));
     if (ctx != NULL)
-        gcm_initctx(provctx, &ctx->base, keybits, PROV_ARIA_HW_gcm(keybits), 4);
+        gcm_initctx(provctx, &ctx->base, keybits,
+                    ossl_prov_aria_hw_gcm(keybits), ARIA_GCM_IV_MIN_SIZE);
     return ctx;
 }
 
@@ -29,10 +37,10 @@ static void aria_gcm_freectx(void *vctx)
     OPENSSL_clear_free(ctx,  sizeof(*ctx));
 }
 
-/* aria128gcm_functions */
+/* ossl_aria128gcm_functions */
 IMPLEMENT_aead_cipher(aria, gcm, GCM, AEAD_FLAGS, 128, 8, 96);
-/* aria192gcm_functions */
+/* ossl_aria192gcm_functions */
 IMPLEMENT_aead_cipher(aria, gcm, GCM, AEAD_FLAGS, 192, 8, 96);
-/* aria256gcm_functions */
+/* ossl_aria256gcm_functions */
 IMPLEMENT_aead_cipher(aria, gcm, GCM, AEAD_FLAGS, 256, 8, 96);
 

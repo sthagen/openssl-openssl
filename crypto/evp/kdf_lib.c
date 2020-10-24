@@ -88,6 +88,13 @@ int EVP_KDF_number(const EVP_KDF *kdf)
     return kdf->name_id;
 }
 
+const char *EVP_KDF_name(const EVP_KDF *kdf)
+{
+    if (kdf->prov != NULL)
+        return evp_first_name(kdf->prov, kdf->name_id);
+    return NULL;
+}
+
 int EVP_KDF_is_a(const EVP_KDF *kdf, const char *name)
 {
     return evp_is_a(kdf->prov, kdf->name_id, NULL, name);
@@ -103,7 +110,7 @@ const EVP_KDF *EVP_KDF_CTX_kdf(EVP_KDF_CTX *ctx)
     return ctx->meth;
 }
 
-void EVP_KDF_reset(EVP_KDF_CTX *ctx)
+void EVP_KDF_CTX_reset(EVP_KDF_CTX *ctx)
 {
     if (ctx == NULL)
         return;
@@ -112,7 +119,7 @@ void EVP_KDF_reset(EVP_KDF_CTX *ctx)
         ctx->meth->reset(ctx->data);
 }
 
-size_t EVP_KDF_size(EVP_KDF_CTX *ctx)
+size_t EVP_KDF_CTX_get_kdf_size(EVP_KDF_CTX *ctx)
 {
     OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
     size_t s;

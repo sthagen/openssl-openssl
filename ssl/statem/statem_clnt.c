@@ -9,9 +9,6 @@
  * https://www.openssl.org/source/license.html
  */
 
-/* We need to use some engine deprecated APIs */
-#define OPENSSL_SUPPRESS_DEPRECATED
-
 #include <stdio.h>
 #include <time.h>
 #include <assert.h>
@@ -27,10 +24,6 @@
 #include <openssl/engine.h>
 #include <openssl/trace.h>
 #include <internal/cryptlib.h>
-
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(SSL_COMP)
-DEFINE_STACK_OF_CONST(SSL_CIPHER)
 
 static MSG_PROCESS_RETURN tls_process_as_hello_retry_request(SSL *s, PACKET *pkt);
 static MSG_PROCESS_RETURN tls_process_encrypted_extensions(SSL *s, PACKET *pkt);
@@ -1858,7 +1851,7 @@ MSG_PROCESS_RETURN tls_process_server_certificate(SSL *s, PACKET *pkt)
         }
 
         certstart = certbytes;
-        x = X509_new_with_libctx(s->ctx->libctx, s->ctx->propq);
+        x = X509_new_ex(s->ctx->libctx, s->ctx->propq);
         if (x == NULL) {
             SSLfatal(s, SSL_AD_DECODE_ERROR,
                      SSL_F_TLS_PROCESS_SERVER_CERTIFICATE, ERR_R_MALLOC_FAILURE);
@@ -2170,7 +2163,7 @@ static int tls_process_ske_dhe(SSL *s, PACKET *pkt, EVP_PKEY **pkey)
     dh = NULL;
 
     if (!ssl_security(s, SSL_SECOP_TMP_DH, EVP_PKEY_security_bits(peer_tmp),
-                      0, EVP_PKEY_get0_DH(peer_tmp))) {
+                      0, peer_tmp)) {
         SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE, SSL_F_TLS_PROCESS_SKE_DHE,
                  SSL_R_DH_KEY_TOO_SMALL);
         goto err;
@@ -2242,9 +2235,9 @@ static int tls_process_ske_ecdhe(SSL *s, PACKET *pkt, EVP_PKEY **pkey)
         return 0;
     }
 
-    if (!EVP_PKEY_set1_tls_encodedpoint(s->s3.peer_tmp,
-                                        PACKET_data(&encoded_pt),
-                                        PACKET_remaining(&encoded_pt))) {
+    if (EVP_PKEY_set1_encoded_public_key(s->s3.peer_tmp,
+                                         PACKET_data(&encoded_pt),
+                                         PACKET_remaining(&encoded_pt)) <= 0) {
         SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_F_TLS_PROCESS_SKE_ECDHE,
                  SSL_R_BAD_ECPOINT);
         return 0;
@@ -2377,10 +2370,9 @@ MSG_PROCESS_RETURN tls_process_key_exchange(SSL *s, PACKET *pkt)
             goto err;
         }
 
-        if (EVP_DigestVerifyInit_with_libctx(md_ctx, &pctx,
-                                             md == NULL ? NULL : EVP_MD_name(md),
-                                             s->ctx->libctx, s->ctx->propq,
-                                             pkey) <= 0) {
+        if (EVP_DigestVerifyInit_ex(md_ctx, &pctx,
+                                    md == NULL ? NULL : EVP_MD_name(md),
+                                    s->ctx->libctx, s->ctx->propq, pkey) <= 0) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PROCESS_KEY_EXCHANGE,
                      ERR_R_EVP_LIB);
             goto err;
@@ -3155,7 +3147,7 @@ static int tls_construct_cke_ecdhe(SSL *s, WPACKET *pkt)
     }
 
     /* Generate encoding of client key */
-    encoded_pt_len = EVP_PKEY_get1_tls_encodedpoint(ckey, &encodedPoint);
+    encoded_pt_len = EVP_PKEY_get1_encoded_public_key(ckey, &encodedPoint);
 
     if (encoded_pt_len == 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CKE_ECDHE,
@@ -3871,9 +3863,7 @@ int ssl_do_client_cert_cb(SSL *s, X509 **px509, EVP_PKEY **ppkey)
     int i = 0;
 #ifndef OPENSSL_NO_ENGINE
     if (s->ctx->client_cert_engine) {
-        i = ENGINE_load_ssl_client_cert(s->ctx->client_cert_engine, s,
-                                        SSL_get_client_CA_list(s),
-                                        px509, ppkey, NULL, NULL, NULL);
+        i = tls_engine_load_ssl_client_cert(s, px509, ppkey);
         if (i != 0)
             return i;
     }

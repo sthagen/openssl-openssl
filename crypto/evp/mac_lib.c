@@ -82,7 +82,7 @@ EVP_MAC *EVP_MAC_CTX_mac(EVP_MAC_CTX *ctx)
     return ctx->meth;
 }
 
-size_t EVP_MAC_size(EVP_MAC_CTX *ctx)
+size_t EVP_MAC_CTX_get_mac_size(EVP_MAC_CTX *ctx)
 {
     size_t sz = 0;
 
@@ -124,7 +124,7 @@ int EVP_MAC_final(EVP_MAC_CTX *ctx,
     if (out != NULL)
         res = ctx->meth->final(ctx->data, out, &l, outsize);
     else
-        l = EVP_MAC_size(ctx);
+        l = EVP_MAC_CTX_get_mac_size(ctx);
     if (outl != NULL)
         *outl = l;
     return res;
@@ -160,6 +160,13 @@ int EVP_MAC_CTX_set_params(EVP_MAC_CTX *ctx, const OSSL_PARAM params[])
 int EVP_MAC_number(const EVP_MAC *mac)
 {
     return mac->name_id;
+}
+
+const char *EVP_MAC_name(const EVP_MAC *mac)
+{
+    if (mac->prov != NULL)
+        return evp_first_name(mac->prov, mac->name_id);
+    return NULL;
 }
 
 int EVP_MAC_is_a(const EVP_MAC *mac, const char *name)

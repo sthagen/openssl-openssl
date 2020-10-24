@@ -15,6 +15,7 @@
 #include "prov/implementations.h"
 #include "prov/provider_ctx.h"
 #include "prov/kdfexchange.h"
+#include "prov/providercommon.h"
 
 static OSSL_FUNC_keyexch_newctx_fn kdf_tls1_prf_newctx;
 static OSSL_FUNC_keyexch_newctx_fn kdf_hkdf_newctx;
@@ -36,15 +37,19 @@ typedef struct {
 
 static void *kdf_newctx(const char *kdfname, void *provctx)
 {
-    PROV_KDF_CTX *kdfctx = OPENSSL_zalloc(sizeof(PROV_KDF_CTX));
+    PROV_KDF_CTX *kdfctx;
     EVP_KDF *kdf = NULL;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
+    kdfctx = OPENSSL_zalloc(sizeof(PROV_KDF_CTX));
     if (kdfctx == NULL)
         return NULL;
 
     kdfctx->provctx = provctx;
 
-    kdf = EVP_KDF_fetch(PROV_LIBRARY_CONTEXT_OF(provctx), kdfname, NULL);
+    kdf = EVP_KDF_fetch(PROV_LIBCTX_OF(provctx), kdfname, NULL);
     if (kdf == NULL)
         goto err;
     kdfctx->kdfctx = EVP_KDF_CTX_new(kdf);
@@ -73,7 +78,10 @@ static int kdf_init(void *vpkdfctx, void *vkdf)
 {
     PROV_KDF_CTX *pkdfctx = (PROV_KDF_CTX *)vpkdfctx;
 
-    if (pkdfctx == NULL || vkdf == NULL || !kdf_data_up_ref(vkdf))
+    if (!ossl_prov_is_running()
+            || pkdfctx == NULL
+            || vkdf == NULL
+            || !kdf_data_up_ref(vkdf))
         return 0;
     pkdfctx->kdfdata = vkdf;
 
@@ -85,6 +93,8 @@ static int kdf_derive(void *vpkdfctx, unsigned char *secret, size_t *secretlen,
 {
     PROV_KDF_CTX *pkdfctx = (PROV_KDF_CTX *)vpkdfctx;
 
+    if (!ossl_prov_is_running())
+        return 0;
     return EVP_KDF_derive(pkdfctx->kdfctx, secret, *secretlen);
 }
 
@@ -102,6 +112,9 @@ static void *kdf_dupctx(void *vpkdfctx)
 {
     PROV_KDF_CTX *srcctx = (PROV_KDF_CTX *)vpkdfctx;
     PROV_KDF_CTX *dstctx;
+
+    if (!ossl_prov_is_running())
+        return NULL;
 
     dstctx = OPENSSL_zalloc(sizeof(*srcctx));
     if (dstctx == NULL)
@@ -133,7 +146,7 @@ static int kdf_set_ctx_params(void *vpkdfctx, const OSSL_PARAM params[])
 static const OSSL_PARAM *kdf_settable_ctx_params(void *provctx,
                                                  const char *kdfname)
 {
-    EVP_KDF *kdf = EVP_KDF_fetch(PROV_LIBRARY_CONTEXT_OF(provctx), kdfname,
+    EVP_KDF *kdf = EVP_KDF_fetch(PROV_LIBCTX_OF(provctx), kdfname,
                                  NULL);
     const OSSL_PARAM *params;
 
@@ -157,7 +170,7 @@ KDF_SETTABLE_CTX_PARAMS(hkdf, "HKDF")
 KDF_SETTABLE_CTX_PARAMS(scrypt, "SCRYPT")
 
 #define KDF_KEYEXCH_FUNCTIONS(funcname) \
-    const OSSL_DISPATCH kdf_##funcname##_keyexch_functions[] = { \
+    const OSSL_DISPATCH ossl_kdf_##funcname##_keyexch_functions[] = { \
         { OSSL_FUNC_KEYEXCH_NEWCTX, (void (*)(void))kdf_##funcname##_newctx }, \
         { OSSL_FUNC_KEYEXCH_INIT, (void (*)(void))kdf_init }, \
         { OSSL_FUNC_KEYEXCH_DERIVE, (void (*)(void))kdf_derive }, \

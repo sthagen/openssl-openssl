@@ -24,6 +24,7 @@
 #include "internal/numbers.h"
 #include "crypto/evp.h"
 #include "prov/provider_ctx.h"
+#include "prov/providercommon.h"
 #include "prov/providercommonerr.h"
 #include "prov/implementations.h"
 #include "prov/provider_util.h"
@@ -69,6 +70,9 @@ typedef struct {
 static void *kdf_hkdf_new(void *provctx)
 {
     KDF_HKDF *ctx;
+
+    if (!ossl_prov_is_running())
+        return NULL;
 
     if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) == NULL)
         ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
@@ -122,14 +126,22 @@ static size_t kdf_hkdf_size(KDF_HKDF *ctx)
 static int kdf_hkdf_derive(void *vctx, unsigned char *key, size_t keylen)
 {
     KDF_HKDF *ctx = (KDF_HKDF *)vctx;
-    const EVP_MD *md = ossl_prov_digest_md(&ctx->digest);
+    const EVP_MD *md;
 
+    if (!ossl_prov_is_running())
+        return 0;
+
+    md = ossl_prov_digest_md(&ctx->digest);
     if (md == NULL) {
         ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_MESSAGE_DIGEST);
         return 0;
     }
     if (ctx->key == NULL) {
         ERR_raise(ERR_LIB_PROV, PROV_R_MISSING_KEY);
+        return 0;
+    }
+    if (keylen == 0) {
+        ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
         return 0;
     }
 
@@ -156,7 +168,7 @@ static int kdf_hkdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
     const OSSL_PARAM *p;
     KDF_HKDF *ctx = vctx;
-    OPENSSL_CTX *provctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(ctx->provctx);
     int n;
 
     if (!ossl_prov_digest_load_from_params(&ctx->digest, params, provctx))
@@ -259,7 +271,7 @@ static const OSSL_PARAM *kdf_hkdf_gettable_ctx_params(ossl_unused void *provctx)
     return known_gettable_ctx_params;
 }
 
-const OSSL_DISPATCH kdf_hkdf_functions[] = {
+const OSSL_DISPATCH ossl_kdf_hkdf_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))kdf_hkdf_new },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))kdf_hkdf_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))kdf_hkdf_reset },

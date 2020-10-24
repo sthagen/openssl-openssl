@@ -695,6 +695,11 @@ memory allocation).
 
 Don't compile the FIPS provider
 
+### no-fips-securitychecks
+
+Don't perform FIPS module run-time checks related to enforcement of security
+parameters such as minimum security strength of keys.
+
 ### enable-fuzz-libfuzzer, enable-fuzz-afl
 
 Build with support for fuzzing using either libfuzzer or AFL.
@@ -1466,6 +1471,9 @@ described here.  Examine the Makefiles themselves for the full list.
     install_html_docs
                    Only install the OpenSSL HTML documentation.
 
+    install_fips
+                   Install the FIPS provider module configuration file.
+
     list-tests
                    Prints a list of all the self test names.
 
@@ -1516,7 +1524,7 @@ directory, which you can supply to the `./Configure` command,
 possibly after some adjustment.
 
 The `Configurations/` directory contains a lot of examples of such targets.
-The main configuration file is [10-main.conf][], which contains all targets that
+The main configuration file is [10-main.conf], which contains all targets that
 are officially supported by the OpenSSL team. Other configuration files contain
 targets contributed by other OpenSSL users. The list of targets can be found in
 a Perl list `my %targets = ( ... )`.
@@ -1544,11 +1552,11 @@ design of the configuration files.
  - [Configurations/README.md](Configurations/README.md)
  - [Configurations/README-design.md](Configurations/README-design.md)
 
-If you need further help, try to search the [openssl-users][] mailing list
-or the [GitHub Issues][] for existing solutions. If you don't find anything,
-you can [raise an issue][] to ask a question yourself.
+If you need further help, try to search the [openssl-users] mailing list
+or the [GitHub Issues] for existing solutions. If you don't find anything,
+you can [raise an issue] to ask a question yourself.
 
-More about our support resources can be found in the [SUPPORT][] file.
+More about our support resources can be found in the [SUPPORT] file.
 
 ### Configuration Errors
 
@@ -1556,7 +1564,7 @@ If the `./Configure` or `./Configure` command fails with an error message,
 read the error message carefully and try to figure out whether you made
 a mistake (e.g., by providing a wrong option), or whether the script is
 working incorrectly. If you think you encountered a bug, please
-[raise an issue][] on GitHub to file a bug report.
+[raise an issue] on GitHub to file a bug report.
 
 Along with a short description of the bug, please provide the complete
 configure command line and the relevant output including the error message.
@@ -1595,9 +1603,9 @@ Assembler error messages can sometimes be sidestepped by using the
 Compiling parts of OpenSSL with gcc and others with the system compiler will
 result in unresolved symbols on some systems.
 
-If you are still having problems, try to search the [openssl-users][] mailing
-list or the [GitHub Issues][] for existing solutions. If you think you
-encountered an OpenSSL bug, please [raise an issue][] to file a bug report.
+If you are still having problems, try to search the [openssl-users] mailing
+list or the [GitHub Issues] for existing solutions. If you think you
+encountered an OpenSSL bug, please [raise an issue] to file a bug report.
 Please take the time to review the existing issues first; maybe the bug was
 already reported or has already been fixed.
 

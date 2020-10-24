@@ -15,11 +15,6 @@
 #include <openssl/x509v3.h>
 #include "x509_local.h"
 
-DEFINE_STACK_OF(X509_LOOKUP)
-DEFINE_STACK_OF(X509_OBJECT)
-DEFINE_STACK_OF(X509_CRL)
-DEFINE_STACK_OF(X509)
-
 X509_LOOKUP *X509_LOOKUP_new(X509_LOOKUP_METHOD *method)
 {
     X509_LOOKUP *ret = OPENSSL_zalloc(sizeof(*ret));
@@ -76,15 +71,13 @@ int X509_LOOKUP_shutdown(X509_LOOKUP *ctx)
         return 1;
 }
 
-int X509_LOOKUP_ctrl_with_libctx(X509_LOOKUP *ctx, int cmd, const char *argc,
-                                 long argl, char **ret,
-                                 OPENSSL_CTX *libctx, const char *propq)
+int X509_LOOKUP_ctrl_ex(X509_LOOKUP *ctx, int cmd, const char *argc, long argl,
+                        char **ret, OSSL_LIB_CTX *libctx, const char *propq)
 {
     if (ctx->method == NULL)
         return -1;
-    if (ctx->method->ctrl_with_libctx != NULL)
-        return ctx->method->ctrl_with_libctx(ctx, cmd, argc, argl, ret,
-                                             libctx, propq);
+    if (ctx->method->ctrl_ex != NULL)
+        return ctx->method->ctrl_ex(ctx, cmd, argc, argl, ret, libctx, propq);
     if (ctx->method->ctrl != NULL)
         return ctx->method->ctrl(ctx, cmd, argc, argl, ret);
     return 1;
@@ -93,21 +86,21 @@ int X509_LOOKUP_ctrl_with_libctx(X509_LOOKUP *ctx, int cmd, const char *argc,
 int X509_LOOKUP_ctrl(X509_LOOKUP *ctx, int cmd, const char *argc, long argl,
                      char **ret)
 {
-    return X509_LOOKUP_ctrl_with_libctx(ctx, cmd, argc, argl, ret, NULL, NULL);
+    return X509_LOOKUP_ctrl_ex(ctx, cmd, argc, argl, ret, NULL, NULL);
 }
 
-int X509_LOOKUP_by_subject_with_libctx(X509_LOOKUP *ctx, X509_LOOKUP_TYPE type,
-                                       const X509_NAME *name, X509_OBJECT *ret,
-                                       OPENSSL_CTX *libctx, const char *propq)
+int X509_LOOKUP_by_subject_ex(X509_LOOKUP *ctx, X509_LOOKUP_TYPE type,
+                              const X509_NAME *name, X509_OBJECT *ret,
+                              OSSL_LIB_CTX *libctx, const char *propq)
 {
     if (ctx->skip
         || ctx->method == NULL
         || (ctx->method->get_by_subject == NULL
-            && ctx->method->get_by_subject_with_libctx == NULL))
+            && ctx->method->get_by_subject_ex == NULL))
         return 0;
-    if (ctx->method->get_by_subject_with_libctx != NULL)
-        return ctx->method->get_by_subject_with_libctx(ctx, type, name, ret,
-                                                       libctx, propq);
+    if (ctx->method->get_by_subject_ex != NULL)
+        return ctx->method->get_by_subject_ex(ctx, type, name, ret, libctx,
+                                              propq);
     else
         return ctx->method->get_by_subject(ctx, type, name, ret);
 }
@@ -115,7 +108,7 @@ int X509_LOOKUP_by_subject_with_libctx(X509_LOOKUP *ctx, X509_LOOKUP_TYPE type,
 int X509_LOOKUP_by_subject(X509_LOOKUP *ctx, X509_LOOKUP_TYPE type,
                            const X509_NAME *name, X509_OBJECT *ret)
 {
-    return X509_LOOKUP_by_subject_with_libctx(ctx, type, name, ret, NULL, NULL);
+    return X509_LOOKUP_by_subject_ex(ctx, type, name, ret, NULL, NULL);
 }
 
 int X509_LOOKUP_by_issuer_serial(X509_LOOKUP *ctx, X509_LOOKUP_TYPE type,
@@ -335,8 +328,8 @@ int X509_STORE_CTX_get_by_subject(const X509_STORE_CTX *vs,
     if (tmp == NULL || type == X509_LU_CRL) {
         for (i = 0; i < sk_X509_LOOKUP_num(store->get_cert_methods); i++) {
             lu = sk_X509_LOOKUP_value(store->get_cert_methods, i);
-            j = X509_LOOKUP_by_subject_with_libctx(lu, type, name, &stmp,
-                                                   vs->libctx, vs->propq);
+            j = X509_LOOKUP_by_subject_ex(lu, type, name, &stmp, vs->libctx,
+                                          vs->propq);
             if (j) {
                 tmp = &stmp;
                 break;

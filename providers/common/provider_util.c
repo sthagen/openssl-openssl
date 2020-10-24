@@ -14,6 +14,8 @@
 #include <openssl/core_names.h>
 #include <openssl/err.h>
 #include "prov/provider_util.h"
+#include "prov/providercommonerr.h"
+#include "internal/nelem.h"
 
 void ossl_prov_cipher_reset(PROV_CIPHER *pc)
 {
@@ -65,7 +67,7 @@ static int load_common(const OSSL_PARAM params[], const char **propquery,
 
 int ossl_prov_cipher_load_from_params(PROV_CIPHER *pc,
                                       const OSSL_PARAM params[],
-                                      OPENSSL_CTX *ctx)
+                                      OSSL_LIB_CTX *ctx)
 {
     const OSSL_PARAM *p;
     const char *propquery;
@@ -122,9 +124,18 @@ int ossl_prov_digest_copy(PROV_DIGEST *dst, const PROV_DIGEST *src)
     return 1;
 }
 
+const EVP_MD *ossl_prov_digest_fetch(PROV_DIGEST *pd, OSSL_LIB_CTX *libctx,
+                           const char *mdname, const char *propquery)
+{
+    EVP_MD_free(pd->alloc_md);
+    pd->md = pd->alloc_md = EVP_MD_fetch(libctx, mdname, propquery);
+
+    return pd->md;
+}
+
 int ossl_prov_digest_load_from_params(PROV_DIGEST *pd,
                                       const OSSL_PARAM params[],
-                                      OPENSSL_CTX *ctx)
+                                      OSSL_LIB_CTX *ctx)
 {
     const OSSL_PARAM *p;
     const char *propquery;
@@ -139,9 +150,8 @@ int ossl_prov_digest_load_from_params(PROV_DIGEST *pd,
     if (p->data_type != OSSL_PARAM_UTF8_STRING)
         return 0;
 
-    EVP_MD_free(pd->alloc_md);
     ERR_set_mark();
-    pd->md = pd->alloc_md = EVP_MD_fetch(ctx, p->data, propquery);
+    ossl_prov_digest_fetch(pd, ctx, p->data, propquery);
     /* TODO legacy stuff, to be removed */
 #ifndef FIPS_MODULE /* Inside the FIPS module, we don't support legacy digests */
     if (pd->md == NULL)
@@ -235,7 +245,7 @@ int ossl_prov_macctx_load_from_params(EVP_MAC_CTX **macctx,
                                       const char *macname,
                                       const char *ciphername,
                                       const char *mdname,
-                                      OPENSSL_CTX *libctx)
+                                      OSSL_LIB_CTX *libctx)
 {
     const OSSL_PARAM *p;
     const char *properties = NULL;

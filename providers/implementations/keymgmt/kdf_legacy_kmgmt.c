@@ -28,8 +28,12 @@ static OSSL_FUNC_keymgmt_has_fn kdf_has;
 
 KDF_DATA *kdf_data_new(void *provctx)
 {
-    KDF_DATA *kdfdata = OPENSSL_zalloc(sizeof(*kdfdata));
+    KDF_DATA *kdfdata;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
+    kdfdata = OPENSSL_zalloc(sizeof(*kdfdata));
     if (kdfdata == NULL)
         return NULL;
 
@@ -38,7 +42,7 @@ KDF_DATA *kdf_data_new(void *provctx)
         OPENSSL_free(kdfdata);
         return NULL;
     }
-    kdfdata->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    kdfdata->libctx = PROV_LIBCTX_OF(provctx);
     kdfdata->refcnt = 1;
 
     return kdfdata;
@@ -63,6 +67,16 @@ int kdf_data_up_ref(KDF_DATA *kdfdata)
 {
     int ref = 0;
 
+    /* This is effectively doing a new operation on the KDF_DATA and should be
+     * adequately guarded again modules' error states.  However, both current
+     * calls here are guarded propery in exchange/kdf_exch.c.  Thus, it
+     * could be removed here.  The concern is that something in the future
+     * might call this function without adequate guards.  It's a cheap call,
+     * it seems best to leave it even though it is currently redundant.
+     */
+    if (!ossl_prov_is_running())
+        return 0;
+
     CRYPTO_UP_REF(&kdfdata->refcnt, &ref, kdfdata->lock);
     return 1;
 }
@@ -77,12 +91,12 @@ static void kdf_freedata(void *kdfdata)
     kdf_data_free(kdfdata);
 }
 
-static int kdf_has(void *keydata, int selection)
+static int kdf_has(const void *keydata, int selection)
 {
     return 0;
 }
 
-const OSSL_DISPATCH kdf_keymgmt_functions[] = {
+const OSSL_DISPATCH ossl_kdf_keymgmt_functions[] = {
     { OSSL_FUNC_KEYMGMT_NEW, (void (*)(void))kdf_newdata },
     { OSSL_FUNC_KEYMGMT_FREE, (void (*)(void))kdf_freedata },
     { OSSL_FUNC_KEYMGMT_HAS, (void (*)(void))kdf_has },

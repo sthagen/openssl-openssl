@@ -17,6 +17,10 @@
 #                   [-h|--sloppy-hang] [-1|--1-stmt]
 #                   <files>
 #
+# run self-tests:
+#   util/check-format.pl util/check-format-test-positives.c
+#   util/check-format.pl util/check-format-test-negatives.c
+#
 # checks adherence to the formatting rules of the OpenSSL coding guidelines
 # assuming that the input files contain syntactically correct C code.
 # This pragmatic tool is incomplete and yields some false positives.
@@ -654,7 +658,8 @@ while (<>) { # loop over all lines of all input files
         # treat remaining blinded comments and string literal contents as (single) space during matching below
         $intra_line =~ s/@+/ /g;                     # note that double SPC has already been handled above
         $intra_line =~ s/\s+$//;                     # strip any (resulting) space at EOL
-        $intra_line =~ s/(for\s*\();;(\))/"$1$2"/eg; # strip ';;' in for (;;)
+        $intra_line =~ s/(for\s*\([^;]*);;(\))/"$1$2"/eg; # strip trailing ';;' in for (;;)
+        $intra_line =~ s/(for\s*\([^;]+;[^;]+);(\))/"$1$2"/eg; # strip trailing ';' in for (;;)
         $intra_line =~ s/(=\s*)\{ /"$1@ "/eg;        # do not report {SPC in initializers such as ' = { 0, };'
         $intra_line =~ s/, \};/, @;/g;               # do not report SPC} in initializers such as ' = { 0, };'
         report("SPC before '$1'") if $intra_line =~ m/[\w)\]]\s+(\+\+|--)/;  # postfix ++/-- with preceding space
@@ -793,7 +798,7 @@ while (<>) { # loop over all lines of all input files
             $local_offset = -INDENT_LEVEL;
         } else {
             if (m/^([\s@]*)(\w+):/) { # (leading) label, cannot be "default"
-                $local_offset = -INDENT_LEVEL + 1 ;
+                $local_offset = -INDENT_LEVEL;
                 $has_label = 1;
             }
         }

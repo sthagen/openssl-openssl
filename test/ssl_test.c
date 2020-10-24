@@ -19,11 +19,9 @@
 #include "ssl_test_ctx.h"
 #include "testutil.h"
 
-DEFINE_STACK_OF(X509_NAME)
-
 static CONF *conf = NULL;
 static OSSL_PROVIDER *defctxnull = NULL, *thisprov = NULL;
-static OPENSSL_CTX *libctx = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
 
 /* Currently the section names are of the form test-<number>, e.g. test-15. */
 #define MAX_TESTCASE_NAME_LENGTH 100
@@ -410,26 +408,25 @@ static int test_handshake(int idx)
 
 #ifndef OPENSSL_NO_DTLS
     if (test_ctx->method == SSL_TEST_METHOD_DTLS) {
-        server_ctx = SSL_CTX_new_with_libctx(libctx, NULL, DTLS_server_method());
+        server_ctx = SSL_CTX_new_ex(libctx, NULL, DTLS_server_method());
         if (!TEST_true(SSL_CTX_set_max_proto_version(server_ctx, 0)))
             goto err;
         if (test_ctx->extra.server.servername_callback !=
             SSL_TEST_SERVERNAME_CB_NONE) {
             if (!TEST_ptr(server2_ctx =
-                            SSL_CTX_new_with_libctx(libctx, NULL,
-                                                    DTLS_server_method())))
+                            SSL_CTX_new_ex(libctx, NULL, DTLS_server_method())))
                 goto err;
         }
-        client_ctx = SSL_CTX_new_with_libctx(libctx, NULL, DTLS_client_method());
+        client_ctx = SSL_CTX_new_ex(libctx, NULL, DTLS_client_method());
         if (!TEST_true(SSL_CTX_set_max_proto_version(client_ctx, 0)))
             goto err;
         if (test_ctx->handshake_mode == SSL_TEST_HANDSHAKE_RESUME) {
-            resume_server_ctx = SSL_CTX_new_with_libctx(libctx, NULL,
-                                                        DTLS_server_method());
+            resume_server_ctx = SSL_CTX_new_ex(libctx, NULL,
+                                               DTLS_server_method());
             if (!TEST_true(SSL_CTX_set_max_proto_version(resume_server_ctx, 0)))
                 goto err;
-            resume_client_ctx = SSL_CTX_new_with_libctx(libctx, NULL,
-                                                        DTLS_client_method());
+            resume_client_ctx = SSL_CTX_new_ex(libctx, NULL,
+                                               DTLS_client_method());
             if (!TEST_true(SSL_CTX_set_max_proto_version(resume_client_ctx, 0)))
                 goto err;
             if (!TEST_ptr(resume_server_ctx)
@@ -439,30 +436,29 @@ static int test_handshake(int idx)
     }
 #endif
     if (test_ctx->method == SSL_TEST_METHOD_TLS) {
-        server_ctx = SSL_CTX_new_with_libctx(libctx, NULL, TLS_server_method());
+        server_ctx = SSL_CTX_new_ex(libctx, NULL, TLS_server_method());
         if (!TEST_true(SSL_CTX_set_max_proto_version(server_ctx, 0)))
             goto err;
         /* SNI on resumption isn't supported/tested yet. */
         if (test_ctx->extra.server.servername_callback !=
             SSL_TEST_SERVERNAME_CB_NONE) {
             if (!TEST_ptr(server2_ctx =
-                            SSL_CTX_new_with_libctx(libctx, NULL,
-                                                    TLS_server_method())))
+                            SSL_CTX_new_ex(libctx, NULL, TLS_server_method())))
                 goto err;
             if (!TEST_true(SSL_CTX_set_max_proto_version(server2_ctx, 0)))
                 goto err;
         }
-        client_ctx = SSL_CTX_new_with_libctx(libctx, NULL, TLS_client_method());
+        client_ctx = SSL_CTX_new_ex(libctx, NULL, TLS_client_method());
         if (!TEST_true(SSL_CTX_set_max_proto_version(client_ctx, 0)))
             goto err;
 
         if (test_ctx->handshake_mode == SSL_TEST_HANDSHAKE_RESUME) {
-            resume_server_ctx = SSL_CTX_new_with_libctx(libctx, NULL,
-                                                        TLS_server_method());
+            resume_server_ctx = SSL_CTX_new_ex(libctx, NULL,
+                                               TLS_server_method());
             if (!TEST_true(SSL_CTX_set_max_proto_version(resume_server_ctx, 0)))
                 goto err;
-            resume_client_ctx = SSL_CTX_new_with_libctx(libctx, NULL,
-                                                        TLS_client_method());
+            resume_client_ctx = SSL_CTX_new_ex(libctx, NULL,
+                                               TLS_client_method());
             if (!TEST_true(SSL_CTX_set_max_proto_version(resume_client_ctx, 0)))
                 goto err;
             if (!TEST_ptr(resume_server_ctx)
@@ -546,5 +542,5 @@ void cleanup_tests(void)
     NCONF_free(conf);
     OSSL_PROVIDER_unload(defctxnull);
     OSSL_PROVIDER_unload(thisprov);
-    OPENSSL_CTX_free(libctx);
+    OSSL_LIB_CTX_free(libctx);
 }

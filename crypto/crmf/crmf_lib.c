@@ -36,9 +36,6 @@
 #include <openssl/err.h>
 #include <openssl/evp.h>
 
-DEFINE_STACK_OF(X509_EXTENSION)
-DEFINE_STACK_OF(OSSL_CRMF_MSG)
-
 /*-
  * atyp = Attribute Type
  * valt = Value Type
@@ -356,7 +353,7 @@ int OSSL_CRMF_MSG_push0_extension(OSSL_CRMF_MSG *crm,
 static int create_popo_signature(OSSL_CRMF_POPOSIGNINGKEY *ps,
                                  const OSSL_CRMF_CERTREQUEST *cr,
                                  EVP_PKEY *pkey, const EVP_MD *digest,
-                                 OPENSSL_CTX *libctx, const char *propq)
+                                 OSSL_LIB_CTX *libctx, const char *propq)
 {
     if (ps == NULL || cr == NULL || pkey == NULL) {
         CRMFerr(0, CRMF_R_NULL_ARGUMENT);
@@ -368,16 +365,15 @@ static int create_popo_signature(OSSL_CRMF_POPOSIGNINGKEY *ps,
         return 0;
     }
 
-    return ASN1_item_sign_with_libctx(ASN1_ITEM_rptr(OSSL_CRMF_CERTREQUEST),
-                                      ps->algorithmIdentifier, NULL,
-                                      ps->signature, cr, NULL, pkey, digest,
-                                      libctx, propq);
+    return ASN1_item_sign_ex(ASN1_ITEM_rptr(OSSL_CRMF_CERTREQUEST),
+                             ps->algorithmIdentifier, NULL, ps->signature, cr,
+                             NULL, pkey, digest, libctx, propq);
 }
 
 
 int OSSL_CRMF_MSG_create_popo(int meth, OSSL_CRMF_MSG *crm,
                               EVP_PKEY *pkey, const EVP_MD *digest,
-                              OPENSSL_CTX *libctx, const char *propq)
+                              OSSL_LIB_CTX *libctx, const char *propq)
 {
     OSSL_CRMF_POPO *pp = NULL;
     ASN1_INTEGER *tag = NULL;
@@ -445,7 +441,7 @@ int OSSL_CRMF_MSG_create_popo(int meth, OSSL_CRMF_MSG *crm,
 /* verifies the Proof-of-Possession of the request with the given rid in reqs */
 int OSSL_CRMF_MSGS_verify_popo(const OSSL_CRMF_MSGS *reqs,
                                int rid, int acceptRAVerified,
-                               OPENSSL_CTX *libctx, const char *propq)
+                               OSSL_LIB_CTX *libctx, const char *propq)
 {
     OSSL_CRMF_MSG *req = NULL;
     X509_PUBKEY *pubkey = NULL;
@@ -505,10 +501,9 @@ int OSSL_CRMF_MSGS_verify_popo(const OSSL_CRMF_MSGS *reqs,
             it = ASN1_ITEM_rptr(OSSL_CRMF_CERTREQUEST);
             asn = req->certReq;
         }
-        if (ASN1_item_verify_with_libctx(it, sig->algorithmIdentifier,
-                                         sig->signature, asn, NULL,
-                                         X509_PUBKEY_get0(pubkey),
-                                         libctx, propq) < 1)
+        if (ASN1_item_verify_ex(it, sig->algorithmIdentifier, sig->signature,
+                                asn, NULL, X509_PUBKEY_get0(pubkey), libctx,
+                                propq) < 1)
             return 0;
         break;
     case OSSL_CRMF_POPO_KEYENC:
@@ -592,7 +587,7 @@ int OSSL_CRMF_CERTTEMPLATE_fill(OSSL_CRMF_CERTTEMPLATE *tmpl,
  */
 X509
 *OSSL_CRMF_ENCRYPTEDVALUE_get1_encCert(const OSSL_CRMF_ENCRYPTEDVALUE *ecert,
-                                       OPENSSL_CTX *libctx, const char *propq,
+                                       OSSL_LIB_CTX *libctx, const char *propq,
                                        EVP_PKEY *pkey)
 {
     X509 *cert = NULL; /* decrypted certificate */
@@ -683,7 +678,7 @@ X509
     outlen += n;
 
     /* convert decrypted certificate from DER to internal ASN.1 structure */
-    if ((cert = X509_new_with_libctx(libctx, propq)) == NULL)
+    if ((cert = X509_new_ex(libctx, propq)) == NULL)
         goto end;
     if (d2i_X509(&cert, &p, outlen) == NULL)
         CRMFerr(CRMF_F_OSSL_CRMF_ENCRYPTEDVALUE_GET1_ENCCERT,

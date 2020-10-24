@@ -91,10 +91,11 @@ The public key value in EC point format.
 
 The private key value.
 
-=item "tls-encoded-pt" (B<OSSL_PKEY_PARAM_TLS_ENCODED_PT>) <octet string>
+=item "encoded-pub-key" (B<OSSL_PKEY_PARAM_ENCODED_PUBLIC_KEY>) <octet string>
 
-Used for getting and setting the encoding of the EC public key used in key
-exchange message for the TLS protocol.
+Used for getting and setting the encoding of an EC public key. The public key
+is expected to be a point conforming to Sec. 2.3.4 of the SECG SEC 1 ("Elliptic
+Curve Cryptography") standard.
 
 =back
 
@@ -165,10 +166,6 @@ An B<EVP_PKEY> EC CDH (Cofactor Diffie-Hellman) key can be generated with a
     OSSL_PARAM params[3];
     EVP_PKEY_CTX *gctx =
         EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
-
-    EVP_PKEY *key = NULL;
-    OSSL_PARAM params[3];
-    EVP_PKEY_CTX *gctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
 
     EVP_PKEY_keygen_init(gctx);
 

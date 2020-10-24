@@ -36,7 +36,7 @@ IF[{- !$disabled{tests} -}]
           destest mdc2test \
           exptest \
           evp_pkey_provided_test evp_test evp_extra_test evp_extra_test2 \
-          evp_fetch_prov_test acvp_test evp_libctx_test \
+          evp_fetch_prov_test acvp_test evp_libctx_test ossl_store_test \
           v3nametest v3ext \
           evp_pkey_provided_test evp_test evp_extra_test evp_extra_test2 \
           evp_fetch_prov_test v3nametest v3ext \
@@ -139,7 +139,7 @@ IF[{- !$disabled{tests} -}]
 
   SOURCE[evp_extra_test]=evp_extra_test.c
   INCLUDE[evp_extra_test]=../include ../apps/include
-  DEPEND[evp_extra_test]=../libcrypto libtestutil.a
+  DEPEND[evp_extra_test]=../libcrypto.a libtestutil.a
 
   SOURCE[evp_extra_test2]=evp_extra_test2.c
   INCLUDE[evp_extra_test2]=../include ../apps/include
@@ -165,6 +165,10 @@ IF[{- !$disabled{tests} -}]
     INCLUDE[acvp_test]=../include ../apps/include
     DEPEND[acvp_test]=../libcrypto.a libtestutil.a
   ENDIF
+
+  SOURCE[ossl_store_test]=ossl_store_test.c
+  INCLUDE[ossl_store_test]=../include ../apps/include
+  DEPEND[ossl_store_test]=../libcrypto.a libtestutil.a
 
   SOURCE[provider_status_test]=provider_status_test.c
   INCLUDE[provider_status_test]=../include ../apps/include
@@ -685,7 +689,7 @@ IF[{- !$disabled{tests} -}]
     DEPEND[keymgmt_internal_test]=../libcrypto.a libtestutil.a
 
     SOURCE[ffc_internal_test]=ffc_internal_test.c
-    INCLUDE[ffc_internal_test]=.. ../include ../apps/include ../crypto/include
+    INCLUDE[ffc_internal_test]=.. ../include ../apps/include
     DEPEND[ffc_internal_test]=../libcrypto.a libtestutil.a
 
     IF[{- !$disabled{mdc2} -}]

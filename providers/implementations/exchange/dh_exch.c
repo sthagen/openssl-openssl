@@ -20,8 +20,10 @@
 #include <openssl/dh.h>
 #include <openssl/err.h>
 #include <openssl/params.h>
+#include "prov/providercommon.h"
 #include "prov/implementations.h"
 #include "prov/provider_ctx.h"
+#include "prov/securitycheck.h"
 #include "crypto/dh.h"
 
 static OSSL_FUNC_keyexch_newctx_fn dh_newctx;
@@ -57,7 +59,7 @@ enum kdf_type {
  */
 
 typedef struct {
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
     DH *dh;
     DH *dhpeer;
     unsigned int pad : 1;
@@ -77,11 +79,15 @@ typedef struct {
 
 static void *dh_newctx(void *provctx)
 {
-    PROV_DH_CTX *pdhctx = OPENSSL_zalloc(sizeof(PROV_DH_CTX));
+    PROV_DH_CTX *pdhctx;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
+    pdhctx = OPENSSL_zalloc(sizeof(PROV_DH_CTX));
     if (pdhctx == NULL)
         return NULL;
-    pdhctx->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    pdhctx->libctx = PROV_LIBCTX_OF(provctx);
     pdhctx->kdf_type = PROV_DH_KDF_NONE;
     return pdhctx;
 }
@@ -90,19 +96,25 @@ static int dh_init(void *vpdhctx, void *vdh)
 {
     PROV_DH_CTX *pdhctx = (PROV_DH_CTX *)vpdhctx;
 
-    if (pdhctx == NULL || vdh == NULL || !DH_up_ref(vdh))
+    if (!ossl_prov_is_running()
+            || pdhctx == NULL
+            || vdh == NULL
+            || !DH_up_ref(vdh))
         return 0;
     DH_free(pdhctx->dh);
     pdhctx->dh = vdh;
     pdhctx->kdf_type = PROV_DH_KDF_NONE;
-    return 1;
+    return dh_check_key(vdh);
 }
 
 static int dh_set_peer(void *vpdhctx, void *vdh)
 {
     PROV_DH_CTX *pdhctx = (PROV_DH_CTX *)vpdhctx;
 
-    if (pdhctx == NULL || vdh == NULL || !DH_up_ref(vdh))
+    if (!ossl_prov_is_running()
+            || pdhctx == NULL
+            || vdh == NULL
+            || !DH_up_ref(vdh))
         return 0;
     DH_free(pdhctx->dhpeer);
     pdhctx->dhpeer = vdh;
@@ -189,6 +201,9 @@ static int dh_derive(void *vpdhctx, unsigned char *secret,
 {
     PROV_DH_CTX *pdhctx = (PROV_DH_CTX *)vpdhctx;
 
+    if (!ossl_prov_is_running())
+        return 0;
+
     switch (pdhctx->kdf_type) {
         case PROV_DH_KDF_NONE:
             return dh_plain_derive(pdhctx, secret, psecretlen, outlen);
@@ -218,6 +233,9 @@ static void *dh_dupctx(void *vpdhctx)
 {
     PROV_DH_CTX *srcctx = (PROV_DH_CTX *)vpdhctx;
     PROV_DH_CTX *dstctx;
+
+    if (!ossl_prov_is_running())
+        return NULL;
 
     dstctx = OPENSSL_zalloc(sizeof(*srcctx));
     if (dstctx == NULL)
@@ -303,7 +321,10 @@ static int dh_set_ctx_params(void *vpdhctx, const OSSL_PARAM params[])
 
         EVP_MD_free(pdhctx->kdf_md);
         pdhctx->kdf_md = EVP_MD_fetch(pdhctx->libctx, name, mdprops);
-
+        if (!digest_is_allowed(pdhctx->kdf_md)) {
+            EVP_MD_free(pdhctx->kdf_md);
+            pdhctx->kdf_md = NULL;
+        }
         if (pdhctx->kdf_md == NULL)
             return 0;
     }
@@ -439,7 +460,7 @@ static int dh_get_ctx_params(void *vpdhctx, OSSL_PARAM params[])
     return 1;
 }
 
-const OSSL_DISPATCH dh_keyexch_functions[] = {
+const OSSL_DISPATCH ossl_dh_keyexch_functions[] = {
     { OSSL_FUNC_KEYEXCH_NEWCTX, (void (*)(void))dh_newctx },
     { OSSL_FUNC_KEYEXCH_INIT, (void (*)(void))dh_init },
     { OSSL_FUNC_KEYEXCH_DERIVE, (void (*)(void))dh_derive },

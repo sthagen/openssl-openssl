@@ -20,12 +20,6 @@
 #include "crypto/x509.h"
 #include "cms_local.h"
 
-DEFINE_STACK_OF(GENERAL_NAMES)
-DEFINE_STACK_OF(CMS_SignerInfo)
-DEFINE_STACK_OF(ESS_CERT_ID)
-DEFINE_STACK_OF(ESS_CERT_ID_V2)
-DEFINE_STACK_OF(X509)
-
 IMPLEMENT_ASN1_FUNCTIONS(CMS_ReceiptRequest)
 
 /* ESS services */
@@ -120,10 +114,10 @@ int ess_check_signing_certs(CMS_SignerInfo *si, STACK_OF(X509) *chain)
     return ret;
 }
 
-CMS_ReceiptRequest *CMS_ReceiptRequest_create0_with_libctx(
+CMS_ReceiptRequest *CMS_ReceiptRequest_create0_ex(
     unsigned char *id, int idlen, int allorfirst,
     STACK_OF(GENERAL_NAMES) *receiptList, STACK_OF(GENERAL_NAMES) *receiptsTo,
-    OPENSSL_CTX *libctx, const char *propq)
+    OSSL_LIB_CTX *libctx, const char *propq)
 {
     CMS_ReceiptRequest *rr;
 
@@ -165,9 +159,8 @@ CMS_ReceiptRequest *CMS_ReceiptRequest_create0(
     unsigned char *id, int idlen, int allorfirst,
     STACK_OF(GENERAL_NAMES) *receiptList, STACK_OF(GENERAL_NAMES) *receiptsTo)
 {
-    return CMS_ReceiptRequest_create0_with_libctx(id, idlen, allorfirst,
-                                                  receiptList, receiptsTo,
-                                                  NULL, NULL);
+    return CMS_ReceiptRequest_create0_ex(id, idlen, allorfirst, receiptList,
+                                         receiptsTo, NULL, NULL);
 }
 
 int CMS_add1_ReceiptRequest(CMS_SignerInfo *si, CMS_ReceiptRequest *rr)
@@ -227,9 +220,9 @@ static int cms_msgSigDigest(CMS_SignerInfo *si,
 
     if (md == NULL)
         return 0;
-    if (!asn1_item_digest_with_libctx(ASN1_ITEM_rptr(CMS_Attributes_Verify), md,
-                                      si->signedAttrs, dig, diglen,
-                                      si->cms_ctx->libctx, si->cms_ctx->propq))
+    if (!asn1_item_digest_ex(ASN1_ITEM_rptr(CMS_Attributes_Verify), md,
+                             si->signedAttrs, dig, diglen, si->cms_ctx->libctx,
+                             si->cms_ctx->propq))
         return 0;
     return 1;
 }

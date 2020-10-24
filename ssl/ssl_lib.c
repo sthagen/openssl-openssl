@@ -9,9 +9,6 @@
  * https://www.openssl.org/source/license.html
  */
 
-/* We need to use some engine deprecated APIs */
-#define OPENSSL_SUPPRESS_DEPRECATED
-
 #include <stdio.h>
 #include "ssl_local.h"
 #include "e_os.h"
@@ -27,14 +24,6 @@
 #include "internal/cryptlib.h"
 #include "internal/refcount.h"
 #include "internal/ktls.h"
-
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_NAME)
-DEFINE_STACK_OF_CONST(SSL_CIPHER)
-DEFINE_STACK_OF(X509_EXTENSION)
-DEFINE_STACK_OF(OCSP_RESPID)
-DEFINE_STACK_OF(SRTP_PROTECTION_PROFILE)
-DEFINE_STACK_OF(SCT)
 
 static int ssl_undefined_function_1(SSL *ssl, SSL3_RECORD *r, size_t s, int t,
                                     SSL_MAC_BUF *mac, size_t macsize)
@@ -555,6 +544,19 @@ static int ssl_check_allowed_versions(int min_version, int max_version)
     }
     return 1;
 }
+
+#if defined(__TANDEM) && defined(OPENSSL_VPROC)
+/*
+ * Define a VPROC function for HP NonStop build ssl library.
+ * This is used by platform version identification tools.
+ * Do not inline this procedure or make it static.
+ */
+# define OPENSSL_VPROC_STRING_(x)    x##_SSL
+# define OPENSSL_VPROC_STRING(x)     OPENSSL_VPROC_STRING_(x)
+# define OPENSSL_VPROC_FUNC          OPENSSL_VPROC_STRING(OPENSSL_VPROC)
+void OPENSSL_VPROC_FUNC(void) {}
+#endif
+
 
 static void clear_ciphers(SSL *s)
 {
@@ -2837,7 +2839,7 @@ const char *SSL_get_servername(const SSL *s, const int type)
          *  - Otherwise it returns NULL
          *
          * During/after the handshake (TLSv1.2 or below resumption occurred):
-         * - If the session from the orignal handshake had a servername accepted
+         * - If the session from the original handshake had a servername accepted
          *   by the server then it will return that servername.
          * - Otherwise it returns the servername set via
          *   SSL_set_tlsext_host_name() (or NULL if it was not called).
@@ -3118,8 +3120,8 @@ static int ssl_session_cmp(const SSL_SESSION *a, const SSL_SESSION *b)
  * via ssl.h.
  */
 
-SSL_CTX *SSL_CTX_new_with_libctx(OPENSSL_CTX *libctx, const char *propq,
-                                 const SSL_METHOD *meth)
+SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
+                        const SSL_METHOD *meth)
 {
     SSL_CTX *ret = NULL;
 
@@ -3173,7 +3175,7 @@ SSL_CTX *SSL_CTX_new_with_libctx(OPENSSL_CTX *libctx, const char *propq,
     if (ret->cert_store == NULL)
         goto err;
 #ifndef OPENSSL_NO_CT
-    ret->ctlog_store = CTLOG_STORE_new_with_libctx(libctx, propq);
+    ret->ctlog_store = CTLOG_STORE_new_ex(libctx, propq);
     if (ret->ctlog_store == NULL)
         goto err;
 #endif
@@ -3326,7 +3328,7 @@ SSL_CTX *SSL_CTX_new_with_libctx(OPENSSL_CTX *libctx, const char *propq,
 
 SSL_CTX *SSL_CTX_new(const SSL_METHOD *meth)
 {
-    return SSL_CTX_new_with_libctx(NULL, NULL, meth);
+    return SSL_CTX_new_ex(NULL, NULL, meth);
 }
 
 int SSL_CTX_up_ref(SSL_CTX *ctx)
@@ -3391,7 +3393,7 @@ void SSL_CTX_free(SSL_CTX *a)
     SSL_CTX_SRP_CTX_free(a);
 #endif
 #ifndef OPENSSL_NO_ENGINE
-    ENGINE_finish(a->client_cert_engine);
+    tls_engine_finish(a->client_cert_engine);
 #endif
 
 #ifndef OPENSSL_NO_EC
@@ -4285,8 +4287,8 @@ SSL_CTX *SSL_set_SSL_CTX(SSL *ssl, SSL_CTX *ctx)
 
 int SSL_CTX_set_default_verify_paths(SSL_CTX *ctx)
 {
-    return X509_STORE_set_default_paths_with_libctx(ctx->cert_store,
-                                                    ctx->libctx, ctx->propq);
+    return X509_STORE_set_default_paths_ex(ctx->cert_store, ctx->libctx,
+                                           ctx->propq);
 }
 
 int SSL_CTX_set_default_verify_dir(SSL_CTX *ctx)
@@ -4318,8 +4320,8 @@ int SSL_CTX_set_default_verify_file(SSL_CTX *ctx)
     /* We ignore errors, in case the directory doesn't exist */
     ERR_set_mark();
 
-    X509_LOOKUP_load_file_with_libctx(lookup, NULL, X509_FILETYPE_DEFAULT,
-                                      ctx->libctx, ctx->propq);
+    X509_LOOKUP_load_file_ex(lookup, NULL, X509_FILETYPE_DEFAULT, ctx->libctx,
+                             ctx->propq);
 
     ERR_pop_to_mark();
 
@@ -4337,7 +4339,7 @@ int SSL_CTX_set_default_verify_store(SSL_CTX *ctx)
     /* We ignore errors, in case the directory doesn't exist */
     ERR_set_mark();
 
-    X509_LOOKUP_add_store_with_libctx(lookup, NULL, ctx->libctx, ctx->propq);
+    X509_LOOKUP_add_store_ex(lookup, NULL, ctx->libctx, ctx->propq);
 
     ERR_pop_to_mark();
 
@@ -4346,8 +4348,8 @@ int SSL_CTX_set_default_verify_store(SSL_CTX *ctx)
 
 int SSL_CTX_load_verify_file(SSL_CTX *ctx, const char *CAfile)
 {
-    return X509_STORE_load_file_with_libctx(ctx->cert_store, CAfile,
-                                            ctx->libctx, ctx->propq);
+    return X509_STORE_load_file_ex(ctx->cert_store, CAfile, ctx->libctx,
+                                   ctx->propq);
 }
 
 int SSL_CTX_load_verify_dir(SSL_CTX *ctx, const char *CApath)
@@ -4357,8 +4359,8 @@ int SSL_CTX_load_verify_dir(SSL_CTX *ctx, const char *CApath)
 
 int SSL_CTX_load_verify_store(SSL_CTX *ctx, const char *CAstore)
 {
-    return X509_STORE_load_store_with_libctx(ctx->cert_store, CAstore,
-                                             ctx->libctx, ctx->propq);
+    return X509_STORE_load_store_ex(ctx->cert_store, CAstore, ctx->libctx,
+                                    ctx->propq);
 }
 
 int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
@@ -5189,7 +5191,7 @@ int ssl_validate_ct(SSL *s)
         }
     }
 
-    ctx = CT_POLICY_EVAL_CTX_new_with_libctx(s->ctx->libctx, s->ctx->propq);
+    ctx = CT_POLICY_EVAL_CTX_new_ex(s->ctx->libctx, s->ctx->propq);
     if (ctx == NULL) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_VALIDATE_CT,
                  ERR_R_MALLOC_FAILURE);
@@ -5888,27 +5890,20 @@ void SSL_set_allow_early_data_cb(SSL *s,
     s->allow_early_data_cb_data = arg;
 }
 
-const EVP_CIPHER *ssl_evp_cipher_fetch(OPENSSL_CTX *libctx,
+const EVP_CIPHER *ssl_evp_cipher_fetch(OSSL_LIB_CTX *libctx,
                                        int nid,
                                        const char *properties)
 {
-    EVP_CIPHER *ciph;
+    const EVP_CIPHER *ciph;
 
-#ifndef OPENSSL_NO_ENGINE
-    ENGINE *eng;
+    ciph = tls_get_cipher_from_engine(nid);
+    if (ciph != NULL)
+        return ciph;
 
     /*
-     * If there is an Engine available for this cipher we use the "implicit"
-     * form to ensure we use that engine later.
+     * If there is no engine cipher then we do an explicit fetch. This may fail
+     * and that could be ok
      */
-    eng = ENGINE_get_cipher_engine(nid);
-    if (eng != NULL) {
-        ENGINE_finish(eng);
-        return EVP_get_cipherbynid(nid);
-    }
-#endif
-
-    /* Otherwise we do an explicit fetch. This may fail and that could be ok */
     ERR_set_mark();
     ciph = EVP_CIPHER_fetch(libctx, OBJ_nid2sn(nid), properties);
     ERR_pop_to_mark();
@@ -5943,25 +5938,15 @@ void ssl_evp_cipher_free(const EVP_CIPHER *cipher)
     }
 }
 
-const EVP_MD *ssl_evp_md_fetch(OPENSSL_CTX *libctx,
+const EVP_MD *ssl_evp_md_fetch(OSSL_LIB_CTX *libctx,
                                int nid,
                                const char *properties)
 {
-    EVP_MD *md;
+    const EVP_MD *md;
 
-#ifndef OPENSSL_NO_ENGINE
-    ENGINE *eng;
-
-    /*
-     * If there is an Engine available for this digest we use the "implicit"
-     * form to ensure we use that engine later.
-     */
-    eng = ENGINE_get_digest_engine(nid);
-    if (eng != NULL) {
-        ENGINE_finish(eng);
-        return EVP_get_digestbynid(nid);
-    }
-#endif
+    md = tls_get_digest_from_engine(nid);
+    if (md != NULL)
+        return md;
 
     /* Otherwise we do an explicit fetch */
     ERR_set_mark();

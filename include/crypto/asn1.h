@@ -76,13 +76,13 @@ struct evp_pkey_asn1_method_st {
     /* Exports and imports to / from providers */
     size_t (*dirty_cnt) (const EVP_PKEY *pk);
     int (*export_to) (const EVP_PKEY *pk, void *to_keydata,
-                      EVP_KEYMGMT *to_keymgmt, OPENSSL_CTX *libctx,
+                      EVP_KEYMGMT *to_keymgmt, OSSL_LIB_CTX *libctx,
                       const char *propq);
     OSSL_CALLBACK *import_from;
 
-    int (*priv_decode_with_libctx) (EVP_PKEY *pk,
+    int (*priv_decode_ex) (EVP_PKEY *pk,
                                     const PKCS8_PRIV_KEY_INFO *p8inf,
-                                    OPENSSL_CTX *libctx,
+                                    OSSL_LIB_CTX *libctx,
                                     const char *propq);
 } /* EVP_PKEY_ASN1_METHOD */ ;
 
@@ -133,3 +133,8 @@ int asn1_type_set_octetstring_int(ASN1_TYPE *a, long num,
                                   unsigned char *data, int len);
 int asn1_type_get_octetstring_int(const ASN1_TYPE *a, long *num,
                                   unsigned char *data, int max_len);
+
+int x509_algor_new_from_md(X509_ALGOR **palg, const EVP_MD *md);
+const EVP_MD *x509_algor_get_md(X509_ALGOR *alg);
+X509_ALGOR *x509_algor_mgf1_decode(X509_ALGOR *alg);
+int x509_algor_md_to_mgf1(X509_ALGOR **palg, const EVP_MD *mgf1md);

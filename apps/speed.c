@@ -37,6 +37,12 @@
 # include <unistd.h>
 #endif
 
+#if defined(__TANDEM)
+# if defined(OPENSSL_TANDEM_FLOSS)
+#  include <floss.h(floss_fork)>
+# endif
+#endif
+
 #if defined(_WIN32)
 # include <windows.h>
 #endif
@@ -3420,6 +3426,7 @@ int speed_main(int argc, char **argv)
             }
 
             EVP_PKEY_free(ed_pkey);
+            ed_pkey = NULL;
         }
         if (st == 0) {
             BIO_printf(bio_err, "EdDSA failure.\n");

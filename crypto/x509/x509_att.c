@@ -17,9 +17,6 @@
 #include <openssl/x509v3.h>
 #include "x509_local.h"
 
-DEFINE_STACK_OF(X509_ATTRIBUTE)
-DEFINE_STACK_OF(ASN1_TYPE)
-
 int X509at_get_attr_count(const STACK_OF(X509_ATTRIBUTE) *x)
 {
     return sk_X509_ATTRIBUTE_num(x);
@@ -152,7 +149,7 @@ STACK_OF(X509_ATTRIBUTE) *X509at_add1_attr_by_txt(STACK_OF(X509_ATTRIBUTE)
     return ret;
 }
 
-void *X509at_get0_data_by_OBJ(STACK_OF(X509_ATTRIBUTE) *x,
+void *X509at_get0_data_by_OBJ(const STACK_OF(X509_ATTRIBUTE) *x,
                               const ASN1_OBJECT *obj, int lastpos, int type)
 {
     int i;

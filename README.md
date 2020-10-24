@@ -1,10 +1,10 @@
 Welcome to the OpenSSL Project
 ==============================
 
-[![openssl logo][]][www.openssl.org]
+[![openssl logo]][www.openssl.org]
 
-[![travis badge][]][travis jobs]
-[![appveyor badge][]][appveyor jobs]
+[![travis badge]][travis jobs]
+[![appveyor badge]][appveyor jobs]
 
 OpenSSL is a robust, commercial-grade, full-featured Open Source Toolkit
 for the Transport Layer Security (TLS) protocol formerly known as the
@@ -15,7 +15,7 @@ be used stand-alone.
 OpenSSL is descended from the SSLeay library developed by Eric A. Young
 and Tim J. Hudson.
 
-The official Home Page of the OpenSSL Project is [www.openssl.org][].
+The official Home Page of the OpenSSL Project is [www.openssl.org].
 
 Table of Contents
 =================
@@ -35,7 +35,7 @@ Overview
 The OpenSSL toolkit includes:
 
 - **libssl**
-  an implementation of all TLS protocol versions up to TLSv1.3 ([RFC 8446][]).
+  an implementation of all TLS protocol versions up to TLSv1.3 ([RFC 8446]).
 
 - **libcrypto**
   a full-strength general purpose cryptographic library. It constitutes the
@@ -75,8 +75,8 @@ the source tarballs, having a local copy of the git repository with
 the entire project history gives you much more insight into the
 code base.
 
-The official OpenSSL Git Repository is located at [git.openssl.org][].
-There is a GitHub mirror of the repository at [github.com/openssl/openssl][],
+The official OpenSSL Git Repository is located at [git.openssl.org].
+There is a GitHub mirror of the repository at [github.com/openssl/openssl],
 which is updated automatically from the former on every commit.
 
 A local copy of the Git Repository can be obtained by cloning it from
@@ -114,8 +114,7 @@ document.
  * [NOTES-Valgrind.md](NOTES-Valgrind.md)
 
 Specific notes on upgrading to OpenSSL 3.0 from previous versions, as well as
-known issues are available on the OpenSSL
-[wiki](https://wiki.openssl.org/index.php/OpenSSL_3.0).
+known issues are available on the [OpenSSL 3.0 Wiki] page.
 
 Documentation
 =============
@@ -132,7 +131,7 @@ available online.
 Wiki
 ----
 
-There is a Wiki at [wiki.openssl.org][] which is currently not very active.
+There is a Wiki at [wiki.openssl.org] which is currently not very active.
 It contains a lot of useful information, not all of which is up to date.
 
 License
@@ -193,6 +192,10 @@ All rights reserved.
 [wiki.openssl.org]:
     <https://wiki.openssl.org>
     "OpenSSL Wiki"
+
+[OpenSSL 3.0 Wiki]:
+    <https://wiki.openssl.org/index.php/OpenSSL_3.0>
+    "OpenSSL 3.0 Wiki"
 
 [RFC 8446]:
      <https://tools.ietf.org/html/rfc8446>

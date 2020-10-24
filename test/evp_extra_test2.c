@@ -15,11 +15,12 @@
  */
 
 #include <openssl/evp.h>
+#include <openssl/pem.h>
 #include <openssl/provider.h>
 #include "testutil.h"
 #include "internal/nelem.h"
 
-static OPENSSL_CTX *mainctx = NULL;
+static OSSL_LIB_CTX *mainctx = NULL;
 static OSSL_PROVIDER *nullprov = NULL;
 
 /*
@@ -213,7 +214,7 @@ static int test_d2i_AutoPrivateKey_ex(int i)
 
 static int test_alternative_default(void)
 {
-    OPENSSL_CTX *oldctx;
+    OSSL_LIB_CTX *oldctx;
     EVP_MD *sha256;
     int ok = 0;
 
@@ -228,7 +229,7 @@ static int test_alternative_default(void)
      * Now we switch to our main library context, and try again.  Since no
      * providers are loaded in this one, it should fall back to the default.
      */
-    if (!TEST_ptr(oldctx = OPENSSL_CTX_set0_default(mainctx))
+    if (!TEST_ptr(oldctx = OSSL_LIB_CTX_set0_default(mainctx))
         || !TEST_ptr(sha256 = EVP_MD_fetch(NULL, "SHA2-256", NULL)))
         goto err;
     EVP_MD_free(sha256);
@@ -238,7 +239,7 @@ static int test_alternative_default(void)
      * Switching back should give us our main library context back, and
      * fetching SHA2-256 should fail again.
      */
-    if (!TEST_ptr_eq(OPENSSL_CTX_set0_default(oldctx), mainctx)
+    if (!TEST_ptr_eq(OSSL_LIB_CTX_set0_default(oldctx), mainctx)
         || !TEST_ptr_null(sha256 = EVP_MD_fetch(NULL, "SHA2-256", NULL)))
         goto err;
 
@@ -248,28 +249,50 @@ static int test_alternative_default(void)
     return ok;
 }
 
+static int test_d2i_PrivateKey_ex(void) {
+    int ok;
+    OSSL_PROVIDER *provider;
+    BIO *key_bio;
+    EVP_PKEY* pkey;
+    ok = 0;
+
+    provider = OSSL_PROVIDER_load(NULL, "default");
+    key_bio = BIO_new_mem_buf((&keydata[0])->kder, (&keydata)[0]->size);
+
+    ok = TEST_ptr(pkey = PEM_read_bio_PrivateKey(key_bio, NULL, NULL, NULL));
+    TEST_int_eq(ERR_peek_error(), 0);
+    test_openssl_errors();
+
+    EVP_PKEY_free(pkey);
+    BIO_free(key_bio);
+    OSSL_PROVIDER_unload(provider);
+
+    return ok;
+}
+
 int setup_tests(void)
 {
-    mainctx = OPENSSL_CTX_new();
+    mainctx = OSSL_LIB_CTX_new();
 
     if (!TEST_ptr(mainctx))
         return 0;
 
     nullprov = OSSL_PROVIDER_load(NULL, "null");
     if (!TEST_ptr(nullprov)) {
-        OPENSSL_CTX_free(mainctx);
+        OSSL_LIB_CTX_free(mainctx);
         mainctx = NULL;
         return 0;
     }
 
     ADD_TEST(test_alternative_default);
     ADD_ALL_TESTS(test_d2i_AutoPrivateKey_ex, OSSL_NELEM(keydata));
+    ADD_TEST(test_d2i_PrivateKey_ex);
 
     return 1;
 }
 
 void cleanup_tests(void)
 {
-    OPENSSL_CTX_free(mainctx);
+    OSSL_LIB_CTX_free(mainctx);
     OSSL_PROVIDER_unload(nullprov);
 }

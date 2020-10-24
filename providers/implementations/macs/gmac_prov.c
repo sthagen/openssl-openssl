@@ -19,6 +19,7 @@
 #include "prov/implementations.h"
 #include "prov/provider_ctx.h"
 #include "prov/provider_util.h"
+#include "prov/providercommon.h"
 
 /*
  * Forward declaration of everything implemented here.  This is not strictly
@@ -61,6 +62,9 @@ static void *gmac_new(void *provctx)
 {
     struct gmac_data_st *macctx;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
     if ((macctx = OPENSSL_zalloc(sizeof(*macctx))) == NULL
         || (macctx->ctx = EVP_CIPHER_CTX_new()) == NULL) {
         gmac_free(macctx);
@@ -74,8 +78,12 @@ static void *gmac_new(void *provctx)
 static void *gmac_dup(void *vsrc)
 {
     struct gmac_data_st *src = vsrc;
-    struct gmac_data_st *dst = gmac_new(src->provctx);
+    struct gmac_data_st *dst;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
+    dst = gmac_new(src->provctx);
     if (dst == NULL)
         return NULL;
 
@@ -89,7 +97,7 @@ static void *gmac_dup(void *vsrc)
 
 static int gmac_init(void *vmacctx)
 {
-    return 1;
+    return ossl_prov_is_running();
 }
 
 static int gmac_update(void *vmacctx, const unsigned char *data,
@@ -116,6 +124,9 @@ static int gmac_final(void *vmacctx, unsigned char *out, size_t *outl,
 {
     struct gmac_data_st *macctx = vmacctx;
     int hlen = 0;
+
+    if (!ossl_prov_is_running())
+        return 0;
 
     if (!EVP_EncryptFinal_ex(macctx->ctx, out, &hlen))
         return 0;
@@ -173,7 +184,7 @@ static int gmac_set_ctx_params(void *vmacctx, const OSSL_PARAM params[])
 {
     struct gmac_data_st *macctx = vmacctx;
     EVP_CIPHER_CTX *ctx = macctx->ctx;
-    OPENSSL_CTX *provctx = PROV_LIBRARY_CONTEXT_OF(macctx->provctx);
+    OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(macctx->provctx);
     const OSSL_PARAM *p;
 
    if (ctx == NULL
@@ -213,7 +224,7 @@ static int gmac_set_ctx_params(void *vmacctx, const OSSL_PARAM params[])
     return 1;
 }
 
-const OSSL_DISPATCH gmac_functions[] = {
+const OSSL_DISPATCH ossl_gmac_functions[] = {
     { OSSL_FUNC_MAC_NEWCTX, (void (*)(void))gmac_new },
     { OSSL_FUNC_MAC_DUPCTX, (void (*)(void))gmac_dup },
     { OSSL_FUNC_MAC_FREECTX, (void (*)(void))gmac_free },

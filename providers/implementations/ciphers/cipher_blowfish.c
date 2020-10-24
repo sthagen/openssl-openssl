@@ -17,6 +17,7 @@
 
 #include "cipher_blowfish.h"
 #include "prov/implementations.h"
+#include "prov/providercommon.h"
 
 #define BF_FLAGS (EVP_CIPH_VARIABLE_LENGTH)
 
@@ -27,15 +28,19 @@ static void blowfish_freectx(void *vctx)
 {
     PROV_BLOWFISH_CTX *ctx = (PROV_BLOWFISH_CTX *)vctx;
 
-    cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
+    ossl_cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
     OPENSSL_clear_free(ctx,  sizeof(*ctx));
 }
 
 static void *blowfish_dupctx(void *ctx)
 {
     PROV_BLOWFISH_CTX *in = (PROV_BLOWFISH_CTX *)ctx;
-    PROV_BLOWFISH_CTX *ret = OPENSSL_malloc(sizeof(*ret));
+    PROV_BLOWFISH_CTX *ret;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
+    ret = OPENSSL_malloc(sizeof(*ret));
     if (ret == NULL) {
         ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
         return NULL;

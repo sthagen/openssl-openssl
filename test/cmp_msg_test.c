@@ -11,8 +11,6 @@
 
 #include "cmp_testlib.h"
 
-DEFINE_STACK_OF(OSSL_CMP_CERTRESPONSE)
-
 static const char *newkey_f;
 static const char *server_cert_f;
 static const char *pkcs10_f;
@@ -32,11 +30,11 @@ typedef struct test_fixture {
     OSSL_CMP_PKISI *si;
 } CMP_MSG_TEST_FIXTURE;
 
-static OPENSSL_CTX *libctx = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
 static OSSL_PROVIDER *default_null_provider = NULL, *provider = NULL;
 
 /* TODO(3.0) Clean this up - See issue #12680 */
-static X509 *X509_dup_with_libctx(const X509 *cert)
+static X509 *X509_dup_ex(const X509 *cert)
 {
     X509 *dup = X509_dup(cert);
 
@@ -86,6 +84,7 @@ static X509 *cert = NULL;
             TEST_ptr_null(msg = (expr)); \
  \
         OSSL_CMP_MSG_free(msg); \
+        ERR_print_errors_fp(stderr); \
         return good; \
     } while (0)
 
@@ -297,7 +296,7 @@ static int test_cmp_create_certconf(void)
     fixture->fail_info = 0;
     fixture->expected = 1;
     if (!TEST_true(ossl_cmp_ctx_set0_newCert(fixture->cmp_ctx,
-                                             X509_dup_with_libctx(cert)))) {
+                                             X509_dup_ex(cert)))) {
         tear_down(fixture);
         fixture = NULL;
     }
@@ -311,7 +310,7 @@ static int test_cmp_create_certconf_badAlg(void)
     fixture->fail_info = 1 << OSSL_CMP_PKIFAILUREINFO_badAlg;
     fixture->expected = 1;
     if (!TEST_true(ossl_cmp_ctx_set0_newCert(fixture->cmp_ctx,
-                                             X509_dup_with_libctx(cert)))) {
+                                             X509_dup_ex(cert)))) {
         tear_down(fixture);
         fixture = NULL;
     }
@@ -325,7 +324,7 @@ static int test_cmp_create_certconf_fail_info_max(void)
     fixture->fail_info = 1 << OSSL_CMP_PKIFAILUREINFO_MAX;
     fixture->expected = 1;
     if (!TEST_true(ossl_cmp_ctx_set0_newCert(fixture->cmp_ctx,
-                                             X509_dup_with_libctx(cert)))) {
+                                             X509_dup_ex(cert)))) {
         tear_down(fixture);
         fixture = NULL;
     }
@@ -406,7 +405,7 @@ static int execute_certrep_create(CMP_MSG_TEST_FIXTURE *fixture)
     cresp->certifiedKeyPair->certOrEncCert->type =
         OSSL_CMP_CERTORENCCERT_CERTIFICATE;
     if ((cresp->certifiedKeyPair->certOrEncCert->value.certificate =
-         X509_dup_with_libctx(cert)) == NULL
+         X509_dup_ex(cert)) == NULL
             || !sk_OSSL_CMP_CERTRESPONSE_push(crepmsg->response, cresp))
         goto err;
     cresp = NULL;
@@ -552,7 +551,7 @@ void cleanup_tests(void)
 {
     EVP_PKEY_free(newkey);
     X509_free(cert);
-    OPENSSL_CTX_free(libctx);
+    OSSL_LIB_CTX_free(libctx);
 }
 
 #define USAGE "new.key server.crt pkcs10.der module_name [module_conf_file]\n"
