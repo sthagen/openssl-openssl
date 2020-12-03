@@ -24,23 +24,16 @@ static EVP_PKEY *pkey_type2param(int ptype, const void *pval,
     if (ptype == V_ASN1_SEQUENCE) {
         const ASN1_STRING *pstr = pval;
         const unsigned char *pm = pstr->data;
-        int pmlen = pstr->length;
+        size_t pmlen = (size_t)pstr->length;
         OSSL_DECODER_CTX *ctx = NULL;
-        BIO *membio = NULL;
+        int selection = OSSL_KEYMGMT_SELECT_ALL_PARAMETERS;
 
-        /* TODO(3.0): Need to be able to specify here that only params will do */
-        ctx = OSSL_DECODER_CTX_new_by_EVP_PKEY(&pkey, "DER", "EC", libctx,
-                                               propq);
+        ctx = OSSL_DECODER_CTX_new_by_EVP_PKEY(&pkey, "DER", NULL, "EC",
+                                               selection, libctx, propq);
         if (ctx == NULL)
             goto err;
 
-        membio = BIO_new_mem_buf(pm, pmlen);
-        if (membio == NULL) {
-            OSSL_DECODER_CTX_free(ctx);
-            goto err;
-        }
-        OSSL_DECODER_from_bio(ctx, membio);
-        BIO_free(membio);
+        OSSL_DECODER_from_data(ctx, &pm, &pmlen);
         OSSL_DECODER_CTX_free(ctx);
     } else if (ptype == V_ASN1_OBJECT) {
         const ASN1_OBJECT *poid = pval;
@@ -53,13 +46,13 @@ static EVP_PKEY *pkey_type2param(int ptype, const void *pval,
         groupname = OBJ_nid2sn(OBJ_obj2nid(poid));
         if (groupname == NULL
                 || !EVP_PKEY_CTX_set_group_name(pctx, groupname)) {
-            CMSerr(0, CMS_R_DECODE_ERROR);
+            ERR_raise(ERR_LIB_CMS, CMS_R_DECODE_ERROR);
             goto err;
         }
         if (EVP_PKEY_paramgen(pctx, &pkey) <= 0)
             goto err;
     } else {
-        CMSerr(0, CMS_R_DECODE_ERROR);
+        ERR_raise(ERR_LIB_CMS, CMS_R_DECODE_ERROR);
         goto err;
     }
 
@@ -173,7 +166,7 @@ static int ecdh_cms_set_shared_info(EVP_PKEY_CTX *pctx, CMS_RecipientInfo *ri)
         return 0;
 
     if (!ecdh_cms_set_kdf_param(pctx, OBJ_obj2nid(alg->algorithm))) {
-        CMSerr(0, CMS_R_KDF_PARAMETER_ERROR);
+        ERR_raise(ERR_LIB_CMS, CMS_R_KDF_PARAMETER_ERROR);
         return 0;
     }
 
@@ -236,13 +229,13 @@ static int ecdh_cms_decrypt(CMS_RecipientInfo *ri)
         if (alg == NULL || pubkey == NULL)
             return 0;
         if (!ecdh_cms_set_peerkey(pctx, alg, pubkey)) {
-            CMSerr(0, CMS_R_PEER_KEY_ERROR);
+            ERR_raise(ERR_LIB_CMS, CMS_R_PEER_KEY_ERROR);
             return 0;
         }
     }
     /* Set ECDH derivation parameters and initialise unwrap context */
     if (!ecdh_cms_set_shared_info(pctx, ri)) {
-        CMSerr(0, CMS_R_SHARED_INFO_ERROR);
+        ERR_raise(ERR_LIB_CMS, CMS_R_SHARED_INFO_ERROR);
         return 0;
     }
     return 1;
@@ -388,7 +381,7 @@ int cms_ecdh_envelope(CMS_RecipientInfo *ri, int decrypt)
     if (decrypt == 0)
         return ecdh_cms_encrypt(ri);
 
-    CMSerr(0, CMS_R_NOT_SUPPORTED_FOR_THIS_KEY_TYPE);
+    ERR_raise(ERR_LIB_CMS, CMS_R_NOT_SUPPORTED_FOR_THIS_KEY_TYPE);
     return 0;
 }
 #endif

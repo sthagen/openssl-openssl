@@ -53,7 +53,9 @@ extern "C" {
 # define OSSL_TRACE_CATEGORY_BN_CTX             12
 # define OSSL_TRACE_CATEGORY_CMP                13
 # define OSSL_TRACE_CATEGORY_STORE              14
-# define OSSL_TRACE_CATEGORY_NUM                15
+# define OSSL_TRACE_CATEGORY_DECODER            15
+# define OSSL_TRACE_CATEGORY_ENCODER            16
+# define OSSL_TRACE_CATEGORY_NUM                17
 
 /* Returns the trace category number for the given |name| */
 int OSSL_trace_get_category_num(const char *name);

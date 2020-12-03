@@ -681,6 +681,9 @@ static cbc_handles *get_cipher_handle(int nid)
 static const EVP_CIPHER *afalg_aes_cbc(int nid)
 {
     cbc_handles *cipher_handle = get_cipher_handle(nid);
+
+    if (cipher_handle == NULL)
+            return NULL;
     if (cipher_handle->_hidden == NULL
         && ((cipher_handle->_hidden =
          EVP_CIPHER_meth_new(nid,
@@ -848,9 +851,19 @@ void engine_load_afalg_int(void)
     toadd = engine_afalg();
     if (toadd == NULL)
         return;
+    ERR_set_mark();
     ENGINE_add(toadd);
+    /*
+     * If the "add" worked, it gets a structural reference. So either way, we
+     * release our just-created reference.
+     */
     ENGINE_free(toadd);
-    ERR_clear_error();
+    /*
+     * If the "add" didn't work, it was probably a conflict because it was
+     * already added (eg. someone calling ENGINE_load_blah then calling
+     * ENGINE_load_builtin_engines() perhaps).
+     */
+    ERR_pop_to_mark();
 }
 # endif
 

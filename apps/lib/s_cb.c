@@ -1041,8 +1041,7 @@ int load_excert(SSL_EXCERT **pexc)
             BIO_printf(bio_err, "Missing filename\n");
             return 0;
         }
-        exc->cert = load_cert(exc->certfile, exc->certform,
-                              "Server Certificate");
+        exc->cert = load_cert(exc->certfile, "Server Certificate");
         if (exc->cert == NULL)
             return 0;
         if (exc->keyfile != NULL) {
@@ -1450,27 +1449,6 @@ static int security_callback_debug(const SSL *s, const SSL_CTX *ctx,
             BIO_puts(sdb->out, cname);
         }
         break;
-#endif
-#ifndef OPENSSL_NO_DH
-    case SSL_SECOP_OTHER_DH:
-        {
-            DH *dh = other;
-            EVP_PKEY *pkey = EVP_PKEY_new();
-            int fail = 1;
-
-            if (pkey != NULL) {
-                if (EVP_PKEY_set1_DH(pkey, dh)) {
-                    BIO_printf(sdb->out, "%d", EVP_PKEY_bits(pkey));
-                    fail = 0;
-                }
-
-                EVP_PKEY_free(pkey);
-            }
-            if (fail)
-                BIO_printf(sdb->out, "s_cb.c:security_callback_debug op=0x%x",
-                           op);
-            break;
-        }
 #endif
     case SSL_SECOP_OTHER_CERT:
         {

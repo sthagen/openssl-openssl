@@ -155,9 +155,9 @@ int evp_cipher_param_to_asn1_ex(EVP_CIPHER_CTX *c, ASN1_TYPE *type,
 
  err:
     if (ret == -2)
-        EVPerr(0, EVP_R_UNSUPPORTED_CIPHER);
+        ERR_raise(ERR_LIB_EVP, EVP_R_UNSUPPORTED_CIPHER);
     else if (ret <= 0)
-        EVPerr(0, EVP_R_CIPHER_PARAMETER_ERROR);
+        ERR_raise(ERR_LIB_EVP, EVP_R_CIPHER_PARAMETER_ERROR);
     if (ret < -1)
         ret = -1;
     return ret;
@@ -225,9 +225,9 @@ int evp_cipher_asn1_to_param_ex(EVP_CIPHER_CTX *c, ASN1_TYPE *type,
     }
 
     if (ret == -2)
-        EVPerr(0, EVP_R_UNSUPPORTED_CIPHER);
+        ERR_raise(ERR_LIB_EVP, EVP_R_UNSUPPORTED_CIPHER);
     else if (ret <= 0)
-        EVPerr(0, EVP_R_CIPHER_PARAMETER_ERROR);
+        ERR_raise(ERR_LIB_EVP, EVP_R_CIPHER_PARAMETER_ERROR);
     if (ret < -1)
         ret = -1;
     return ret;
@@ -693,7 +693,7 @@ int EVP_MD_block_size(const EVP_MD *md)
     OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
 
     if (md == NULL) {
-        EVPerr(EVP_F_EVP_MD_BLOCK_SIZE, EVP_R_MESSAGE_DIGEST_IS_NULL);
+        ERR_raise(ERR_LIB_EVP, EVP_R_MESSAGE_DIGEST_IS_NULL);
         return -1;
     }
     v = md->block_size;
@@ -720,7 +720,7 @@ int EVP_MD_size(const EVP_MD *md)
     OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
 
     if (md == NULL) {
-        EVPerr(EVP_F_EVP_MD_SIZE, EVP_R_MESSAGE_DIGEST_IS_NULL);
+        ERR_raise(ERR_LIB_EVP, EVP_R_MESSAGE_DIGEST_IS_NULL);
         return -1;
     }
     v = md->md_size;
@@ -989,33 +989,6 @@ void EVP_CIPHER_CTX_clear_flags(EVP_CIPHER_CTX *ctx, int flags)
 int EVP_CIPHER_CTX_test_flags(const EVP_CIPHER_CTX *ctx, int flags)
 {
     return (ctx->flags & flags);
-}
-
-int EVP_str2ctrl(int (*cb)(void *ctx, int cmd, void *buf, size_t buflen),
-                 void *ctx, int cmd, const char *value)
-{
-    size_t len;
-
-    len = strlen(value);
-    if (len > INT_MAX)
-        return -1;
-    return cb(ctx, cmd, (void *)value, len);
-}
-
-int EVP_hex2ctrl(int (*cb)(void *ctx, int cmd, void *buf, size_t buflen),
-                 void *ctx, int cmd, const char *hex)
-{
-    unsigned char *bin;
-    long binlen;
-    int rv = -1;
-
-    bin = OPENSSL_hexstr2buf(hex, &binlen);
-    if (bin == NULL)
-        return 0;
-    if (binlen <= INT_MAX)
-        rv = cb(ctx, cmd, bin, binlen);
-    OPENSSL_free(bin);
-    return rv;
 }
 
 int EVP_PKEY_CTX_set_group_name(EVP_PKEY_CTX *ctx, const char *name)

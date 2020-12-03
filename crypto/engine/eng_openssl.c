@@ -152,13 +152,20 @@ void engine_load_openssl_int(void)
     ENGINE *toadd = engine_openssl();
     if (!toadd)
         return;
+
+    ERR_set_mark();
     ENGINE_add(toadd);
     /*
      * If the "add" worked, it gets a structural reference. So either way, we
      * release our just-created reference.
      */
     ENGINE_free(toadd);
-    ERR_clear_error();
+    /*
+     * If the "add" didn't work, it was probably a conflict because it was
+     * already added (eg. someone calling ENGINE_load_blah then calling
+     * ENGINE_load_builtin_engines() perhaps).
+     */
+    ERR_pop_to_mark();
 }
 
 /*
@@ -446,7 +453,7 @@ static int ossl_hmac_init(EVP_PKEY_CTX *ctx)
     OSSL_HMAC_PKEY_CTX *hctx;
 
     if ((hctx = OPENSSL_zalloc(sizeof(*hctx))) == NULL) {
-        ENGINEerr(ENGINE_F_OSSL_HMAC_INIT, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_ENGINE, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     hctx->ktmp.type = V_ASN1_OCTET_STRING;

@@ -69,26 +69,18 @@ static int base_get_params(void *provctx, OSSL_PARAM params[])
 }
 
 static const OSSL_ALGORITHM base_encoder[] = {
-#define ENCODER(name, _fips, _output, func_table)                           \
-    { name,                                                                 \
-      "provider=base,fips=" _fips ",output=" _output,                       \
-      (func_table) }
-
+#define ENCODER_PROVIDER "base"
 #include "encoders.inc"
     { NULL, NULL, NULL }
+#undef ENCODER_PROVIDER
 };
-#undef ENCODER
 
 static const OSSL_ALGORITHM base_decoder[] = {
-#define DECODER(name, _fips, _input, func_table)                            \
-    { name,                                                                 \
-      "provider=base,fips=" _fips ",input=" _input,                         \
-      (func_table) }
-
+#define DECODER_PROVIDER "base"
 #include "decoders.inc"
     { NULL, NULL, NULL }
+#undef DECODER_PROVIDER
 };
-#undef DECODER
 
 static const OSSL_ALGORITHM base_store[] = {
 #define STORE(name, _fips, func_table)                           \

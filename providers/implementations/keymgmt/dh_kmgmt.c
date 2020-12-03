@@ -69,8 +69,8 @@ struct dh_gen_ctx {
     int hindex;
     int priv_len;
 
-    const char *mdname;
-    const char *mdprops;
+    char *mdname;
+    char *mdprops;
     OSSL_CALLBACK *cb;
     void *cbarg;
     int dh_type;
@@ -83,7 +83,6 @@ typedef struct dh_name2id_st{
 
 static const DH_GENTYPE_NAME2ID dhtype2id[]=
 {
-    { "default", DH_PARAMGEN_TYPE_FIPS_186_4 },
     { "fips186_4", DH_PARAMGEN_TYPE_FIPS_186_4 },
     { "fips186_2", DH_PARAMGEN_TYPE_FIPS_186_2 },
     { "group", DH_PARAMGEN_TYPE_GROUP },
@@ -101,9 +100,23 @@ const char *dh_gen_type_id2name(int id)
     return NULL;
 }
 
-static int dh_gen_type_name2id(const char *name)
+static int dh_gen_type_name2id(const char *name, int type)
 {
     size_t i;
+
+    if (strcmp(name, "default") == 0) {
+#ifdef FIPS_MODULE
+        if (type == DH_FLAG_TYPE_DHX)
+            return DH_PARAMGEN_TYPE_FIPS_186_4;
+
+        return DH_PARAMGEN_TYPE_GROUP;
+#else
+        if (type == DH_FLAG_TYPE_DHX)
+            return DH_PARAMGEN_TYPE_FIPS_186_2;
+
+        return DH_PARAMGEN_TYPE_GENERATOR;
+#endif
+    }
 
     for (i = 0; i < OSSL_NELEM(dhtype2id); ++i) {
         if (strcmp(dhtype2id[i].name, name) == 0)
@@ -428,7 +441,15 @@ static void *dh_gen_init_base(void *provctx, int selection, int type)
         gctx->pbits = 2048;
         gctx->qbits = 224;
         gctx->mdname = NULL;
-        gctx->gen_type = DH_PARAMGEN_TYPE_FIPS_186_4;
+#ifdef FIPS_MODULE
+        gctx->gen_type = (type == DH_FLAG_TYPE_DHX)
+                         ? DH_PARAMGEN_TYPE_FIPS_186_4
+                         : DH_PARAMGEN_TYPE_GROUP;
+#else
+        gctx->gen_type = (type == DH_FLAG_TYPE_DHX)
+                         ? DH_PARAMGEN_TYPE_FIPS_186_2
+                         : DH_PARAMGEN_TYPE_GENERATOR;
+#endif
         gctx->gindex = -1;
         gctx->hindex = 0;
         gctx->pcounter = -1;
@@ -485,7 +506,8 @@ static int dh_gen_set_params(void *genctx, const OSSL_PARAM params[])
     p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_FFC_TYPE);
     if (p != NULL) {
         if (p->data_type != OSSL_PARAM_UTF8_STRING
-            || ((gctx->gen_type = dh_gen_type_name2id(p->data)) == -1)) {
+            || ((gctx->gen_type = dh_gen_type_name2id(p->data,
+                                                      gctx->dh_type)) == -1)) {
             ERR_raise(ERR_LIB_PROV, ERR_R_PASSED_INVALID_ARGUMENT);
             return 0;
         }
@@ -527,13 +549,19 @@ static int dh_gen_set_params(void *genctx, const OSSL_PARAM params[])
     if (p != NULL) {
         if (p->data_type != OSSL_PARAM_UTF8_STRING)
             return 0;
-        gctx->mdname = p->data;
+        OPENSSL_free(gctx->mdname);
+        gctx->mdname = OPENSSL_strdup(p->data);
+        if (gctx->mdname == NULL)
+            return 0;
     }
     p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_FFC_DIGEST_PROPS);
     if (p != NULL) {
         if (p->data_type != OSSL_PARAM_UTF8_STRING)
             return 0;
-        gctx->mdprops = p->data;
+        OPENSSL_free(gctx->mdprops);
+        gctx->mdprops = OPENSSL_strdup(p->data);
+        if (gctx->mdprops == NULL)
+            return 0;
     }
     p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_DH_PRIV_LEN);
     if (p != NULL && !OSSL_PARAM_get_int(p, &gctx->priv_len))
@@ -584,7 +612,8 @@ static void *dh_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
         return NULL;
 
     /* For parameter generation - If there is a group name just create it */
-    if (gctx->gen_type == DH_PARAMGEN_TYPE_GROUP) {
+    if (gctx->gen_type == DH_PARAMGEN_TYPE_GROUP
+            && gctx->ffc_params == NULL) {
         /* Select a named group if there is not one already */
         if (gctx->group_nid == NID_undef)
             gctx->group_nid = dh_get_named_group_uid_from_size(gctx->pbits);
@@ -671,6 +700,8 @@ static void dh_gen_cleanup(void *genctx)
     if (gctx == NULL)
         return;
 
+    OPENSSL_free(gctx->mdname);
+    OPENSSL_free(gctx->mdprops);
     OPENSSL_clear_free(gctx->seed, gctx->seedlen);
     OPENSSL_free(gctx);
 }

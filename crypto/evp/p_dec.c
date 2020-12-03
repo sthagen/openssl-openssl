@@ -7,11 +7,8 @@
  * https://www.openssl.org/source/license.html
  */
 
-/*
- * RSA low level APIs are deprecated for public use, but still ok for
- * internal use.
- */
-#include "internal/deprecated.h"
+/* We need to use the deprecated RSA low level calls */
+#define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <stdio.h>
 #include "internal/cryptlib.h"
@@ -28,7 +25,7 @@ int EVP_PKEY_decrypt_old(unsigned char *key, const unsigned char *ek, int ekl,
 #ifndef OPENSSL_NO_RSA
     if (EVP_PKEY_id(priv) != EVP_PKEY_RSA) {
 #endif
-        EVPerr(EVP_F_EVP_PKEY_DECRYPT_OLD, EVP_R_PUBLIC_KEY_NOT_RSA);
+        ERR_raise(ERR_LIB_EVP, EVP_R_PUBLIC_KEY_NOT_RSA);
 #ifndef OPENSSL_NO_RSA
         goto err;
     }

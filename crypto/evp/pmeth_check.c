@@ -17,23 +17,43 @@
 #include "crypto/evp.h"
 #include "evp_local.h"
 
-int EVP_PKEY_public_check(EVP_PKEY_CTX *ctx)
+/*
+ * Returns:
+ *  1   True
+ *  0   False
+ * -1   Unsupported (use legacy path)
+ */
+static int try_provided_check(EVP_PKEY_CTX *ctx, int selection)
 {
-    EVP_PKEY *pkey = ctx->pkey;
-    void *key;
     EVP_KEYMGMT *keymgmt;
+    void *keydata;
 
-    if (pkey == NULL) {
-        EVPerr(EVP_F_EVP_PKEY_PUBLIC_CHECK, EVP_R_NO_KEY_SET);
+    if (evp_pkey_ctx_is_legacy(ctx))
+        return -1;
+
+    keymgmt = ctx->keymgmt;
+    keydata = evp_pkey_export_to_provider(ctx->pkey, ctx->libctx,
+                                          &keymgmt, ctx->propquery);
+    if (keydata == NULL) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_INITIALIZATION_ERROR);
         return 0;
     }
 
-    keymgmt = pkey->keymgmt;
-    key = pkey->keydata;
+    return evp_keymgmt_validate(keymgmt, keydata, selection);
+}
 
-    if (key != NULL && keymgmt != NULL)
-        return evp_keymgmt_validate(keymgmt, key,
-                                    OSSL_KEYMGMT_SELECT_PUBLIC_KEY);
+int EVP_PKEY_public_check(EVP_PKEY_CTX *ctx)
+{
+    EVP_PKEY *pkey = ctx->pkey;
+    int ok;
+
+    if (pkey == NULL) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_NO_KEY_SET);
+        return 0;
+    }
+
+    if ((ok = try_provided_check(ctx, OSSL_KEYMGMT_SELECT_PUBLIC_KEY)) != -1)
+        return ok;
 
     if (pkey->type == EVP_PKEY_NONE)
         goto not_supported;
@@ -51,27 +71,23 @@ int EVP_PKEY_public_check(EVP_PKEY_CTX *ctx)
     return pkey->ameth->pkey_public_check(pkey);
 #endif
  not_supported:
-    EVPerr(0, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return -2;
 }
 
 int EVP_PKEY_param_check(EVP_PKEY_CTX *ctx)
 {
     EVP_PKEY *pkey = ctx->pkey;
-    void *key;
-    EVP_KEYMGMT *keymgmt;
+    int ok;
 
     if (pkey == NULL) {
-        EVPerr(EVP_F_EVP_PKEY_PARAM_CHECK, EVP_R_NO_KEY_SET);
+        ERR_raise(ERR_LIB_EVP, EVP_R_NO_KEY_SET);
         return 0;
     }
 
-    keymgmt = pkey->keymgmt;
-    key = pkey->keydata;
-
-    if (key != NULL && keymgmt != NULL)
-        return evp_keymgmt_validate(keymgmt, key,
-                                    OSSL_KEYMGMT_SELECT_ALL_PARAMETERS);
+    if ((ok = try_provided_check(ctx,
+                                 OSSL_KEYMGMT_SELECT_ALL_PARAMETERS)) != -1)
+        return ok;
 
     if (pkey->type == EVP_PKEY_NONE)
         goto not_supported;
@@ -89,69 +105,58 @@ int EVP_PKEY_param_check(EVP_PKEY_CTX *ctx)
     return pkey->ameth->pkey_param_check(pkey);
 #endif
  not_supported:
-    EVPerr(0, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return -2;
 }
 
 int EVP_PKEY_private_check(EVP_PKEY_CTX *ctx)
 {
     EVP_PKEY *pkey = ctx->pkey;
-    void *key;
-    EVP_KEYMGMT *keymgmt;
+    int ok;
 
     if (pkey == NULL) {
-        EVPerr(0, EVP_R_NO_KEY_SET);
+        ERR_raise(ERR_LIB_EVP, EVP_R_NO_KEY_SET);
         return 0;
     }
 
-    keymgmt = pkey->keymgmt;
-    key = pkey->keydata;
+    if ((ok = try_provided_check(ctx, OSSL_KEYMGMT_SELECT_PRIVATE_KEY)) != -1)
+        return ok;
 
-    if (key != NULL && keymgmt != NULL)
-        return evp_keymgmt_validate(keymgmt, key,
-                                    OSSL_KEYMGMT_SELECT_PRIVATE_KEY);
     /* not supported for legacy keys */
-    EVPerr(0, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return -2;
 }
 
 int EVP_PKEY_pairwise_check(EVP_PKEY_CTX *ctx)
 {
     EVP_PKEY *pkey = ctx->pkey;
-    void *key;
-    EVP_KEYMGMT *keymgmt;
+    int ok;
 
     if (pkey == NULL) {
-        EVPerr(0, EVP_R_NO_KEY_SET);
+        ERR_raise(ERR_LIB_EVP, EVP_R_NO_KEY_SET);
         return 0;
     }
 
-    keymgmt = pkey->keymgmt;
-    key = pkey->keydata;
+    if ((ok = try_provided_check(ctx, OSSL_KEYMGMT_SELECT_KEYPAIR)) != -1)
+        return ok;
 
-    if (key != NULL && keymgmt != NULL)
-        return evp_keymgmt_validate(keymgmt, key, OSSL_KEYMGMT_SELECT_KEYPAIR);
     /* not supported for legacy keys */
-    EVPerr(0, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return -2;
 }
 
 int EVP_PKEY_check(EVP_PKEY_CTX *ctx)
 {
     EVP_PKEY *pkey = ctx->pkey;
-    void *key;
-    EVP_KEYMGMT *keymgmt;
+    int ok;
 
     if (pkey == NULL) {
-        EVPerr(EVP_F_EVP_PKEY_CHECK, EVP_R_NO_KEY_SET);
+        ERR_raise(ERR_LIB_EVP, EVP_R_NO_KEY_SET);
         return 0;
     }
 
-    keymgmt = pkey->keymgmt;
-    key = pkey->keydata;
-
-    if (key != NULL && keymgmt != NULL)
-        return evp_keymgmt_validate(keymgmt, key, OSSL_KEYMGMT_SELECT_ALL);
+    if ((ok = try_provided_check(ctx, OSSL_KEYMGMT_SELECT_KEYPAIR)) != -1)
+        return ok;
 
     if (pkey->type == EVP_PKEY_NONE)
         goto not_supported;
@@ -169,7 +174,7 @@ int EVP_PKEY_check(EVP_PKEY_CTX *ctx)
     return pkey->ameth->pkey_check(pkey);
 #endif
  not_supported:
-    EVPerr(0, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return -2;
 }
 

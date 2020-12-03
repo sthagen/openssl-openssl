@@ -15,6 +15,7 @@
 #include <openssl/opensslv.h>
 #include "crypto/cryptlib.h"
 #include "crypto/evp.h" /* evp_method_store_flush */
+#include "crypto/rand.h"
 #include "internal/nelem.h"
 #include "internal/thread_once.h"
 #include "internal/provider.h"
@@ -164,7 +165,7 @@ static void *provider_store_new(OSSL_LIB_CTX *ctx)
             || sk_OSSL_PROVIDER_push(store->providers, prov) == 0) {
             ossl_provider_free(prov);
             provider_store_free(store);
-            CRYPTOerr(CRYPTO_F_PROVIDER_STORE_NEW, ERR_R_INTERNAL_ERROR);
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_INTERNAL_ERROR);
             return NULL;
         }
         prov->libctx = ctx;
@@ -191,7 +192,7 @@ static struct provider_store_st *get_provider_store(OSSL_LIB_CTX *libctx)
     store = ossl_lib_ctx_get_data(libctx, OSSL_LIB_CTX_PROVIDER_STORE_INDEX,
                                   &provider_store_method);
     if (store == NULL)
-        CRYPTOerr(CRYPTO_F_GET_PROVIDER_STORE, ERR_R_INTERNAL_ERROR);
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_INTERNAL_ERROR);
     return store;
 }
 
@@ -254,7 +255,7 @@ static OSSL_PROVIDER *provider_new(const char *name,
         || !ossl_provider_up_ref(prov) /* +1 One reference to be returned */
         || (prov->name = OPENSSL_strdup(name)) == NULL) {
         ossl_provider_free(prov);
-        CRYPTOerr(CRYPTO_F_PROVIDER_NEW, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
         return NULL;
     }
 
@@ -284,7 +285,7 @@ OSSL_PROVIDER *ossl_provider_new(OSSL_LIB_CTX *libctx, const char *name,
     if ((prov = ossl_provider_find(libctx, name,
                                    noconfig)) != NULL) { /* refcount +1 */
         ossl_provider_free(prov); /* refcount -1 */
-        ERR_raise_data(ERR_LIB_CRYPTO, CRYPTO_R_PROVIDER_ALREADY_EXISTS, NULL,
+        ERR_raise_data(ERR_LIB_CRYPTO, CRYPTO_R_PROVIDER_ALREADY_EXISTS,
                        "name=%s", name);
         return NULL;
     }
@@ -311,7 +312,7 @@ OSSL_PROVIDER *ossl_provider_new(OSSL_LIB_CTX *libctx, const char *name,
     CRYPTO_THREAD_unlock(store->lock);
 
     if (prov == NULL)
-        CRYPTOerr(CRYPTO_F_OSSL_PROVIDER_NEW, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
 
     /*
      * At this point, the provider is only partially "loaded".  To be
@@ -390,7 +391,7 @@ int ossl_provider_set_module_path(OSSL_PROVIDER *prov, const char *module_path)
         return 1;
     if ((prov->path = OPENSSL_strdup(module_path)) != NULL)
         return 1;
-    CRYPTOerr(CRYPTO_F_OSSL_PROVIDER_SET_MODULE_PATH, ERR_R_MALLOC_FAILURE);
+    ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
     return 0;
 }
 
@@ -412,7 +413,7 @@ int ossl_provider_add_parameter(OSSL_PROVIDER *prov,
         OPENSSL_free(pair->value);
         OPENSSL_free(pair);
     }
-    CRYPTOerr(CRYPTO_F_OSSL_PROVIDER_ADD_PARAMETER, ERR_R_MALLOC_FAILURE);
+    ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
     return 0;
 }
 
@@ -439,7 +440,7 @@ int OSSL_PROVIDER_set_default_search_path(OSSL_LIB_CTX *libctx,
     if (path != NULL) {
         p = OPENSSL_strdup(path);
         if (p == NULL) {
-            CRYPTOerr(0, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
             return 0;
         }
     }
@@ -534,7 +535,7 @@ static int provider_activate(OSSL_PROVIDER *prov)
     if (prov->init_function == NULL
         || !prov->init_function((OSSL_CORE_HANDLE *)prov, core_dispatch,
                                 &provider_dispatch, &tmp_provctx)) {
-        ERR_raise_data(ERR_LIB_CRYPTO, ERR_R_INIT_FAIL, NULL,
+        ERR_raise_data(ERR_LIB_CRYPTO, ERR_R_INIT_FAIL,
                        "name=%s", prov->name);
 #ifndef FIPS_MODULE
         DSO_free(prov->module);
@@ -1074,8 +1075,7 @@ static int core_pop_error_to_mark(const OSSL_CORE_HANDLE *handle)
 #endif /* FIPS_MODULE */
 
 /*
- * Functions provided by the core.  Blank line separates "families" of related
- * functions.
+ * Functions provided by the core.
  */
 static const OSSL_DISPATCH core_dispatch_[] = {
     { OSSL_FUNC_CORE_GETTABLE_PARAMS, (void (*)(void))core_gettable_params },
@@ -1101,6 +1101,10 @@ static const OSSL_DISPATCH core_dispatch_[] = {
     { OSSL_FUNC_BIO_VPRINTF, (void (*)(void))BIO_vprintf },
     { OSSL_FUNC_BIO_VSNPRINTF, (void (*)(void))BIO_vsnprintf },
     { OSSL_FUNC_SELF_TEST_CB, (void (*)(void))OSSL_SELF_TEST_get_callback },
+    { OSSL_FUNC_GET_ENTROPY, (void (*)(void))ossl_rand_get_entropy },
+    { OSSL_FUNC_CLEANUP_ENTROPY, (void (*)(void))ossl_rand_cleanup_entropy },
+    { OSSL_FUNC_GET_NONCE, (void (*)(void))ossl_rand_get_nonce },
+    { OSSL_FUNC_CLEANUP_NONCE, (void (*)(void))ossl_rand_cleanup_nonce },
 #endif
     { OSSL_FUNC_CRYPTO_MALLOC, (void (*)(void))CRYPTO_malloc },
     { OSSL_FUNC_CRYPTO_ZALLOC, (void (*)(void))CRYPTO_zalloc },

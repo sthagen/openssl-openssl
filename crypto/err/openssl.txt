@@ -2658,34 +2658,6 @@ HTTP_R_STATUS_CODE_UNSUPPORTED:114:status code unsupported
 HTTP_R_TLS_NOT_ENABLED:107:tls not enabled
 HTTP_R_TOO_MANY_REDIRECTIONS:115:too many redirections
 HTTP_R_UNEXPECTED_CONTENT_TYPE:118:unexpected content type
-KDF_R_BAD_ENCODING:122:bad encoding
-KDF_R_BAD_LENGTH:123:bad length
-KDF_R_BOTH_MODE_AND_MODE_INT:127:both mode and mode int
-KDF_R_INVALID_DIGEST:100:invalid digest
-KDF_R_INVALID_ITERATION_COUNT:119:invalid iteration count
-KDF_R_INVALID_KEY_LEN:120:invalid key len
-KDF_R_INVALID_MAC_TYPE:116:invalid mac type
-KDF_R_INVALID_MODE:128:invalid mode
-KDF_R_INVALID_MODE_INT:129:invalid mode int
-KDF_R_MISSING_CEK_ALG:125:missing cek alg
-KDF_R_MISSING_ITERATION_COUNT:109:missing iteration count
-KDF_R_MISSING_KEY:104:missing key
-KDF_R_MISSING_MESSAGE_DIGEST:105:missing message digest
-KDF_R_MISSING_PARAMETER:101:missing parameter
-KDF_R_MISSING_PASS:110:missing pass
-KDF_R_MISSING_SALT:111:missing salt
-KDF_R_MISSING_SECRET:107:missing secret
-KDF_R_MISSING_SEED:106:missing seed
-KDF_R_MISSING_SESSION_ID:113:missing session id
-KDF_R_MISSING_TYPE:114:missing type
-KDF_R_MISSING_XCGHASH:115:missing xcghash
-KDF_R_NOT_SUPPORTED:118:not supported
-KDF_R_UNKNOWN_PARAMETER_TYPE:103:unknown parameter type
-KDF_R_UNSUPPORTED_CEK_ALG:126:unsupported cek alg
-KDF_R_UNSUPPORTED_MAC_TYPE:117:unsupported mac type
-KDF_R_VALUE_ERROR:108:value error
-KDF_R_VALUE_MISSING:102:value missing
-KDF_R_WRONG_OUTPUT_BUFFER_SIZE:112:wrong output buffer size
 OBJ_R_OID_EXISTS:102:oid exists
 OBJ_R_UNKNOWN_NID:101:unknown nid
 OBJ_R_UNKNOWN_OBJECT_NAME:103:unknown object name
@@ -2907,6 +2879,7 @@ PROV_R_INVALID_MODE:125:invalid mode
 PROV_R_INVALID_MODE_INT:126:invalid mode int
 PROV_R_INVALID_PADDING_MODE:168:invalid padding mode
 PROV_R_INVALID_PSS_SALTLEN:169:invalid pss saltlen
+PROV_R_INVALID_PUBINFO:198:invalid pubinfo
 PROV_R_INVALID_RSA_KEY:217:invalid rsa key
 PROV_R_INVALID_SALT_LENGTH:112:invalid salt length
 PROV_R_INVALID_SEED_LENGTH:154:invalid seed length
@@ -2914,6 +2887,7 @@ PROV_R_INVALID_SIGNATURE_SIZE:179:invalid signature size
 PROV_R_INVALID_STATE:212:invalid state
 PROV_R_INVALID_TAG:110:invalid tag
 PROV_R_INVALID_TAGLEN:118:invalid taglen
+PROV_R_INVALID_UKM_LENGTH:200:invalid ukm length
 PROV_R_INVALID_X931_DIGEST:170:invalid x931 digest
 PROV_R_IN_ERROR_STATE:192:in error state
 PROV_R_KEY_SIZE_TOO_SMALL:171:key size too small
@@ -2944,6 +2918,8 @@ PROV_R_NO_PARAMETERS_SET:177:no parameters set
 PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE:178:\
 	operation not supported for this keytype
 PROV_R_OUTPUT_BUFFER_TOO_SMALL:106:output buffer too small
+PROV_R_PARENT_CANNOT_GENERATE_RANDOM_NUMBERS:228:\
+	parent cannot generate random numbers
 PROV_R_PARENT_LOCKING_NOT_ENABLED:182:parent locking not enabled
 PROV_R_PARENT_STRENGTH_TOO_WEAK:194:parent strength too weak
 PROV_R_PATH_MUST_BE_ABSOLUTE:219:path must be absolute
@@ -2962,10 +2938,7 @@ PROV_R_TAG_NOT_NEEDED:120:tag not needed
 PROV_R_UNABLE_TO_FIND_CIPHERS:207:unable to find ciphers
 PROV_R_UNABLE_TO_GET_ENTROPY:202:unable to get entropy
 PROV_R_UNABLE_TO_GET_NONCE:203:unable to get nonce
-PROV_R_UNABLE_TO_GET_PARENT_RESEED_PROP_COUNTER:198:\
-	unable to get parent reseed prop counter
 PROV_R_UNABLE_TO_GET_PARENT_STRENGTH:199:unable to get parent strength
-PROV_R_UNABLE_TO_GET_RESEED_PROP_CTR:200:unable to get reseed prop ctr
 PROV_R_UNABLE_TO_INITIALISE_CIPHERS:208:unable to initialise ciphers
 PROV_R_UNABLE_TO_LOAD_SHA1:143:unable to load sha1
 PROV_R_UNABLE_TO_LOAD_SHA256:147:unable to load sha256
@@ -3027,7 +3000,6 @@ RAND_R_UNABLE_TO_FETCH_DRBG:144:unable to fetch drbg
 RAND_R_UNABLE_TO_GET_PARENT_RESEED_PROP_COUNTER:141:\
 	unable to get parent reseed prop counter
 RAND_R_UNABLE_TO_GET_PARENT_STRENGTH:138:unable to get parent strength
-RAND_R_UNABLE_TO_GET_RESEED_PROP_CTR:142:unable to get reseed prop ctr
 RAND_R_UNABLE_TO_LOCK_PARENT:140:unable to lock parent
 RAND_R_UNSUPPORTED_DRBG_FLAGS:132:unsupported drbg flags
 RAND_R_UNSUPPORTED_DRBG_TYPE:120:unsupported drbg type

@@ -63,8 +63,8 @@ struct dsa_gen_ctx {
     int gen_type; /* DSA_PARAMGEN_TYPE_FIPS_186_2 or DSA_PARAMGEN_TYPE_FIPS_186_4 */
     int pcounter;
     int hindex;
-    const char *mdname;
-    const char *mdprops;
+    char *mdname;
+    char *mdprops;
     OSSL_CALLBACK *cb;
     void *cbarg;
 };
@@ -75,7 +75,11 @@ typedef struct dh_name2id_st{
 
 static const DSA_GENTYPE_NAME2ID dsatype2id[]=
 {
+#ifdef FIPS_MODULE
     { "default", DSA_PARAMGEN_TYPE_FIPS_186_4 },
+#else
+    { "default", DSA_PARAMGEN_TYPE_FIPS_186_2 },
+#endif
     { "fips186_4", DSA_PARAMGEN_TYPE_FIPS_186_4 },
     { "fips186_2", DSA_PARAMGEN_TYPE_FIPS_186_2 },
 };
@@ -374,7 +378,11 @@ static void *dsa_gen_init(void *provctx, int selection)
         gctx->libctx = libctx;
         gctx->pbits = 2048;
         gctx->qbits = 224;
+#ifdef FIPS_MODULE
         gctx->gen_type = DSA_PARAMGEN_TYPE_FIPS_186_4;
+#else
+        gctx->gen_type = DSA_PARAMGEN_TYPE_FIPS_186_2;
+#endif
         gctx->gindex = -1;
         gctx->pcounter = -1;
         gctx->hindex = 0;
@@ -451,13 +459,19 @@ static int dsa_gen_set_params(void *genctx, const OSSL_PARAM params[])
     if (p != NULL) {
         if (p->data_type != OSSL_PARAM_UTF8_STRING)
             return 0;
-        gctx->mdname = p->data;
+        OPENSSL_free(gctx->mdname);
+        gctx->mdname = OPENSSL_strdup(p->data);
+        if (gctx->mdname == NULL)
+            return 0;
     }
     p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_FFC_DIGEST_PROPS);
     if (p != NULL) {
         if (p->data_type != OSSL_PARAM_UTF8_STRING)
             return 0;
-        gctx->mdprops = p->data;
+        OPENSSL_free(gctx->mdprops);
+        gctx->mdprops = OPENSSL_strdup(p->data);
+        if (gctx->mdprops == NULL)
+            return 0;
     }
     return 1;
 }
@@ -564,6 +578,8 @@ static void dsa_gen_cleanup(void *genctx)
     if (gctx == NULL)
         return;
 
+    OPENSSL_free(gctx->mdname);
+    OPENSSL_free(gctx->mdprops);
     OPENSSL_clear_free(gctx->seed, gctx->seedlen);
     OPENSSL_free(gctx);
 }

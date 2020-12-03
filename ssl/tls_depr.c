@@ -74,12 +74,11 @@ int tls_engine_load_ssl_client_cert(SSL *s, X509 **px509, EVP_PKEY **ppkey)
 int SSL_CTX_set_client_cert_engine(SSL_CTX *ctx, ENGINE *e)
 {
     if (!ENGINE_init(e)) {
-        SSLerr(SSL_F_SSL_CTX_SET_CLIENT_CERT_ENGINE, ERR_R_ENGINE_LIB);
+        ERR_raise(ERR_LIB_SSL, ERR_R_ENGINE_LIB);
         return 0;
     }
     if (!ENGINE_get_ssl_client_cert_function(e)) {
-        SSLerr(SSL_F_SSL_CTX_SET_CLIENT_CERT_ENGINE,
-               SSL_R_NO_CLIENT_CERT_METHOD);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_CLIENT_CERT_METHOD);
         ENGINE_finish(e);
         return 0;
     }
@@ -143,5 +142,22 @@ HMAC_CTX *ssl_hmac_get0_HMAC_CTX(SSL_HMAC *ctx)
 {
     return ctx->old_ctx;
 }
+
+/* Some deprecated public APIs pass DH objects */
+# ifndef OPENSSL_NO_DH
+EVP_PKEY *ssl_dh_to_pkey(DH *dh)
+{
+    EVP_PKEY *ret;
+
+    if (dh == NULL)
+        return NULL;
+    ret = EVP_PKEY_new();
+    if (EVP_PKEY_set1_DH(ret, dh) <= 0) {
+        EVP_PKEY_free(ret);
+        return NULL;
+    }
+    return ret;
+}
+# endif
 #endif
 

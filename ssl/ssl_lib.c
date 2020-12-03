@@ -126,7 +126,7 @@ static int dane_ctx_enable(struct dane_ctx_st *dctx)
     if (mdord == NULL || mdevp == NULL) {
         OPENSSL_free(mdord);
         OPENSSL_free(mdevp);
-        SSLerr(SSL_F_DANE_CTX_ENABLE, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         return 0;
     }
 
@@ -200,7 +200,7 @@ static int ssl_dane_dup(SSL *to, SSL *from)
     to->dane.trecs = sk_danetls_record_new_reserve(NULL, num);
 
     if (to->dane.trecs == NULL) {
-        SSLerr(SSL_F_SSL_DANE_DUP, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         return 0;
     }
 
@@ -220,7 +220,7 @@ static int dane_mtype_set(struct dane_ctx_st *dctx,
     int i;
 
     if (mtype == DANETLS_MATCHING_FULL && md != NULL) {
-        SSLerr(SSL_F_DANE_MTYPE_SET, SSL_R_DANE_CANNOT_OVERRIDE_MTYPE_FULL);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DANE_CANNOT_OVERRIDE_MTYPE_FULL);
         return 0;
     }
 
@@ -231,14 +231,14 @@ static int dane_mtype_set(struct dane_ctx_st *dctx,
 
         mdevp = OPENSSL_realloc(dctx->mdevp, n * sizeof(*mdevp));
         if (mdevp == NULL) {
-            SSLerr(SSL_F_DANE_MTYPE_SET, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
             return -1;
         }
         dctx->mdevp = mdevp;
 
         mdord = OPENSSL_realloc(dctx->mdord, n * sizeof(*mdord));
         if (mdord == NULL) {
-            SSLerr(SSL_F_DANE_MTYPE_SET, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
             return -1;
         }
         dctx->mdord = mdord;
@@ -278,44 +278,44 @@ static int dane_tlsa_add(SSL_DANE *dane,
     int num;
 
     if (dane->trecs == NULL) {
-        SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_NOT_ENABLED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DANE_NOT_ENABLED);
         return -1;
     }
 
     if (ilen < 0 || dlen != (size_t)ilen) {
-        SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_TLSA_BAD_DATA_LENGTH);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DANE_TLSA_BAD_DATA_LENGTH);
         return 0;
     }
 
     if (usage > DANETLS_USAGE_LAST) {
-        SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_TLSA_BAD_CERTIFICATE_USAGE);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DANE_TLSA_BAD_CERTIFICATE_USAGE);
         return 0;
     }
 
     if (selector > DANETLS_SELECTOR_LAST) {
-        SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_TLSA_BAD_SELECTOR);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DANE_TLSA_BAD_SELECTOR);
         return 0;
     }
 
     if (mtype != DANETLS_MATCHING_FULL) {
         md = tlsa_md_get(dane, mtype);
         if (md == NULL) {
-            SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_TLSA_BAD_MATCHING_TYPE);
+            ERR_raise(ERR_LIB_SSL, SSL_R_DANE_TLSA_BAD_MATCHING_TYPE);
             return 0;
         }
     }
 
     if (md != NULL && dlen != (size_t)EVP_MD_size(md)) {
-        SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_TLSA_BAD_DIGEST_LENGTH);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DANE_TLSA_BAD_DIGEST_LENGTH);
         return 0;
     }
     if (!data) {
-        SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_TLSA_NULL_DATA);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DANE_TLSA_NULL_DATA);
         return 0;
     }
 
     if ((t = OPENSSL_zalloc(sizeof(*t))) == NULL) {
-        SSLerr(SSL_F_DANE_TLSA_ADD, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         return -1;
     }
 
@@ -325,7 +325,7 @@ static int dane_tlsa_add(SSL_DANE *dane,
     t->data = OPENSSL_malloc(dlen);
     if (t->data == NULL) {
         tlsa_free(t);
-        SSLerr(SSL_F_DANE_TLSA_ADD, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         return -1;
     }
     memcpy(t->data, data, dlen);
@@ -342,12 +342,12 @@ static int dane_tlsa_add(SSL_DANE *dane,
             if (!d2i_X509(&cert, &p, ilen) || p < data ||
                 dlen != (size_t)(p - data)) {
                 tlsa_free(t);
-                SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_TLSA_BAD_CERTIFICATE);
+                ERR_raise(ERR_LIB_SSL, SSL_R_DANE_TLSA_BAD_CERTIFICATE);
                 return 0;
             }
             if (X509_get0_pubkey(cert) == NULL) {
                 tlsa_free(t);
-                SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_TLSA_BAD_CERTIFICATE);
+                ERR_raise(ERR_LIB_SSL, SSL_R_DANE_TLSA_BAD_CERTIFICATE);
                 return 0;
             }
 
@@ -366,7 +366,7 @@ static int dane_tlsa_add(SSL_DANE *dane,
             if ((dane->certs == NULL &&
                  (dane->certs = sk_X509_new_null()) == NULL) ||
                 !sk_X509_push(dane->certs, cert)) {
-                SSLerr(SSL_F_DANE_TLSA_ADD, ERR_R_MALLOC_FAILURE);
+                ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
                 X509_free(cert);
                 tlsa_free(t);
                 return -1;
@@ -377,7 +377,7 @@ static int dane_tlsa_add(SSL_DANE *dane,
             if (!d2i_PUBKEY(&pkey, &p, ilen) || p < data ||
                 dlen != (size_t)(p - data)) {
                 tlsa_free(t);
-                SSLerr(SSL_F_DANE_TLSA_ADD, SSL_R_DANE_TLSA_BAD_PUBLIC_KEY);
+                ERR_raise(ERR_LIB_SSL, SSL_R_DANE_TLSA_BAD_PUBLIC_KEY);
                 return 0;
             }
 
@@ -427,7 +427,7 @@ static int dane_tlsa_add(SSL_DANE *dane,
 
     if (!sk_danetls_record_insert(dane->trecs, t, i)) {
         tlsa_free(t);
-        SSLerr(SSL_F_DANE_TLSA_ADD, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         return -1;
     }
     dane->umask |= DANETLS_USAGE_BIT(usage);
@@ -569,7 +569,7 @@ static void clear_ciphers(SSL *s)
 int SSL_clear(SSL *s)
 {
     if (s->method == NULL) {
-        SSLerr(SSL_F_SSL_CLEAR, SSL_R_NO_METHOD_SPECIFIED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_METHOD_SPECIFIED);
         return 0;
     }
 
@@ -590,7 +590,7 @@ int SSL_clear(SSL *s)
     s->shutdown = 0;
 
     if (s->renegotiate) {
-        SSLerr(SSL_F_SSL_CLEAR, ERR_R_INTERNAL_ERROR);
+        ERR_raise(ERR_LIB_SSL, ERR_R_INTERNAL_ERROR);
         return 0;
     }
 
@@ -653,16 +653,16 @@ int SSL_CTX_set_ssl_version(SSL_CTX *ctx, const SSL_METHOD *meth)
     ctx->method = meth;
 
     if (!SSL_CTX_set_ciphersuites(ctx, OSSL_default_ciphersuites())) {
-        SSLerr(SSL_F_SSL_CTX_SET_SSL_VERSION, SSL_R_SSL_LIBRARY_HAS_NO_CIPHERS);
+        ERR_raise(ERR_LIB_SSL, SSL_R_SSL_LIBRARY_HAS_NO_CIPHERS);
         return 0;
     }
-    sk = ssl_create_cipher_list(ctx->method,
+    sk = ssl_create_cipher_list(ctx,
                                 ctx->tls13_ciphersuites,
                                 &(ctx->cipher_list),
                                 &(ctx->cipher_list_by_id),
                                 OSSL_default_cipher_list(), ctx->cert);
     if ((sk == NULL) || (sk_SSL_CIPHER_num(sk) <= 0)) {
-        SSLerr(SSL_F_SSL_CTX_SET_SSL_VERSION, SSL_R_SSL_LIBRARY_HAS_NO_CIPHERS);
+        ERR_raise(ERR_LIB_SSL, SSL_R_SSL_LIBRARY_HAS_NO_CIPHERS);
         return 0;
     }
     return 1;
@@ -674,11 +674,11 @@ SSL *SSL_new(SSL_CTX *ctx)
     SSL *s;
 
     if (ctx == NULL) {
-        SSLerr(SSL_F_SSL_NEW, SSL_R_NULL_SSL_CTX);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NULL_SSL_CTX);
         return NULL;
     }
     if (ctx->method == NULL) {
-        SSLerr(SSL_F_SSL_NEW, SSL_R_SSL_CTX_HAS_NO_DEFAULT_SSL_VERSION);
+        ERR_raise(ERR_LIB_SSL, SSL_R_SSL_CTX_HAS_NO_DEFAULT_SSL_VERSION);
         return NULL;
     }
 
@@ -846,7 +846,7 @@ SSL *SSL_new(SSL_CTX *ctx)
     return s;
  err:
     SSL_free(s);
-    SSLerr(SSL_F_SSL_NEW, ERR_R_MALLOC_FAILURE);
+    ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
     return NULL;
 }
 
@@ -871,8 +871,7 @@ int SSL_CTX_set_session_id_context(SSL_CTX *ctx, const unsigned char *sid_ctx,
                                    unsigned int sid_ctx_len)
 {
     if (sid_ctx_len > SSL_MAX_SID_CTX_LENGTH) {
-        SSLerr(SSL_F_SSL_CTX_SET_SESSION_ID_CONTEXT,
-               SSL_R_SSL_SESSION_ID_CONTEXT_TOO_LONG);
+        ERR_raise(ERR_LIB_SSL, SSL_R_SSL_SESSION_ID_CONTEXT_TOO_LONG);
         return 0;
     }
     ctx->sid_ctx_length = sid_ctx_len;
@@ -885,8 +884,7 @@ int SSL_set_session_id_context(SSL *ssl, const unsigned char *sid_ctx,
                                unsigned int sid_ctx_len)
 {
     if (sid_ctx_len > SSL_MAX_SID_CTX_LENGTH) {
-        SSLerr(SSL_F_SSL_SET_SESSION_ID_CONTEXT,
-               SSL_R_SSL_SESSION_ID_CONTEXT_TOO_LONG);
+        ERR_raise(ERR_LIB_SSL, SSL_R_SSL_SESSION_ID_CONTEXT_TOO_LONG);
         return 0;
     }
     ssl->sid_ctx_length = sid_ctx_len;
@@ -1031,11 +1029,11 @@ int SSL_dane_enable(SSL *s, const char *basedomain)
     SSL_DANE *dane = &s->dane;
 
     if (s->ctx->dane.mdmax == 0) {
-        SSLerr(SSL_F_SSL_DANE_ENABLE, SSL_R_CONTEXT_NOT_DANE_ENABLED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_CONTEXT_NOT_DANE_ENABLED);
         return 0;
     }
     if (dane->trecs != NULL) {
-        SSLerr(SSL_F_SSL_DANE_ENABLE, SSL_R_DANE_ALREADY_ENABLED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DANE_ALREADY_ENABLED);
         return 0;
     }
 
@@ -1046,14 +1044,14 @@ int SSL_dane_enable(SSL *s, const char *basedomain)
      */
     if (s->ext.hostname == NULL) {
         if (!SSL_set_tlsext_host_name(s, basedomain)) {
-            SSLerr(SSL_F_SSL_DANE_ENABLE, SSL_R_ERROR_SETTING_TLSA_BASE_DOMAIN);
+            ERR_raise(ERR_LIB_SSL, SSL_R_ERROR_SETTING_TLSA_BASE_DOMAIN);
             return -1;
         }
     }
 
     /* Primary RFC6125 reference identifier */
     if (!X509_VERIFY_PARAM_set1_host(s->param, basedomain, 0)) {
-        SSLerr(SSL_F_SSL_DANE_ENABLE, SSL_R_ERROR_SETTING_TLSA_BASE_DOMAIN);
+        ERR_raise(ERR_LIB_SSL, SSL_R_ERROR_SETTING_TLSA_BASE_DOMAIN);
         return -1;
     }
 
@@ -1063,7 +1061,7 @@ int SSL_dane_enable(SSL *s, const char *basedomain)
     dane->trecs = sk_danetls_record_new_null();
 
     if (dane->trecs == NULL) {
-        SSLerr(SSL_F_SSL_DANE_ENABLE, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         return -1;
     }
     return 1;
@@ -1379,7 +1377,7 @@ int SSL_set_fd(SSL *s, int fd)
     bio = BIO_new(BIO_s_socket());
 
     if (bio == NULL) {
-        SSLerr(SSL_F_SSL_SET_FD, ERR_R_BUF_LIB);
+        ERR_raise(ERR_LIB_SSL, ERR_R_BUF_LIB);
         goto err;
     }
     BIO_set_fd(bio, fd, BIO_NOCLOSE);
@@ -1407,7 +1405,7 @@ int SSL_set_wfd(SSL *s, int fd)
         BIO *bio = BIO_new(BIO_s_socket());
 
         if (bio == NULL) {
-            SSLerr(SSL_F_SSL_SET_WFD, ERR_R_BUF_LIB);
+            ERR_raise(ERR_LIB_SSL, ERR_R_BUF_LIB);
             return 0;
         }
         BIO_set_fd(bio, fd, BIO_NOCLOSE);
@@ -1437,7 +1435,7 @@ int SSL_set_rfd(SSL *s, int fd)
         BIO *bio = BIO_new(BIO_s_socket());
 
         if (bio == NULL) {
-            SSLerr(SSL_F_SSL_SET_RFD, ERR_R_BUF_LIB);
+            ERR_raise(ERR_LIB_SSL, ERR_R_BUF_LIB);
             return 0;
         }
         BIO_set_fd(bio, fd, BIO_NOCLOSE);
@@ -1630,11 +1628,11 @@ int SSL_copy_session_id(SSL *t, const SSL *f)
 int SSL_CTX_check_private_key(const SSL_CTX *ctx)
 {
     if ((ctx == NULL) || (ctx->cert->key->x509 == NULL)) {
-        SSLerr(SSL_F_SSL_CTX_CHECK_PRIVATE_KEY, SSL_R_NO_CERTIFICATE_ASSIGNED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_CERTIFICATE_ASSIGNED);
         return 0;
     }
     if (ctx->cert->key->privatekey == NULL) {
-        SSLerr(SSL_F_SSL_CTX_CHECK_PRIVATE_KEY, SSL_R_NO_PRIVATE_KEY_ASSIGNED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_PRIVATE_KEY_ASSIGNED);
         return 0;
     }
     return X509_check_private_key
@@ -1645,15 +1643,15 @@ int SSL_CTX_check_private_key(const SSL_CTX *ctx)
 int SSL_check_private_key(const SSL *ssl)
 {
     if (ssl == NULL) {
-        SSLerr(SSL_F_SSL_CHECK_PRIVATE_KEY, ERR_R_PASSED_NULL_PARAMETER);
+        ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
         return 0;
     }
     if (ssl->cert->key->x509 == NULL) {
-        SSLerr(SSL_F_SSL_CHECK_PRIVATE_KEY, SSL_R_NO_CERTIFICATE_ASSIGNED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_CERTIFICATE_ASSIGNED);
         return 0;
     }
     if (ssl->cert->key->privatekey == NULL) {
-        SSLerr(SSL_F_SSL_CHECK_PRIVATE_KEY, SSL_R_NO_PRIVATE_KEY_ASSIGNED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_PRIVATE_KEY_ASSIGNED);
         return 0;
     }
     return X509_check_private_key(ssl->cert->key->x509,
@@ -1771,7 +1769,7 @@ static int ssl_start_async_job(SSL *s, struct ssl_async_args *args,
                             sizeof(struct ssl_async_args))) {
     case ASYNC_ERR:
         s->rwstate = SSL_NOTHING;
-        SSLerr(SSL_F_SSL_START_ASYNC_JOB, SSL_R_FAILED_TO_INIT_ASYNC);
+        ERR_raise(ERR_LIB_SSL, SSL_R_FAILED_TO_INIT_ASYNC);
         return -1;
     case ASYNC_PAUSE:
         s->rwstate = SSL_ASYNC_PAUSED;
@@ -1784,7 +1782,7 @@ static int ssl_start_async_job(SSL *s, struct ssl_async_args *args,
         return ret;
     default:
         s->rwstate = SSL_NOTHING;
-        SSLerr(SSL_F_SSL_START_ASYNC_JOB, ERR_R_INTERNAL_ERROR);
+        ERR_raise(ERR_LIB_SSL, ERR_R_INTERNAL_ERROR);
         /* Shouldn't happen */
         return -1;
     }
@@ -1815,7 +1813,7 @@ static int ssl_io_intern(void *vargs)
 int ssl_read_internal(SSL *s, void *buf, size_t num, size_t *readbytes)
 {
     if (s->handshake_func == NULL) {
-        SSLerr(SSL_F_SSL_READ_INTERNAL, SSL_R_UNINITIALIZED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_UNINITIALIZED);
         return -1;
     }
 
@@ -1826,7 +1824,7 @@ int ssl_read_internal(SSL *s, void *buf, size_t num, size_t *readbytes)
 
     if (s->early_data_state == SSL_EARLY_DATA_CONNECT_RETRY
                 || s->early_data_state == SSL_EARLY_DATA_ACCEPT_RETRY) {
-        SSLerr(SSL_F_SSL_READ_INTERNAL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+        ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
         return 0;
     }
     /*
@@ -1859,7 +1857,7 @@ int SSL_read(SSL *s, void *buf, int num)
     size_t readbytes;
 
     if (num < 0) {
-        SSLerr(SSL_F_SSL_READ, SSL_R_BAD_LENGTH);
+        ERR_raise(ERR_LIB_SSL, SSL_R_BAD_LENGTH);
         return -1;
     }
 
@@ -1889,15 +1887,14 @@ int SSL_read_early_data(SSL *s, void *buf, size_t num, size_t *readbytes)
     int ret;
 
     if (!s->server) {
-        SSLerr(SSL_F_SSL_READ_EARLY_DATA, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+        ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
         return SSL_READ_EARLY_DATA_ERROR;
     }
 
     switch (s->early_data_state) {
     case SSL_EARLY_DATA_NONE:
         if (!SSL_in_before(s)) {
-            SSLerr(SSL_F_SSL_READ_EARLY_DATA,
-                   ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+            ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
             return SSL_READ_EARLY_DATA_ERROR;
         }
         /* fall through */
@@ -1934,7 +1931,7 @@ int SSL_read_early_data(SSL *s, void *buf, size_t num, size_t *readbytes)
         return SSL_READ_EARLY_DATA_FINISH;
 
     default:
-        SSLerr(SSL_F_SSL_READ_EARLY_DATA, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+        ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
         return SSL_READ_EARLY_DATA_ERROR;
     }
 }
@@ -1947,7 +1944,7 @@ int SSL_get_early_data_status(const SSL *s)
 static int ssl_peek_internal(SSL *s, void *buf, size_t num, size_t *readbytes)
 {
     if (s->handshake_func == NULL) {
-        SSLerr(SSL_F_SSL_PEEK_INTERNAL, SSL_R_UNINITIALIZED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_UNINITIALIZED);
         return -1;
     }
 
@@ -1978,7 +1975,7 @@ int SSL_peek(SSL *s, void *buf, int num)
     size_t readbytes;
 
     if (num < 0) {
-        SSLerr(SSL_F_SSL_PEEK, SSL_R_BAD_LENGTH);
+        ERR_raise(ERR_LIB_SSL, SSL_R_BAD_LENGTH);
         return -1;
     }
 
@@ -2007,20 +2004,20 @@ int SSL_peek_ex(SSL *s, void *buf, size_t num, size_t *readbytes)
 int ssl_write_internal(SSL *s, const void *buf, size_t num, size_t *written)
 {
     if (s->handshake_func == NULL) {
-        SSLerr(SSL_F_SSL_WRITE_INTERNAL, SSL_R_UNINITIALIZED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_UNINITIALIZED);
         return -1;
     }
 
     if (s->shutdown & SSL_SENT_SHUTDOWN) {
         s->rwstate = SSL_NOTHING;
-        SSLerr(SSL_F_SSL_WRITE_INTERNAL, SSL_R_PROTOCOL_IS_SHUTDOWN);
+        ERR_raise(ERR_LIB_SSL, SSL_R_PROTOCOL_IS_SHUTDOWN);
         return -1;
     }
 
     if (s->early_data_state == SSL_EARLY_DATA_CONNECT_RETRY
                 || s->early_data_state == SSL_EARLY_DATA_ACCEPT_RETRY
                 || s->early_data_state == SSL_EARLY_DATA_READ_RETRY) {
-        SSLerr(SSL_F_SSL_WRITE_INTERNAL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+        ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
         return 0;
     }
     /* If we are a client and haven't sent the Finished we better do that */
@@ -2049,18 +2046,18 @@ ossl_ssize_t SSL_sendfile(SSL *s, int fd, off_t offset, size_t size, int flags)
     ossl_ssize_t ret;
 
     if (s->handshake_func == NULL) {
-        SSLerr(SSL_F_SSL_SENDFILE, SSL_R_UNINITIALIZED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_UNINITIALIZED);
         return -1;
     }
 
     if (s->shutdown & SSL_SENT_SHUTDOWN) {
         s->rwstate = SSL_NOTHING;
-        SSLerr(SSL_F_SSL_SENDFILE, SSL_R_PROTOCOL_IS_SHUTDOWN);
+        ERR_raise(ERR_LIB_SSL, SSL_R_PROTOCOL_IS_SHUTDOWN);
         return -1;
     }
 
     if (!BIO_get_ktls_send(s->wbio)) {
-        SSLerr(SSL_F_SSL_SENDFILE, SSL_R_UNINITIALIZED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_UNINITIALIZED);
         return -1;
     }
 
@@ -2100,7 +2097,7 @@ ossl_ssize_t SSL_sendfile(SSL *s, int fd, off_t offset, size_t size, int flags)
             BIO_set_retry_write(s->wbio);
         else
 #endif
-            SSLerr(SSL_F_SSL_SENDFILE, SSL_R_UNINITIALIZED);
+            ERR_raise(ERR_LIB_SSL, SSL_R_UNINITIALIZED);
         return ret;
     }
     s->rwstate = SSL_NOTHING;
@@ -2114,7 +2111,7 @@ int SSL_write(SSL *s, const void *buf, int num)
     size_t written;
 
     if (num < 0) {
-        SSLerr(SSL_F_SSL_WRITE, SSL_R_BAD_LENGTH);
+        ERR_raise(ERR_LIB_SSL, SSL_R_BAD_LENGTH);
         return -1;
     }
 
@@ -2151,8 +2148,7 @@ int SSL_write_early_data(SSL *s, const void *buf, size_t num, size_t *written)
                 || !SSL_in_before(s)
                 || ((s->session == NULL || s->session->ext.max_early_data == 0)
                      && (s->psk_use_session_cb == NULL))) {
-            SSLerr(SSL_F_SSL_WRITE_EARLY_DATA,
-                   ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+            ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
             return 0;
         }
         /* fall through */
@@ -2206,7 +2202,7 @@ int SSL_write_early_data(SSL *s, const void *buf, size_t num, size_t *written)
         return ret;
 
     default:
-        SSLerr(SSL_F_SSL_WRITE_EARLY_DATA, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+        ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
         return 0;
     }
 }
@@ -2221,7 +2217,7 @@ int SSL_shutdown(SSL *s)
      */
 
     if (s->handshake_func == NULL) {
-        SSLerr(SSL_F_SSL_SHUTDOWN, SSL_R_UNINITIALIZED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_UNINITIALIZED);
         return -1;
     }
 
@@ -2238,7 +2234,7 @@ int SSL_shutdown(SSL *s)
             return s->method->ssl_shutdown(s);
         }
     } else {
-        SSLerr(SSL_F_SSL_SHUTDOWN, SSL_R_SHUTDOWN_WHILE_IN_INIT);
+        ERR_raise(ERR_LIB_SSL, SSL_R_SHUTDOWN_WHILE_IN_INIT);
         return -1;
     }
 }
@@ -2251,18 +2247,18 @@ int SSL_key_update(SSL *s, int updatetype)
      * of SSL_renegotiate().
      */
     if (!SSL_IS_TLS13(s)) {
-        SSLerr(SSL_F_SSL_KEY_UPDATE, SSL_R_WRONG_SSL_VERSION);
+        ERR_raise(ERR_LIB_SSL, SSL_R_WRONG_SSL_VERSION);
         return 0;
     }
 
     if (updatetype != SSL_KEY_UPDATE_NOT_REQUESTED
             && updatetype != SSL_KEY_UPDATE_REQUESTED) {
-        SSLerr(SSL_F_SSL_KEY_UPDATE, SSL_R_INVALID_KEY_UPDATE_TYPE);
+        ERR_raise(ERR_LIB_SSL, SSL_R_INVALID_KEY_UPDATE_TYPE);
         return 0;
     }
 
     if (!SSL_is_init_finished(s)) {
-        SSLerr(SSL_F_SSL_KEY_UPDATE, SSL_R_STILL_IN_INIT);
+        ERR_raise(ERR_LIB_SSL, SSL_R_STILL_IN_INIT);
         return 0;
     }
 
@@ -2279,12 +2275,12 @@ int SSL_get_key_update_type(const SSL *s)
 int SSL_renegotiate(SSL *s)
 {
     if (SSL_IS_TLS13(s)) {
-        SSLerr(SSL_F_SSL_RENEGOTIATE, SSL_R_WRONG_SSL_VERSION);
+        ERR_raise(ERR_LIB_SSL, SSL_R_WRONG_SSL_VERSION);
         return 0;
     }
 
     if ((s->options & SSL_OP_NO_RENEGOTIATION)) {
-        SSLerr(SSL_F_SSL_RENEGOTIATE, SSL_R_NO_RENEGOTIATION);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_RENEGOTIATION);
         return 0;
     }
 
@@ -2297,12 +2293,12 @@ int SSL_renegotiate(SSL *s)
 int SSL_renegotiate_abbreviated(SSL *s)
 {
     if (SSL_IS_TLS13(s)) {
-        SSLerr(SSL_F_SSL_RENEGOTIATE_ABBREVIATED, SSL_R_WRONG_SSL_VERSION);
+        ERR_raise(ERR_LIB_SSL, SSL_R_WRONG_SSL_VERSION);
         return 0;
     }
 
     if ((s->options & SSL_OP_NO_RENEGOTIATION)) {
-        SSLerr(SSL_F_SSL_RENEGOTIATE_ABBREVIATED, SSL_R_NO_RENEGOTIATION);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_RENEGOTIATION);
         return 0;
     }
 
@@ -2705,7 +2701,7 @@ int SSL_CTX_set_cipher_list(SSL_CTX *ctx, const char *str)
 {
     STACK_OF(SSL_CIPHER) *sk;
 
-    sk = ssl_create_cipher_list(ctx->method, ctx->tls13_ciphersuites,
+    sk = ssl_create_cipher_list(ctx, ctx->tls13_ciphersuites,
                                 &ctx->cipher_list, &ctx->cipher_list_by_id, str,
                                 ctx->cert);
     /*
@@ -2718,7 +2714,7 @@ int SSL_CTX_set_cipher_list(SSL_CTX *ctx, const char *str)
     if (sk == NULL)
         return 0;
     else if (cipher_list_tls12_num(sk) == 0) {
-        SSLerr(SSL_F_SSL_CTX_SET_CIPHER_LIST, SSL_R_NO_CIPHER_MATCH);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_CIPHER_MATCH);
         return 0;
     }
     return 1;
@@ -2729,14 +2725,14 @@ int SSL_set_cipher_list(SSL *s, const char *str)
 {
     STACK_OF(SSL_CIPHER) *sk;
 
-    sk = ssl_create_cipher_list(s->ctx->method, s->tls13_ciphersuites,
+    sk = ssl_create_cipher_list(s->ctx, s->tls13_ciphersuites,
                                 &s->cipher_list, &s->cipher_list_by_id, str,
                                 s->cert);
     /* see comment in SSL_CTX_set_cipher_list */
     if (sk == NULL)
         return 0;
     else if (cipher_list_tls12_num(sk) == 0) {
-        SSLerr(SSL_F_SSL_SET_CIPHER_LIST, SSL_R_NO_CIPHER_MATCH);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NO_CIPHER_MATCH);
         return 0;
     }
     return 1;
@@ -2995,7 +2991,7 @@ int SSL_CTX_set_alpn_protos(SSL_CTX *ctx, const unsigned char *protos,
     OPENSSL_free(ctx->ext.alpn);
     ctx->ext.alpn = OPENSSL_memdup(protos, protos_len);
     if (ctx->ext.alpn == NULL) {
-        SSLerr(SSL_F_SSL_CTX_SET_ALPN_PROTOS, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         return 1;
     }
     ctx->ext.alpn_len = protos_len;
@@ -3014,7 +3010,7 @@ int SSL_set_alpn_protos(SSL *ssl, const unsigned char *protos,
     OPENSSL_free(ssl->ext.alpn);
     ssl->ext.alpn = OPENSSL_memdup(protos, protos_len);
     if (ssl->ext.alpn == NULL) {
-        SSLerr(SSL_F_SSL_SET_ALPN_PROTOS, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         return 1;
     }
     ssl->ext.alpn_len = protos_len;
@@ -3126,7 +3122,7 @@ SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
     SSL_CTX *ret = NULL;
 
     if (meth == NULL) {
-        SSLerr(0, SSL_R_NULL_SSL_METHOD_PASSED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NULL_SSL_METHOD_PASSED);
         return NULL;
     }
 
@@ -3134,7 +3130,7 @@ SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
         return NULL;
 
     if (SSL_get_ex_data_X509_STORE_CTX_idx() < 0) {
-        SSLerr(0, SSL_R_X509_VERIFICATION_SETUP_PROBLEMS);
+        ERR_raise(ERR_LIB_SSL, SSL_R_X509_VERIFICATION_SETUP_PROBLEMS);
         goto err;
     }
     ret = OPENSSL_zalloc(sizeof(*ret));
@@ -3159,7 +3155,7 @@ SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
     ret->references = 1;
     ret->lock = CRYPTO_THREAD_lock_new();
     if (ret->lock == NULL) {
-        SSLerr(0, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         OPENSSL_free(ret);
         return NULL;
     }
@@ -3194,12 +3190,12 @@ SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
     if (!SSL_CTX_set_ciphersuites(ret, OSSL_default_ciphersuites()))
         goto err;
 
-    if (!ssl_create_cipher_list(ret->method,
+    if (!ssl_create_cipher_list(ret,
                                 ret->tls13_ciphersuites,
                                 &ret->cipher_list, &ret->cipher_list_by_id,
                                 OSSL_default_cipher_list(), ret->cert)
         || sk_SSL_CIPHER_num(ret->cipher_list) <= 0) {
-        SSLerr(0, SSL_R_LIBRARY_HAS_NO_CIPHERS);
+        ERR_raise(ERR_LIB_SSL, SSL_R_LIBRARY_HAS_NO_CIPHERS);
         goto err2;
     }
 
@@ -3320,7 +3316,7 @@ SSL_CTX *SSL_CTX_new_ex(OSSL_LIB_CTX *libctx, const char *propq,
 
     return ret;
  err:
-    SSLerr(0, ERR_R_MALLOC_FAILURE);
+    ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
  err2:
     SSL_CTX_free(ret);
     return NULL;
@@ -3508,11 +3504,11 @@ void ssl_set_masks(SSL *s)
     if (c == NULL)
         return;
 
+    dh_tmp = (c->dh_tmp != NULL
 #ifndef OPENSSL_NO_DH
-    dh_tmp = (c->dh_tmp != NULL || c->dh_tmp_cb != NULL || c->dh_tmp_auto);
-#else
-    dh_tmp = 0;
+              || c->dh_tmp_cb != NULL
 #endif
+              || c->dh_tmp_auto);
 
     rsa_enc = pvalid[SSL_PKEY_RSA] & CERT_PKEY_VALID;
     rsa_sign = pvalid[SSL_PKEY_RSA] & CERT_PKEY_VALID;
@@ -3616,8 +3612,7 @@ int ssl_check_srvr_ecc_cert_and_alg(X509 *x, SSL *s)
     if (s->s3.tmp.new_cipher->algorithm_auth & SSL_aECDSA) {
         /* key usage, if present, must allow signing */
         if (!(X509_get_key_usage(x) & X509v3_KU_DIGITAL_SIGNATURE)) {
-            SSLerr(SSL_F_SSL_CHECK_SRVR_ECC_CERT_AND_ALG,
-                   SSL_R_ECC_CERT_NOT_FOR_SIGNING);
+            ERR_raise(ERR_LIB_SSL, SSL_R_ECC_CERT_NOT_FOR_SIGNING);
             return 0;
         }
     }
@@ -3843,7 +3838,7 @@ int SSL_do_handshake(SSL *s)
     int ret = 1;
 
     if (s->handshake_func == NULL) {
-        SSLerr(SSL_F_SSL_DO_HANDSHAKE, SSL_R_CONNECTION_TYPE_NOT_SET);
+        ERR_raise(ERR_LIB_SSL, SSL_R_CONNECTION_TYPE_NOT_SET);
         return -1;
     }
 
@@ -3885,14 +3880,13 @@ void SSL_set_connect_state(SSL *s)
 
 int ssl_undefined_function(SSL *s)
 {
-    SSLerr(SSL_F_SSL_UNDEFINED_FUNCTION, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+    ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     return 0;
 }
 
 int ssl_undefined_void_function(void)
 {
-    SSLerr(SSL_F_SSL_UNDEFINED_VOID_FUNCTION,
-           ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+    ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     return 0;
 }
 
@@ -3903,7 +3897,7 @@ int ssl_undefined_const_function(const SSL *s)
 
 const SSL_METHOD *ssl_bad_method(int ver)
 {
-    SSLerr(SSL_F_SSL_BAD_METHOD, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+    ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     return NULL;
 }
 
@@ -4171,7 +4165,7 @@ int ssl_init_wbio_buffer(SSL *s)
     bbio = BIO_new(BIO_f_buffer());
     if (bbio == NULL || !BIO_set_read_buffer_size(bbio, 1)) {
         BIO_free(bbio);
-        SSLerr(SSL_F_SSL_INIT_WBIO_BUFFER, ERR_R_BUF_LIB);
+        ERR_raise(ERR_LIB_SSL, ERR_R_BUF_LIB);
         return 0;
     }
     s->bbio = bbio;
@@ -4493,7 +4487,7 @@ int SSL_want(const SSL *s)
  * \param dh the callback
  */
 
-#ifndef OPENSSL_NO_DH
+#if !defined(OPENSSL_NO_DH) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 void SSL_CTX_set_tmp_dh_callback(SSL_CTX *ctx,
                                  DH *(*dh) (SSL *ssl, int is_export,
                                             int keylength))
@@ -4512,7 +4506,7 @@ void SSL_set_tmp_dh_callback(SSL *ssl, DH *(*dh) (SSL *ssl, int is_export,
 int SSL_CTX_use_psk_identity_hint(SSL_CTX *ctx, const char *identity_hint)
 {
     if (identity_hint != NULL && strlen(identity_hint) > PSK_MAX_IDENTITY_LEN) {
-        SSLerr(SSL_F_SSL_CTX_USE_PSK_IDENTITY_HINT, SSL_R_DATA_LENGTH_TOO_LONG);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DATA_LENGTH_TOO_LONG);
         return 0;
     }
     OPENSSL_free(ctx->cert->psk_identity_hint);
@@ -4531,7 +4525,7 @@ int SSL_use_psk_identity_hint(SSL *s, const char *identity_hint)
         return 0;
 
     if (identity_hint != NULL && strlen(identity_hint) > PSK_MAX_IDENTITY_LEN) {
-        SSLerr(SSL_F_SSL_USE_PSK_IDENTITY_HINT, SSL_R_DATA_LENGTH_TOO_LONG);
+        ERR_raise(ERR_LIB_SSL, SSL_R_DATA_LENGTH_TOO_LONG);
         return 0;
     }
     OPENSSL_free(s->cert->psk_identity_hint);
@@ -4759,8 +4753,7 @@ int ssl_handshake_hash(SSL *s, unsigned char *out, size_t outlen,
     int ret = 0;
 
     if (hashleni < 0 || (size_t)hashleni > outlen) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_HANDSHAKE_HASH,
-                 ERR_R_INTERNAL_ERROR);
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         goto err;
     }
 
@@ -4770,8 +4763,7 @@ int ssl_handshake_hash(SSL *s, unsigned char *out, size_t outlen,
 
     if (!EVP_MD_CTX_copy_ex(ctx, hdgst)
         || EVP_DigestFinal_ex(ctx, out, NULL) <= 0) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_HANDSHAKE_HASH,
-                 ERR_R_INTERNAL_ERROR);
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         goto err;
     }
 
@@ -4934,7 +4926,7 @@ static int ct_move_scts(STACK_OF(SCT) **dst, STACK_OF(SCT) *src,
     if (*dst == NULL) {
         *dst = sk_SCT_new_null();
         if (*dst == NULL) {
-            SSLerr(SSL_F_CT_MOVE_SCTS, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
             goto err;
         }
     }
@@ -5091,7 +5083,7 @@ static int ct_strict(const CT_POLICY_EVAL_CTX * ctx,
         if (status == SCT_VALIDATION_STATUS_VALID)
             return 1;
     }
-    SSLerr(SSL_F_CT_STRICT, SSL_R_NO_VALID_SCTS);
+    ERR_raise(ERR_LIB_SSL, SSL_R_NO_VALID_SCTS);
     return 0;
 }
 
@@ -5105,8 +5097,7 @@ int SSL_set_ct_validation_callback(SSL *s, ssl_ct_validation_cb callback,
     if (callback != NULL && SSL_CTX_has_client_custom_ext(s->ctx,
                                                           TLSEXT_TYPE_signed_certificate_timestamp))
     {
-        SSLerr(SSL_F_SSL_SET_CT_VALIDATION_CALLBACK,
-               SSL_R_CUSTOM_EXT_HANDLER_ALREADY_INSTALLED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_CUSTOM_EXT_HANDLER_ALREADY_INSTALLED);
         return 0;
     }
 
@@ -5134,8 +5125,7 @@ int SSL_CTX_set_ct_validation_callback(SSL_CTX *ctx,
     if (callback != NULL && SSL_CTX_has_client_custom_ext(ctx,
                                                           TLSEXT_TYPE_signed_certificate_timestamp))
     {
-        SSLerr(SSL_F_SSL_CTX_SET_CT_VALIDATION_CALLBACK,
-               SSL_R_CUSTOM_EXT_HANDLER_ALREADY_INSTALLED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_CUSTOM_EXT_HANDLER_ALREADY_INSTALLED);
         return 0;
     }
 
@@ -5193,8 +5183,7 @@ int ssl_validate_ct(SSL *s)
 
     ctx = CT_POLICY_EVAL_CTX_new_ex(s->ctx->libctx, s->ctx->propq);
     if (ctx == NULL) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_VALIDATE_CT,
-                 ERR_R_MALLOC_FAILURE);
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_MALLOC_FAILURE);
         goto end;
     }
 
@@ -5222,8 +5211,7 @@ int ssl_validate_ct(SSL *s)
      * ought to correspond to an inability to carry out its duties.
      */
     if (SCT_LIST_validate(scts, ctx) < 0) {
-        SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE, SSL_F_SSL_VALIDATE_CT,
-                 SSL_R_SCT_VERIFICATION_FAILED);
+        SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE, SSL_R_SCT_VERIFICATION_FAILED);
         goto end;
     }
 
@@ -5231,8 +5219,7 @@ int ssl_validate_ct(SSL *s)
     if (ret < 0)
         ret = 0;                /* This function returns 0 on failure */
     if (!ret)
-        SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE, SSL_F_SSL_VALIDATE_CT,
-                 SSL_R_CALLBACK_FAILED);
+        SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE, SSL_R_CALLBACK_FAILED);
 
  end:
     CT_POLICY_EVAL_CTX_free(ctx);
@@ -5260,7 +5247,7 @@ int SSL_CTX_enable_ct(SSL_CTX *ctx, int validation_mode)
 {
     switch (validation_mode) {
     default:
-        SSLerr(SSL_F_SSL_CTX_ENABLE_CT, SSL_R_INVALID_CT_VALIDATION_TYPE);
+        ERR_raise(ERR_LIB_SSL, SSL_R_INVALID_CT_VALIDATION_TYPE);
         return 0;
     case SSL_CT_VALIDATION_PERMISSIVE:
         return SSL_CTX_set_ct_validation_callback(ctx, ct_permissive, NULL);
@@ -5273,7 +5260,7 @@ int SSL_enable_ct(SSL *s, int validation_mode)
 {
     switch (validation_mode) {
     default:
-        SSLerr(SSL_F_SSL_ENABLE_CT, SSL_R_INVALID_CT_VALIDATION_TYPE);
+        ERR_raise(ERR_LIB_SSL, SSL_R_INVALID_CT_VALIDATION_TYPE);
         return 0;
     case SSL_CT_VALIDATION_PERMISSIVE:
         return SSL_set_ct_validation_callback(s, ct_permissive, NULL);
@@ -5381,8 +5368,7 @@ int SSL_client_hello_get1_extensions_present(SSL *s, int **out, size_t *outlen)
         return 1;
     }
     if ((present = OPENSSL_malloc(sizeof(*present) * num)) == NULL) {
-        SSLerr(SSL_F_SSL_CLIENT_HELLO_GET1_EXTENSIONS_PRESENT,
-               ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     for (i = 0; i < s->clienthello->pre_proc_exts_len; i++) {
@@ -5475,8 +5461,7 @@ static int nss_keylog_int(const char *prefix,
     prefix_len = strlen(prefix);
     out_len = prefix_len + (2 * parameter_1_len) + (2 * parameter_2_len) + 3;
     if ((out = cursor = OPENSSL_malloc(out_len)) == NULL) {
-        SSLfatal(ssl, SSL_AD_INTERNAL_ERROR, SSL_F_NSS_KEYLOG_INT,
-                 ERR_R_MALLOC_FAILURE);
+        SSLfatal(ssl, SSL_AD_INTERNAL_ERROR, ERR_R_MALLOC_FAILURE);
         return 0;
     }
 
@@ -5509,8 +5494,7 @@ int ssl_log_rsa_client_key_exchange(SSL *ssl,
                                     size_t premaster_len)
 {
     if (encrypted_premaster_len < 8) {
-        SSLfatal(ssl, SSL_AD_INTERNAL_ERROR,
-                 SSL_F_SSL_LOG_RSA_CLIENT_KEY_EXCHANGE, ERR_R_INTERNAL_ERROR);
+        SSLfatal(ssl, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return 0;
     }
 
@@ -5545,14 +5529,12 @@ int ssl_cache_cipherlist(SSL *s, PACKET *cipher_suites, int sslv2format)
     n = sslv2format ? SSLV2_CIPHER_LEN : TLS_CIPHER_LEN;
 
     if (PACKET_remaining(cipher_suites) == 0) {
-        SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_F_SSL_CACHE_CIPHERLIST,
-                 SSL_R_NO_CIPHERS_SPECIFIED);
+        SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_NO_CIPHERS_SPECIFIED);
         return 0;
     }
 
     if (PACKET_remaining(cipher_suites) % n != 0) {
-        SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_F_SSL_CACHE_CIPHERLIST,
-                 SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST);
+        SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST);
         return 0;
     }
 
@@ -5576,8 +5558,7 @@ int ssl_cache_cipherlist(SSL *s, PACKET *cipher_suites, int sslv2format)
         raw = OPENSSL_malloc(numciphers * TLS_CIPHER_LEN);
         s->s3.tmp.ciphers_raw = raw;
         if (raw == NULL) {
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_CACHE_CIPHERLIST,
-                     ERR_R_MALLOC_FAILURE);
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_MALLOC_FAILURE);
             return 0;
         }
         for (s->s3.tmp.ciphers_rawlen = 0;
@@ -5589,8 +5570,7 @@ int ssl_cache_cipherlist(SSL *s, PACKET *cipher_suites, int sslv2format)
                                               TLS_CIPHER_LEN))
                     || (leadbyte != 0
                         && !PACKET_forward(&sslv2ciphers, TLS_CIPHER_LEN))) {
-                SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_F_SSL_CACHE_CIPHERLIST,
-                         SSL_R_BAD_PACKET);
+                SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_BAD_PACKET);
                 OPENSSL_free(s->s3.tmp.ciphers_raw);
                 s->s3.tmp.ciphers_raw = NULL;
                 s->s3.tmp.ciphers_rawlen = 0;
@@ -5601,8 +5581,7 @@ int ssl_cache_cipherlist(SSL *s, PACKET *cipher_suites, int sslv2format)
         }
     } else if (!PACKET_memdup(cipher_suites, &s->s3.tmp.ciphers_raw,
                            &s->s3.tmp.ciphers_rawlen)) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_CACHE_CIPHERLIST,
-                 ERR_R_INTERNAL_ERROR);
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return 0;
     }
     return 1;
@@ -5635,20 +5614,18 @@ int bytes_to_cipher_list(SSL *s, PACKET *cipher_suites,
 
     if (PACKET_remaining(cipher_suites) == 0) {
         if (fatal)
-            SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_F_BYTES_TO_CIPHER_LIST,
-                     SSL_R_NO_CIPHERS_SPECIFIED);
+            SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_NO_CIPHERS_SPECIFIED);
         else
-            SSLerr(SSL_F_BYTES_TO_CIPHER_LIST, SSL_R_NO_CIPHERS_SPECIFIED);
+            ERR_raise(ERR_LIB_SSL, SSL_R_NO_CIPHERS_SPECIFIED);
         return 0;
     }
 
     if (PACKET_remaining(cipher_suites) % n != 0) {
         if (fatal)
-            SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_F_BYTES_TO_CIPHER_LIST,
+            SSLfatal(s, SSL_AD_DECODE_ERROR,
                      SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST);
         else
-            SSLerr(SSL_F_BYTES_TO_CIPHER_LIST,
-                   SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST);
+            ERR_raise(ERR_LIB_SSL, SSL_R_ERROR_IN_RECEIVED_CIPHER_LIST);
         return 0;
     }
 
@@ -5656,10 +5633,9 @@ int bytes_to_cipher_list(SSL *s, PACKET *cipher_suites,
     scsvs = sk_SSL_CIPHER_new_null();
     if (sk == NULL || scsvs == NULL) {
         if (fatal)
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_BYTES_TO_CIPHER_LIST,
-                     ERR_R_MALLOC_FAILURE);
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_MALLOC_FAILURE);
         else
-            SSLerr(SSL_F_BYTES_TO_CIPHER_LIST, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
         goto err;
     }
 
@@ -5678,20 +5654,18 @@ int bytes_to_cipher_list(SSL *s, PACKET *cipher_suites,
             if ((c->valid && !sk_SSL_CIPHER_push(sk, c)) ||
                 (!c->valid && !sk_SSL_CIPHER_push(scsvs, c))) {
                 if (fatal)
-                    SSLfatal(s, SSL_AD_INTERNAL_ERROR,
-                             SSL_F_BYTES_TO_CIPHER_LIST, ERR_R_MALLOC_FAILURE);
+                    SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_MALLOC_FAILURE);
                 else
-                    SSLerr(SSL_F_BYTES_TO_CIPHER_LIST, ERR_R_MALLOC_FAILURE);
+                    ERR_raise(ERR_LIB_SSL, ERR_R_MALLOC_FAILURE);
                 goto err;
             }
         }
     }
     if (PACKET_remaining(cipher_suites) > 0) {
         if (fatal)
-            SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_F_BYTES_TO_CIPHER_LIST,
-                     SSL_R_BAD_LENGTH);
+            SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_BAD_LENGTH);
         else
-            SSLerr(SSL_F_BYTES_TO_CIPHER_LIST, SSL_R_BAD_LENGTH);
+            ERR_raise(ERR_LIB_SSL, SSL_R_BAD_LENGTH);
         goto err;
     }
 
@@ -5819,34 +5793,34 @@ void SSL_set_post_handshake_auth(SSL *ssl, int val)
 int SSL_verify_client_post_handshake(SSL *ssl)
 {
     if (!SSL_IS_TLS13(ssl)) {
-        SSLerr(SSL_F_SSL_VERIFY_CLIENT_POST_HANDSHAKE, SSL_R_WRONG_SSL_VERSION);
+        ERR_raise(ERR_LIB_SSL, SSL_R_WRONG_SSL_VERSION);
         return 0;
     }
     if (!ssl->server) {
-        SSLerr(SSL_F_SSL_VERIFY_CLIENT_POST_HANDSHAKE, SSL_R_NOT_SERVER);
+        ERR_raise(ERR_LIB_SSL, SSL_R_NOT_SERVER);
         return 0;
     }
 
     if (!SSL_is_init_finished(ssl)) {
-        SSLerr(SSL_F_SSL_VERIFY_CLIENT_POST_HANDSHAKE, SSL_R_STILL_IN_INIT);
+        ERR_raise(ERR_LIB_SSL, SSL_R_STILL_IN_INIT);
         return 0;
     }
 
     switch (ssl->post_handshake_auth) {
     case SSL_PHA_NONE:
-        SSLerr(SSL_F_SSL_VERIFY_CLIENT_POST_HANDSHAKE, SSL_R_EXTENSION_NOT_RECEIVED);
+        ERR_raise(ERR_LIB_SSL, SSL_R_EXTENSION_NOT_RECEIVED);
         return 0;
     default:
     case SSL_PHA_EXT_SENT:
-        SSLerr(SSL_F_SSL_VERIFY_CLIENT_POST_HANDSHAKE, ERR_R_INTERNAL_ERROR);
+        ERR_raise(ERR_LIB_SSL, ERR_R_INTERNAL_ERROR);
         return 0;
     case SSL_PHA_EXT_RECEIVED:
         break;
     case SSL_PHA_REQUEST_PENDING:
-        SSLerr(SSL_F_SSL_VERIFY_CLIENT_POST_HANDSHAKE, SSL_R_REQUEST_PENDING);
+        ERR_raise(ERR_LIB_SSL, SSL_R_REQUEST_PENDING);
         return 0;
     case SSL_PHA_REQUESTED:
-        SSLerr(SSL_F_SSL_VERIFY_CLIENT_POST_HANDSHAKE, SSL_R_REQUEST_SENT);
+        ERR_raise(ERR_LIB_SSL, SSL_R_REQUEST_SENT);
         return 0;
     }
 
@@ -5855,7 +5829,7 @@ int SSL_verify_client_post_handshake(SSL *ssl)
     /* checks verify_mode and algorithm_auth */
     if (!send_certificate_request(ssl)) {
         ssl->post_handshake_auth = SSL_PHA_EXT_RECEIVED; /* restore on error */
-        SSLerr(SSL_F_SSL_VERIFY_CLIENT_POST_HANDSHAKE, SSL_R_INVALID_CONFIG);
+        ERR_raise(ERR_LIB_SSL, SSL_R_INVALID_CONFIG);
         return 0;
     }
 
@@ -5980,4 +5954,30 @@ void ssl_evp_md_free(const EVP_MD *md)
          */
         EVP_MD_free((EVP_MD *)md);
     }
+}
+
+int SSL_set0_tmp_dh_pkey(SSL *s, EVP_PKEY *dhpkey)
+{
+    if (!ssl_security(s, SSL_SECOP_TMP_DH,
+                      EVP_PKEY_security_bits(dhpkey), 0, dhpkey)) {
+        ERR_raise(ERR_LIB_SSL, SSL_R_DH_KEY_TOO_SMALL);
+        EVP_PKEY_free(dhpkey);
+        return 0;
+    }
+    EVP_PKEY_free(s->cert->dh_tmp);
+    s->cert->dh_tmp = dhpkey;
+    return 1;
+}
+
+int SSL_CTX_set0_tmp_dh_pkey(SSL_CTX *ctx, EVP_PKEY *dhpkey)
+{
+    if (!ssl_ctx_security(ctx, SSL_SECOP_TMP_DH,
+                          EVP_PKEY_security_bits(dhpkey), 0, dhpkey)) {
+        ERR_raise(ERR_LIB_SSL, SSL_R_DH_KEY_TOO_SMALL);
+        EVP_PKEY_free(dhpkey);
+        return 0;
+    }
+    EVP_PKEY_free(ctx->cert->dh_tmp);
+    ctx->cert->dh_tmp = dhpkey;
+    return 1;
 }

@@ -33,7 +33,7 @@ B<openssl> B<ca>
 [B<-days> I<arg>]
 [B<-md> I<arg>]
 [B<-policy> I<arg>]
-[B<-keyfile> I<arg>]
+[B<-keyfile> I<filename>|I<uri>]
 [B<-keyform> B<DER>|B<PEM>|B<P12>|B<ENGINE>]
 [B<-key> I<arg>]
 [B<-passin> I<arg>]
@@ -62,8 +62,7 @@ B<openssl> B<ca>
 [B<-rand_serial>]
 [B<-multivalue-rdn>]
 {- $OpenSSL::safe::opt_r_synopsis -}
-{- $OpenSSL::safe::opt_engine_synopsis -}
-{- $OpenSSL::safe::opt_provider_synopsis -}
+{- $OpenSSL::safe::opt_engine_synopsis -}{- $OpenSSL::safe::opt_provider_synopsis -}
 [I<certreq>...]
 
 =for openssl ifdef engine
@@ -149,7 +148,7 @@ The CA certificate, which must match with B<-keyfile>.
 The format of the data in certificate input files.
 This option has no effect and is retained for backward compatibility only.
 
-=item B<-keyfile> I<filename>
+=item B<-keyfile> I<filename>|I<uri>
 
 The CA private key to sign requests with. This must match with B<-cert>.
 
@@ -183,6 +182,12 @@ L<ps(1)> on Unix),
 this option should be used with caution.
 Better use B<-passin>.
 
+=item B<-passin> I<arg>
+
+The key password source for key files and certificate PKCS#12 files.
+For more information about the format of B<arg>
+see L<openssl(1)/Pass Phrase Options>.
+
 =item B<-selfsign>
 
 Indicates the issued certificates are to be signed with the key
@@ -196,12 +201,6 @@ certificate appears among the entries in the certificate database
 (see the configuration option B<database>), and uses the same
 serial number counter as all other certificates sign with the
 self-signed certificate.
-
-=item B<-passin> I<arg>
-
-The key and certificate password source.
-For more information about the format of B<arg>
-see L<openssl(1)/Pass Phrase Options>.
 
 =item B<-notext>
 

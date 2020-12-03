@@ -68,8 +68,11 @@ int OSSL_DECODER_CTX_set_passphrase_ui(OSSL_DECODER_CTX *ctx,
  * These will discover all provided methods
  */
 
+int OSSL_DECODER_CTX_set_selection(OSSL_DECODER_CTX *ctx, int selection);
 int OSSL_DECODER_CTX_set_input_type(OSSL_DECODER_CTX *ctx,
                                     const char *input_type);
+int OSSL_DECODER_CTX_set_input_structure(OSSL_DECODER_CTX *ctx,
+                                         const char *input_structure);
 int OSSL_DECODER_CTX_add_decoder(OSSL_DECODER_CTX *ctx, OSSL_DECODER *decoder);
 int OSSL_DECODER_CTX_add_extra(OSSL_DECODER_CTX *ctx,
                                OSSL_LIB_CTX *libctx, const char *propq);
@@ -82,6 +85,9 @@ void *
 OSSL_DECODER_INSTANCE_get_decoder_ctx(OSSL_DECODER_INSTANCE *decoder_inst);
 const char *
 OSSL_DECODER_INSTANCE_get_input_type(OSSL_DECODER_INSTANCE *decoder_inst);
+const char *
+OSSL_DECODER_INSTANCE_get_input_structure(OSSL_DECODER_INSTANCE *decoder_inst,
+                                          int *was_set);
 
 typedef int OSSL_DECODER_CONSTRUCT(OSSL_DECODER_INSTANCE *decoder_inst,
                                    const OSSL_PARAM *params,
@@ -115,7 +121,9 @@ int OSSL_DECODER_from_data(OSSL_DECODER_CTX *ctx, const unsigned char **pdata,
  */
 OSSL_DECODER_CTX *
 OSSL_DECODER_CTX_new_by_EVP_PKEY(EVP_PKEY **pkey,
-                                 const char *input_type, const char *keytype,
+                                 const char *input_type,
+                                 const char *input_struct,
+                                 const char *keytype, int selection,
                                  OSSL_LIB_CTX *libctx, const char *propquery);
 
 # ifdef __cplusplus

@@ -14,12 +14,9 @@
 
 # include <openssl/opensslconf.h>
 # include <openssl/symhacks.h>
+# include <openssl/cryptoerr_legacy.h>
 
 
-# ifdef  __cplusplus
-extern "C"
-# endif
-int ERR_load_RAND_strings(void);
 
 /*
  * RAND function codes.
@@ -33,17 +30,10 @@ int ERR_load_RAND_strings(void);
 #  define RAND_F_RAND_BYTES                                0
 #  define RAND_F_RAND_BYTES_EX                             0
 #  define RAND_F_RAND_DRBG_ENABLE_LOCKING                  0
-#  define RAND_F_RAND_DRBG_GENERATE                        0
 #  define RAND_F_RAND_DRBG_GET_ENTROPY                     0
 #  define RAND_F_RAND_DRBG_GET_NONCE                       0
 #  define RAND_F_RAND_DRBG_INIT_METHOD                     0
-#  define RAND_F_RAND_DRBG_INSTANTIATE                     0
-#  define RAND_F_RAND_DRBG_NEW                             0
-#  define RAND_F_RAND_DRBG_RESEED                          0
 #  define RAND_F_RAND_DRBG_RESTART                         0
-#  define RAND_F_RAND_DRBG_SET                             0
-#  define RAND_F_RAND_DRBG_SET_DEFAULTS                    0
-#  define RAND_F_RAND_DRBG_UNINSTANTIATE                   0
 #  define RAND_F_RAND_LOAD_FILE                            0
 #  define RAND_F_RAND_POOL_ACQUIRE_ENTROPY                 0
 #  define RAND_F_RAND_POOL_ADD                             0
@@ -102,7 +92,6 @@ int ERR_load_RAND_strings(void);
 # define RAND_R_UNABLE_TO_FETCH_DRBG                      144
 # define RAND_R_UNABLE_TO_GET_PARENT_RESEED_PROP_COUNTER  141
 # define RAND_R_UNABLE_TO_GET_PARENT_STRENGTH             138
-# define RAND_R_UNABLE_TO_GET_RESEED_PROP_CTR             142
 # define RAND_R_UNABLE_TO_LOCK_PARENT                     140
 # define RAND_R_UNSUPPORTED_DRBG_FLAGS                    132
 # define RAND_R_UNSUPPORTED_DRBG_TYPE                     120

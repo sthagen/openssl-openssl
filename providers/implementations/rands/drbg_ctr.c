@@ -494,7 +494,7 @@ static int drbg_ctr_init_lengths(PROV_DRBG *drbg)
 
 #ifdef FIPS_MODULE
     if (!ctr->use_df) {
-        PROVerr(0, RAND_R_DERIVATION_FUNCTION_MANDATORY_FOR_FIPS);
+        ERR_raise(ERR_LIB_PROV, RAND_R_DERIVATION_FUNCTION_MANDATORY_FOR_FIPS);
         ctr->use_df = 1;
         res = 0;
     }
@@ -606,7 +606,7 @@ static int drbg_ctr_new(PROV_DRBG *drbg)
 static void *drbg_ctr_new_wrapper(void *provctx, void *parent,
                                    const OSSL_DISPATCH *parent_dispatch)
 {
-    return prov_rand_drbg_new(provctx, parent, parent_dispatch, &drbg_ctr_new,
+    return ossl_rand_drbg_new(provctx, parent, parent_dispatch, &drbg_ctr_new,
                               &drbg_ctr_instantiate, &drbg_ctr_uninstantiate,
                               &drbg_ctr_reseed, &drbg_ctr_generate);
 }
@@ -625,7 +625,7 @@ static void drbg_ctr_free(void *vdrbg)
 
         OPENSSL_secure_clear_free(ctr, sizeof(*ctr));
     }
-    prov_rand_drbg_free(drbg);
+    ossl_rand_drbg_free(drbg);
 }
 
 static int drbg_ctr_get_ctx_params(void *vdrbg, OSSL_PARAM params[])
@@ -645,7 +645,7 @@ static int drbg_ctr_get_ctx_params(void *vdrbg, OSSL_PARAM params[])
             return 0;
     }
 
-    return drbg_get_ctx_params(drbg, params);
+    return ossl_drbg_get_ctx_params(drbg, params);
 }
 
 static const OSSL_PARAM *drbg_ctr_gettable_ctx_params(ossl_unused void *provctx)
@@ -713,7 +713,7 @@ static int drbg_ctr_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     if (cipher_init && !drbg_ctr_init(ctx))
         return 0;
 
-    return drbg_set_ctx_params(ctx, params);
+    return ossl_drbg_set_ctx_params(ctx, params);
 }
 
 static const OSSL_PARAM *drbg_ctr_settable_ctx_params(ossl_unused void *provctx)
@@ -744,9 +744,9 @@ const OSSL_DISPATCH ossl_drbg_ctr_functions[] = {
       (void(*)(void))drbg_ctr_uninstantiate_wrapper },
     { OSSL_FUNC_RAND_GENERATE, (void(*)(void))drbg_ctr_generate_wrapper },
     { OSSL_FUNC_RAND_RESEED, (void(*)(void))drbg_ctr_reseed_wrapper },
-    { OSSL_FUNC_RAND_ENABLE_LOCKING, (void(*)(void))drbg_enable_locking },
-    { OSSL_FUNC_RAND_LOCK, (void(*)(void))drbg_lock },
-    { OSSL_FUNC_RAND_UNLOCK, (void(*)(void))drbg_unlock },
+    { OSSL_FUNC_RAND_ENABLE_LOCKING, (void(*)(void))ossl_drbg_enable_locking },
+    { OSSL_FUNC_RAND_LOCK, (void(*)(void))ossl_drbg_lock },
+    { OSSL_FUNC_RAND_UNLOCK, (void(*)(void))ossl_drbg_unlock },
     { OSSL_FUNC_RAND_SETTABLE_CTX_PARAMS,
       (void(*)(void))drbg_ctr_settable_ctx_params },
     { OSSL_FUNC_RAND_SET_CTX_PARAMS, (void(*)(void))drbg_ctr_set_ctx_params },

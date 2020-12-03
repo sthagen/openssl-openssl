@@ -16,9 +16,10 @@ B<openssl> B<dgst>|I<digest>
 [B<-list>]
 [B<-hex>]
 [B<-binary>]
+[B<-xoflen> I<length>]
 [B<-r>]
 [B<-out> I<filename>]
-[B<-sign> I<filename>]
+[B<-sign> I<filename>|I<uri>]
 [B<-keyform> B<DER>|B<PEM>|B<P12>|B<ENGINE>]
 [B<-passin> I<arg>]
 [B<-verify> I<filename>]
@@ -29,8 +30,7 @@ B<openssl> B<dgst>|I<digest>
 [B<-mac> I<alg>]
 [B<-macopt> I<nm>:I<v>]
 [B<-fips-fingerprint>]
-{- $OpenSSL::safe::opt_engine_synopsis -}
-{- output_off() if $disabled{"deprecated-3.0"}; ""
+{- $OpenSSL::safe::opt_engine_synopsis -}{- output_off() if $disabled{"deprecated-3.0"}; ""
 -}[B<-engine_impl> I<id>]{-
   output_on() if $disabled{"deprecated-3.0"}; "" -}
 {- $OpenSSL::safe::opt_r_synopsis -}
@@ -85,6 +85,10 @@ signatures using B<-hex>.
 
 Output the digest or signature in binary form.
 
+=item B<-xoflen> I<length>
+
+Set the output length for XOF algorithms, such as B<shake128>.
+
 =item B<-r>
 
 =for openssl foreign manual sha1sum(1)
@@ -96,9 +100,9 @@ Used by programs like L<sha1sum(1)>.
 
 Filename to output to, or standard output by default.
 
-=item B<-sign> I<filename>
+=item B<-sign> I<filename>|I<uri>
 
-Digitally sign the digest using the private key in "filename". Note this option
+Digitally sign the digest using the given private key. Note this option
 does not support Ed25519 or Ed448 private keys. Use the L<openssl-pkeyutl(1)>
 command instead for this.
 

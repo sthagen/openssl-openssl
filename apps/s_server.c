@@ -21,6 +21,7 @@
 #include <openssl/e_os2.h>
 #include <openssl/async.h>
 #include <openssl/ssl.h>
+#include <openssl/decoder.h>
 
 #ifndef OPENSSL_NO_SOCK
 
@@ -71,9 +72,6 @@ static int generate_session_id(SSL *ssl, unsigned char *id,
                                unsigned int *id_len);
 static void init_session_cache_ctx(SSL_CTX *sctx);
 static void free_sessions(void);
-#ifndef OPENSSL_NO_DH
-static DH *load_dh_param(const char *dhfile);
-#endif
 static void print_connection_info(SSL *con);
 
 static const int bufsize = 16 * 1024;
@@ -829,7 +827,8 @@ const OPTIONS s_server_options[] = {
      "Second private key file to use (usually for DSA)"},
     {"dkeyform", OPT_DKEYFORM, 'F',
      "Second key file format (ENGINE, other values ignored)"},
-    {"dpass", OPT_DPASS, 's', "Second private key and cert file pass phrase source"},
+    {"dpass", OPT_DPASS, 's',
+     "Second private key and cert file pass phrase source"},
     {"dhparam", OPT_DHPARAM, '<', "DH parameters file to use"},
     {"servername", OPT_SERVERNAME, 's',
      "Servername for HostName TLS extension"},
@@ -982,9 +981,7 @@ const OPTIONS s_server_options[] = {
     {"use_srtp", OPT_SRTP_PROFILES, 's',
      "Offer SRTP key management with a colon-separated profile list"},
 #endif
-#ifndef OPENSSL_NO_DH
     {"no_dhe", OPT_NO_DHE, '-', "Disable ephemeral DH"},
-#endif
 #ifndef OPENSSL_NO_NEXTPROTONEG
     {"nextprotoneg", OPT_NEXTPROTONEG, 's',
      "Set the advertised protocols for the NPN extension (comma-separated list)"},
@@ -1030,10 +1027,8 @@ int s_server_main(int argc, char *argv[])
 #endif
     do_server_cb server_cb;
     int vpmtouched = 0, build_chain = 0, no_cache = 0, ext_cache = 0;
-#ifndef OPENSSL_NO_DH
     char *dhfile = NULL;
     int no_dhe = 0;
-#endif
     int nocert = 0, ret = 1;
     int noCApath = 0, noCAfile = 0, noCAstore = 0;
     int s_cert_format = FORMAT_PEM, s_key_format = FORMAT_PEM;
@@ -1442,9 +1437,7 @@ int s_server_main(int argc, char *argv[])
             s_quiet = s_brief = verify_args.quiet = 1;
             break;
         case OPT_NO_DHE:
-#ifndef OPENSSL_NO_DH
             no_dhe = 1;
-#endif
             break;
         case OPT_NO_RESUME_EPHEMERAL:
             no_resume_ephemeral = 1;
@@ -1744,8 +1737,7 @@ int s_server_main(int argc, char *argv[])
         if (s_key == NULL)
             goto end;
 
-        s_cert = load_cert_pass(s_cert_file, s_cert_format, pass,
-                           "server certificate");
+        s_cert = load_cert_pass(s_cert_file, 1, pass, "server certificate");
 
         if (s_cert == NULL)
             goto end;
@@ -1761,7 +1753,7 @@ int s_server_main(int argc, char *argv[])
             if (s_key2 == NULL)
                 goto end;
 
-            s_cert2 = load_cert_pass(s_cert_file2, s_cert_format, pass,
+            s_cert2 = load_cert_pass(s_cert_file2, 1, pass,
                                 "second server certificate");
 
             if (s_cert2 == NULL)
@@ -1784,7 +1776,7 @@ int s_server_main(int argc, char *argv[])
 
     if (crl_file != NULL) {
         X509_CRL *crl;
-        crl = load_crl(crl_file, crl_format, "CRL");
+        crl = load_crl(crl_file, "CRL");
         if (crl == NULL)
             goto end;
         crls = sk_X509_CRL_new_null();
@@ -1806,8 +1798,8 @@ int s_server_main(int argc, char *argv[])
         if (s_dkey == NULL)
             goto end;
 
-        s_dcert = load_cert_pass(s_dcert_file, s_dcert_format, dpass,
-                            "second server certificate");
+        s_dcert = load_cert_pass(s_dcert_file, 1, dpass,
+                                 "second server certificate");
 
         if (s_dcert == NULL) {
             ERR_print_errors(bio_err);
@@ -2031,54 +2023,67 @@ int s_server_main(int argc, char *argv[])
     if (alpn_ctx.data)
         SSL_CTX_set_alpn_select_cb(ctx, alpn_cb, &alpn_ctx);
 
-#ifndef OPENSSL_NO_DH
     if (!no_dhe) {
-        DH *dh = NULL;
+        EVP_PKEY *dhpkey = NULL;
 
         if (dhfile != NULL)
-            dh = load_dh_param(dhfile);
+            dhpkey = load_keyparams(dhfile, 0, "DH", "DH parameters");
         else if (s_cert_file != NULL)
-            dh = load_dh_param(s_cert_file);
+            dhpkey = load_keyparams(s_cert_file, 0, "DH", "DH parameters");
 
-        if (dh != NULL) {
+        if (dhpkey != NULL) {
             BIO_printf(bio_s_out, "Setting temp DH parameters\n");
         } else {
             BIO_printf(bio_s_out, "Using default temp DH parameters\n");
         }
         (void)BIO_flush(bio_s_out);
 
-        if (dh == NULL) {
+        if (dhpkey == NULL) {
             SSL_CTX_set_dh_auto(ctx, 1);
-        } else if (!SSL_CTX_set_tmp_dh(ctx, dh)) {
-            BIO_puts(bio_err, "Error setting temp DH parameters\n");
-            ERR_print_errors(bio_err);
-            DH_free(dh);
-            goto end;
-        }
-
-        if (ctx2 != NULL) {
-            if (!dhfile) {
-                DH *dh2 = load_dh_param(s_cert_file2);
-                if (dh2 != NULL) {
-                    BIO_printf(bio_s_out, "Setting temp DH parameters\n");
-                    (void)BIO_flush(bio_s_out);
-
-                    DH_free(dh);
-                    dh = dh2;
-                }
+        } else {
+            /*
+             * We need 2 references: one for use by ctx and one for use by
+             * ctx2
+             */
+            if (!EVP_PKEY_up_ref(dhpkey)) {
+                EVP_PKEY_free(dhpkey);
+                goto end;
             }
-            if (dh == NULL) {
-                SSL_CTX_set_dh_auto(ctx2, 1);
-            } else if (!SSL_CTX_set_tmp_dh(ctx2, dh)) {
+            if (!SSL_CTX_set0_tmp_dh_pkey(ctx, dhpkey)) {
                 BIO_puts(bio_err, "Error setting temp DH parameters\n");
                 ERR_print_errors(bio_err);
-                DH_free(dh);
+                /* Free 2 references */
+                EVP_PKEY_free(dhpkey);
+                EVP_PKEY_free(dhpkey);
                 goto end;
             }
         }
-        DH_free(dh);
+
+        if (ctx2 != NULL) {
+            if (dhfile != NULL) {
+                EVP_PKEY *dhpkey2 = load_keyparams(s_cert_file2, 0, "DH",
+                                                   "DH parameters");
+
+                if (dhpkey2 != NULL) {
+                    BIO_printf(bio_s_out, "Setting temp DH parameters\n");
+                    (void)BIO_flush(bio_s_out);
+
+                    EVP_PKEY_free(dhpkey);
+                    dhpkey = dhpkey2;
+                }
+            }
+            if (dhpkey == NULL) {
+                SSL_CTX_set_dh_auto(ctx2, 1);
+            } else if (!SSL_CTX_set0_tmp_dh_pkey(ctx2, dhpkey)) {
+                BIO_puts(bio_err, "Error setting temp DH parameters\n");
+                ERR_print_errors(bio_err);
+                EVP_PKEY_free(dhpkey);
+                goto end;
+            }
+            dhpkey = NULL;
+        }
+        EVP_PKEY_free(dhpkey);
     }
-#endif
 
     if (!set_cert_key_stuff(ctx, s_cert, s_key, s_chain, build_chain))
         goto end;
@@ -3003,21 +3008,6 @@ static void print_connection_info(SSL *con)
 
     (void)BIO_flush(bio_s_out);
 }
-
-#ifndef OPENSSL_NO_DH
-static DH *load_dh_param(const char *dhfile)
-{
-    DH *ret = NULL;
-    BIO *bio;
-
-    if ((bio = BIO_new_file(dhfile, "r")) == NULL)
-        goto err;
-    ret = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
- err:
-    BIO_free(bio);
-    return ret;
-}
-#endif
 
 static int www_body(int s, int stype, int prot, unsigned char *context)
 {

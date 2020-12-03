@@ -176,7 +176,7 @@ static void init_thread_remove_handlers(THREAD_EVENT_HANDLER **handsin)
             = sk_THREAD_EVENT_HANDLER_PTR_value(gtr->skhands, i);
 
         if (hands == handsin) {
-            hands = sk_THREAD_EVENT_HANDLER_PTR_delete(gtr->skhands, i);
+            sk_THREAD_EVENT_HANDLER_PTR_delete(gtr->skhands, i);
             CRYPTO_THREAD_unlock(gtr->lock);
             return;
         }
@@ -389,6 +389,8 @@ static int init_thread_deregister(void *index, int all)
         return 0;
     if (!all)
         CRYPTO_THREAD_write_lock(gtr->lock);
+    else
+        glob_tevent_reg = NULL;
     for (i = 0; i < sk_THREAD_EVENT_HANDLER_PTR_num(gtr->skhands); i++) {
         THREAD_EVENT_HANDLER **hands
             = sk_THREAD_EVENT_HANDLER_PTR_value(gtr->skhands, i);

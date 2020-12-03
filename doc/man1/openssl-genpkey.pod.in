@@ -22,8 +22,7 @@ B<openssl> B<genpkey>
 [B<-pkeyopt> I<opt>:I<value>]
 [B<-genparam>]
 [B<-text>]
-{- $OpenSSL::safe::opt_engine_synopsis -}
-{- $OpenSSL::safe::opt_provider_synopsis -}
+{- $OpenSSL::safe::opt_engine_synopsis -}{- $OpenSSL::safe::opt_provider_synopsis -}
 {- $OpenSSL::safe::opt_config_synopsis -}
 
 =for openssl ifdef engine
@@ -47,8 +46,10 @@ standard output is used.
 
 =item B<-outform> B<DER>|B<PEM>
 
-The output format; the default is B<PEM>.
+The output format, except when B<-genparam> is given; the default is B<PEM>.
 See L<openssl(1)/Format Options> for details.
+
+When B<-genparam> is given, B<-outform> is ignored.
 
 =item B<-pass> I<arg>
 

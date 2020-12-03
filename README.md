@@ -110,7 +110,7 @@ document.
  * [NOTES-Unix.md](NOTES-Unix.md)
  * [NOTES-VMS.md](NOTES-VMS.md)
  * [NOTES-Windows.txt](NOTES-Windows.txt)
- * [NOTES-Perl.m](NOTES-Perl.md)
+ * [NOTES-Perl.md](NOTES-Perl.md)
  * [NOTES-Valgrind.md](NOTES-Valgrind.md)
 
 Specific notes on upgrading to OpenSSL 3.0 from previous versions, as well as
@@ -207,11 +207,11 @@ All rights reserved.
     "OpenSSL Logo"
 
 [travis badge]:
-    <https://travis-ci.org/openssl/openssl.svg?branch=master>
+    <https://travis-ci.com/openssl/openssl.svg?branch=master>
     "Travis Build Status"
 
 [travis jobs]:
-    <https://travis-ci.org/openssl/openssl>
+    <https://travis-ci.com/openssl/openssl>
     "Travis Jobs"
 
 [appveyor badge]:

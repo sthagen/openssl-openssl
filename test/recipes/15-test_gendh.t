@@ -35,6 +35,14 @@ ok(run(app([ 'openssl', 'genpkey', '-genparam',
 
 ok(run(app([ 'openssl', 'genpkey', '-genparam',
              '-algorithm', 'DH',
+             '-pkeyopt', 'pbits:2048',
+             '-pkeyopt', 'qbits:224',
+             '-pkeyopt', 'digest:SHA512-224',
+             '-pkeyopt', 'type:fips186_4'])),
+   "genpkey DH params fips186_4 with truncated SHA");
+
+ok(run(app([ 'openssl', 'genpkey', '-genparam',
+             '-algorithm', 'DH',
              '-pkeyopt', 'type:fips186_2',
              '-text'])),
    "genpkey DH params fips186_2");
@@ -54,28 +62,18 @@ ok(run(app([ 'openssl', 'genpkey', '-genparam',
              '-algorithm', 'DH',
              '-pkeyopt', 'gindex:1',
              '-pkeyopt', 'type:fips186_4',
-             '-out', 'dhgen.pem'])),
+             '-out', 'dhgen.pem' ])),
    "genpkey DH params fips186_4 PEM");
-
-ok(run(app([ 'openssl', 'genpkey', '-genparam',
-             '-algorithm', 'DH',
-             '-pkeyopt', 'gindex:1',
-             '-pkeyopt', 'pbits:2048',
-             '-pkeyopt', 'qbits:256',
-             '-pkeyopt', 'type:fips186_4',
-             '-outform', 'DER',
-             '-out', 'dhgen.der'])),
-   "genpkey DH params fips186_4 DER");
 
 # The seed and counter should be the ones generated from the param generation
 # Just put some dummy ones in to show it works.
 ok(run(app([ 'openssl', 'genpkey',
-             '-paramfile', 'dhgen.der',
+             '-paramfile', 'dhgen.pem',
              '-pkeyopt', 'gindex:1',
              '-pkeyopt', 'hexseed:0102030405060708090A0B0C0D0E0F1011121314',
              '-pkeyopt', 'pcounter:25',
-             '-text'])),
-   "genpkey DH fips186_4 with DER params");
+             '-text' ])),
+   "genpkey DH fips186_4 with PEM params");
 
  ok(!run(app([ 'openssl', 'genpkey',
               '-algorithm', 'DH'])),

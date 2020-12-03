@@ -23,6 +23,56 @@ OpenSSL 3.0
 
 ### Changes between 1.1.1 and 3.0 [xx XXX xxxx]
 
+ * Deprecated all the libcrypto and libssl error string loading
+   functions: ERR_load_ASN1_strings(), ERR_load_ASYNC_strings(),
+   ERR_load_BIO_strings(), ERR_load_BN_strings(), ERR_load_BUF_strings(),
+   ERR_load_CMS_strings(), ERR_load_COMP_strings(), ERR_load_CONF_strings(),
+   ERR_load_CRYPTO_strings(), ERR_load_CT_strings(), ERR_load_DH_strings(),
+   ERR_load_DSA_strings(), ERR_load_EC_strings(), ERR_load_ENGINE_strings(),
+   ERR_load_ERR_strings(), ERR_load_EVP_strings(), ERR_load_KDF_strings(),
+   ERR_load_OBJ_strings(), ERR_load_OCSP_strings(), ERR_load_PEM_strings(),
+   ERR_load_PKCS12_strings(), ERR_load_PKCS7_strings(), ERR_load_RAND_strings(),
+   ERR_load_RSA_strings(), ERR_load_OSSL_STORE_strings(), ERR_load_TS_strings(),
+   ERR_load_UI_strings(), ERR_load_X509_strings(), ERR_load_X509V3_strings().
+
+   Calling these functions is not necessary since OpenSSL 1.1.0, as OpenSSL
+   now loads error strings automatically.
+
+   *Richard Levitte*
+
+ * The functions SSL_CTX_set_tmp_dh_callback and SSL_set_tmp_dh_callback, as
+   well as the macros SSL_CTX_set_tmp_dh() and SSL_set_tmp_dh() have been
+   deprecated. These are used to set the Diffie-Hellman (DH) parameters that
+   are to be used by servers requiring ephemeral DH keys. Instead applications
+   should consider using the built-in DH parameters that are available by
+   calling SSL_CTX_set_dh_auto() or SSL_set_dh_auto(). If custom parameters are
+   necessary then applications can use the alternative functions
+   SSL_CTX_set0_tmp_dh_pkey() and SSL_set0_tmp_dh_pkey(). There is no direct
+   replacement for the "callback" functions. The callback was originally useful
+   in order to have different parameters for export and non-export ciphersuites.
+   Export ciphersuites are no longer supported by OpenSSL. Use of the callback
+   functions should be replaced by one of the other methods described above.
+
+   *Matt Caswell*
+
+ * The -crypt option to the passwd command line tool has been removed.
+
+   *Paul Dale*
+
+ * The -C option to the x509, dhparam, dsaparam, and ecparam commands
+   were removed.
+
+   *Rich Salz*
+
+ * Add support for AES Key Wrap inverse ciphers to the EVP layer.
+   The algorithms are:
+   "AES-128-WRAP-INV", "AES-192-WRAP-INV", "AES-256-WRAP-INV",
+   "AES-128-WRAP-PAD-INV", "AES-192-WRAP-PAD-INV" and "AES-256-WRAP-PAD-INV".
+   The inverse ciphers use AES decryption for wrapping, and
+   AES encryption for unwrapping.
+
+   *Shane Lontis*
+
  * Deprecated EVP_PKEY_set1_tls_encodedpoint() and
    EVP_PKEY_get1_tls_encodedpoint(). These functions were previously used by
    libssl to set or get an encoded public key in/from an EVP_PKEY object. With
@@ -416,9 +466,9 @@ OpenSSL 3.0
  * All of the low level DH functions have been deprecated including:
 
    DH_OpenSSL, DH_set_default_method, DH_get_default_method, DH_set_method,
-   DH_new_method, DH_size, DH_security_bits, DH_get_ex_new_index,
-   DH_set_ex_data, DH_get_ex_data, DH_generate_parameters_ex,
-   DH_check_params_ex, DH_check_ex, DH_check_pub_key_ex,
+   DH_new_method, DH_new, DH_free, DH_up_ref, DH_bits, DH_set0_pqg, DH_size,
+   DH_security_bits, DH_get_ex_new_index, DH_set_ex_data, DH_get_ex_data,
+   DH_generate_parameters_ex, DH_check_params_ex, DH_check_ex, DH_check_pub_key_ex,
    DH_check, DH_check_pub_key, DH_generate_key, DH_compute_key,
    DH_compute_key_padded, DHparams_print_fp, DHparams_print, DH_get_nid,
    DH_KDF_X9_42, DH_get0_engine, DH_meth_new, DH_meth_free, DH_meth_dup,
@@ -433,7 +483,18 @@ OpenSSL 3.0
    time.  Instead applications should use L<EVP_PKEY_derive_init(3)>
    and L<EVP_PKEY_derive(3)>.
 
-   *Paul Dale*
+   Additionally functions that read and write DH objects such as d2i_DHparams,
+   i2d_DHparams, PEM_read_DHparam, PEM_write_DHparams and other similar
+   functions have also been deprecated. Applications should instead use the
+   OSSL_DECODER and OSSL_ENCODER APIs to read and write DH files.
+
+   Finaly functions that assign or obtain DH objects from an EVP_PKEY such as
+   EVP_PKEY_assign_DH(), EVP_PKEY_get0_DH, EVP_PKEY_get1_DH, EVP_PKEY_set1_DH
+   are also deprecated. Applications should instead either read or write an
+   EVP_PKEY directly using the OSSL_DECODER and OSSL_ENCODER APIs. Or load an
+   EVP_PKEY directly from DH data using EVP_PKEY_fromdata().
+
+   *Paul Dale and Matt Caswell*
 
  * All of the low level DSA functions have been deprecated including:
 
@@ -802,14 +863,17 @@ OpenSSL 3.0
  * Added ERR functionality to give callers access to the stored function
    names that have replaced the older function code based functions.
 
-   New functions are ERR_get_error_func(), ERR_peek_error_func(),
-   ERR_peek_last_error_func(), ERR_get_error_data(), ERR_peek_error_data(),
-   ERR_peek_last_error_data(), ERR_get_error_all(), ERR_peek_error_all()
-   and ERR_peek_last_error_all().
+   New functions are ERR_peek_error_func(), ERR_peek_last_error_func(),
+   ERR_peek_error_data(), ERR_peek_last_error_data(), ERR_get_error_all(),
+   ERR_peek_error_all() and ERR_peek_last_error_all().
 
-   These functions have become deprecated: ERR_get_error_line_data(),
-   ERR_peek_error_line_data(), ERR_peek_last_error_line_data() and
-   ERR_func_error_string().
+   These functions have become deprecated: ERR_get_error_line(),
+   ERR_get_error_line_data(), ERR_peek_error_line_data(),
+   ERR_peek_last_error_line_data() and ERR_func_error_string().
+
+   Users are recommended to use ERR_get_error_all(), or to pick information
+   with ERR_peek functions and finish off with getting the error code by using
+   ERR_get_error().
 
    *Richard Levitte*
 
@@ -821,6 +885,30 @@ OpenSSL 3.0
            $ nmake VF=1 test                          # Windows
 
    *Richard Levitte*
+
+ * Added several checks to X509_verify_cert() according to requirements in
+   RFC 5280 in case `X509_V_FLAG_X509_STRICT` is set
+   (which may be done by using the CLI option `-x509_strict`):
+   * The basicConstraints of CA certificates must be marked critical.
+   * CA certificates must explicitly include the keyUsage extension.
+   * If a pathlenConstraint is given the key usage keyCertSign must be allowed.
+   * The issuer name of any certificate must not be empty.
+   * The subject name of CA certs, certs with keyUsage crlSign,
+     and certs without subjectAlternativeName must not be empty.
+   * If a subjectAlternativeName extension is given it must not be empty.
+   * The signatureAlgorithm field and the cert signature must be consistent.
+   * Any given authorityKeyIdentifier and any given subjectKeyIdentifier
+     must not be marked critical.
+   * The authorityKeyIdentifier must be given for X.509v3 certs
+     unless they are self-signed.
+   * The subjectKeyIdentifier must be given for all X.509v3 CA certs.
+
+   *David von Oheimb*
+
+ * Certificate verification using X509_verify_cert() meanwhile rejects EC keys
+   with explicit curve parameters (specifiedCurve) as required by RFC 5480.
+
+   *Tomas Mraz*
 
  * For built-in EC curves, ensure an EC_GROUP built from the curve name is
    used even when parsing explicit parameters, when loading a encoded key
@@ -1236,6 +1324,15 @@ OpenSSL 3.0
    when outputting them via `*ca` (rather than reversing it).
 
    *David von Oheimb*
+
+ * Deprecated pthread fork support methods. These were unused so no
+   replacement is required.
+
+   - OPENSSL_fork_prepare()
+   - OPENSSL_fork_parent()
+   - OPENSSL_fork_child()
+
+   *Randall S. Becker*
 
 OpenSSL 1.1.1
 -------------

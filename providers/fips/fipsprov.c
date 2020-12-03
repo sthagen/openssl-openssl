@@ -18,6 +18,7 @@
 #include "prov/providercommon.h"
 #include "prov/providercommonerr.h"
 #include "prov/provider_util.h"
+#include "prov/seeding.h"
 #include "self_test.h"
 
 static const char FIPS_DEFAULT_PROPERTIES[] = "provider=fips,fips=yes";
@@ -286,6 +287,15 @@ static const OSSL_ALGORITHM_CAPABLE fips_ciphers[] = {
         ossl_aes192wrappad_functions),
     ALG("AES-128-WRAP-PAD:id-aes128-wrap-pad:AES128-WRAP-PAD",
         ossl_aes128wrappad_functions),
+    ALG("AES-256-WRAP-INV:AES256-WRAP-INV", ossl_aes256wrapinv_functions),
+    ALG("AES-192-WRAP-INV:AES192-WRAP-INV", ossl_aes192wrapinv_functions),
+    ALG("AES-128-WRAP-INV:AES128-WRAP-INV", ossl_aes128wrapinv_functions),
+    ALG("AES-256-WRAP-PAD-INV:AES256-WRAP-PAD-INV",
+        ossl_aes256wrappadinv_functions),
+    ALG("AES-192-WRAP-PAD-INV:AES192-WRAP-PAD-INV",
+        ossl_aes192wrappadinv_functions),
+    ALG("AES-128-WRAP-PAD-INV:AES128-WRAP-PAD-INV",
+        ossl_aes128wrappadinv_functions),
     ALGC("AES-128-CBC-HMAC-SHA1", ossl_aes128cbc_hmac_sha1_functions,
          ossl_cipher_capable_aes_cbc_hmac_sha1),
     ALGC("AES-256-CBC-HMAC-SHA1", ossl_aes256cbc_hmac_sha1_functions,
@@ -318,7 +328,10 @@ static const OSSL_ALGORITHM fips_kdfs[] = {
     { "SSKDF", FIPS_DEFAULT_PROPERTIES, ossl_kdf_sskdf_functions },
     { "PBKDF2", FIPS_DEFAULT_PROPERTIES, ossl_kdf_pbkdf2_functions },
     { "SSHKDF", FIPS_DEFAULT_PROPERTIES, ossl_kdf_sshkdf_functions },
-    { "X963KDF", FIPS_DEFAULT_PROPERTIES, ossl_kdf_x963_kdf_functions },
+    { "X963KDF:X942KDF-CONCAT", FIPS_DEFAULT_PROPERTIES,
+      ossl_kdf_x963_kdf_functions },
+    { "X942KDF-ASN1:X942KDF", FIPS_DEFAULT_PROPERTIES,
+      ossl_kdf_x942_kdf_functions },
     { "TLS1-PRF", FIPS_DEFAULT_PROPERTIES, ossl_kdf_tls1_prf_functions },
     { "KBKDF", FIPS_DEFAULT_PROPERTIES, ossl_kdf_kbkdf_functions },
     { NULL, NULL, NULL }
@@ -486,6 +499,8 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
     FIPS_GLOBAL *fgbl;
     OSSL_LIB_CTX *libctx = NULL;
 
+    if (!ossl_prov_seeding_from_dispatch(in))
+        return 0;
     for (; in->function_id != 0; in++) {
         switch (in->function_id) {
         case OSSL_FUNC_CORE_GET_LIBCTX:
@@ -566,10 +581,9 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
         case OSSL_FUNC_BIO_VSNPRINTF:
             c_BIO_vsnprintf = OSSL_FUNC_BIO_vsnprintf(in);
             break;
-        case OSSL_FUNC_SELF_TEST_CB: {
+        case OSSL_FUNC_SELF_TEST_CB:
             c_stcbfn = OSSL_FUNC_self_test_cb(in);
             break;
-        }
         default:
             /* Just ignore anything we don't understand */
             break;

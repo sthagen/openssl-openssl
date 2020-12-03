@@ -75,6 +75,14 @@
 /* Special indicator that the object is uniquely provider side */
 # define EVP_PKEY_KEYMGMT -1
 
+/* Easy to use macros for EVP_PKEY related selections */
+# define EVP_PKEY_KEY_PARAMETERS                                            \
+    ( OSSL_KEYMGMT_SELECT_ALL_PARAMETERS )
+# define EVP_PKEY_PUBLIC_KEY                                                \
+    ( EVP_PKEY_KEY_PARAMETERS | OSSL_KEYMGMT_SELECT_PUBLIC_KEY )
+# define EVP_PKEY_KEYPAIR                                                   \
+    ( EVP_PKEY_PUBLIC_KEY | OSSL_KEYMGMT_SELECT_PRIVATE_KEY )
+
 #ifdef  __cplusplus
 extern "C" {
 #endif
@@ -312,6 +320,7 @@ DEPRECATEDIN_3_0(int (*EVP_CIPHER_meth_get_ctrl(const EVP_CIPHER *cipher))
 # define         EVP_CIPH_FLAG_CIPHER_WITH_MAC   0x2000000
 /* For supplementary wrap cipher support */
 # define         EVP_CIPH_FLAG_GET_WRAP_CIPHER   0x4000000
+# define         EVP_CIPH_FLAG_INVERSE_CIPHER    0x8000000
 
 /*
  * Cipher context flag to indicate we can handle wrap mode: if allowed in
@@ -448,9 +457,11 @@ typedef int (EVP_PBE_KEYGEN) (EVP_CIPHER_CTX *ctx, const char *pass,
                               const EVP_CIPHER *cipher, const EVP_MD *md,
                               int en_de);
 
-# ifndef OPENSSL_NO_RSA
-#  define EVP_PKEY_assign_RSA(pkey,rsa) EVP_PKEY_assign((pkey),EVP_PKEY_RSA,\
-                                                        (rsa))
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  ifndef OPENSSL_NO_RSA
+#   define EVP_PKEY_assign_RSA(pkey,rsa) EVP_PKEY_assign((pkey),EVP_PKEY_RSA,\
+                                                         (rsa))
+#  endif
 # endif
 
 # ifndef OPENSSL_NO_DSA
@@ -458,7 +469,7 @@ typedef int (EVP_PBE_KEYGEN) (EVP_CIPHER_CTX *ctx, const char *pass,
                                         (dsa))
 # endif
 
-# ifndef OPENSSL_NO_DH
+# if !defined(OPENSSL_NO_DH) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 #  define EVP_PKEY_assign_DH(pkey,dh) EVP_PKEY_assign((pkey),EVP_PKEY_DH,(dh))
 # endif
 
@@ -1202,11 +1213,16 @@ const unsigned char *EVP_PKEY_get0_poly1305(const EVP_PKEY *pkey, size_t *len);
 const unsigned char *EVP_PKEY_get0_siphash(const EVP_PKEY *pkey, size_t *len);
 # endif
 
-# ifndef OPENSSL_NO_RSA
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  ifndef OPENSSL_NO_RSA
 struct rsa_st;
+OSSL_DEPRECATEDIN_3_0
 int EVP_PKEY_set1_RSA(EVP_PKEY *pkey, struct rsa_st *key);
+OSSL_DEPRECATEDIN_3_0
 struct rsa_st *EVP_PKEY_get0_RSA(const EVP_PKEY *pkey);
+OSSL_DEPRECATEDIN_3_0
 struct rsa_st *EVP_PKEY_get1_RSA(EVP_PKEY *pkey);
+#  endif
 # endif
 # ifndef OPENSSL_NO_DSA
 struct dsa_st;
@@ -1214,11 +1230,13 @@ int EVP_PKEY_set1_DSA(EVP_PKEY *pkey, struct dsa_st *key);
 struct dsa_st *EVP_PKEY_get0_DSA(const EVP_PKEY *pkey);
 struct dsa_st *EVP_PKEY_get1_DSA(EVP_PKEY *pkey);
 # endif
-# ifndef OPENSSL_NO_DH
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  ifndef OPENSSL_NO_DH
 struct dh_st;
-int EVP_PKEY_set1_DH(EVP_PKEY *pkey, struct dh_st *key);
-struct dh_st *EVP_PKEY_get0_DH(const EVP_PKEY *pkey);
-struct dh_st *EVP_PKEY_get1_DH(EVP_PKEY *pkey);
+OSSL_DEPRECATEDIN_3_0 int EVP_PKEY_set1_DH(EVP_PKEY *pkey, struct dh_st *key);
+OSSL_DEPRECATEDIN_3_0 struct dh_st *EVP_PKEY_get0_DH(const EVP_PKEY *pkey);
+OSSL_DEPRECATEDIN_3_0 struct dh_st *EVP_PKEY_get1_DH(EVP_PKEY *pkey);
+#  endif
 # endif
 # ifndef OPENSSL_NO_EC
 struct ec_key_st;
@@ -1968,15 +1986,6 @@ const OSSL_PARAM *EVP_KEYEXCH_gettable_ctx_params(const EVP_KEYEXCH *keyexch);
 const OSSL_PARAM *EVP_KEYEXCH_settable_ctx_params(const EVP_KEYEXCH *keyexch);
 
 void EVP_add_alg_module(void);
-
-/*
- * Convenient helper functions to transfer string based controls.
- * The callback gets called with the parsed value.
- */
-int EVP_str2ctrl(int (*cb)(void *ctx, int cmd, void *buf, size_t buflen),
-                 void *ctx, int cmd, const char *value);
-int EVP_hex2ctrl(int (*cb)(void *ctx, int cmd, void *buf, size_t buflen),
-                 void *ctx, int cmd, const char *hex);
 
 int EVP_PKEY_CTX_set_group_name(EVP_PKEY_CTX *ctx, const char *name);
 int EVP_PKEY_CTX_get_group_name(EVP_PKEY_CTX *ctx, char *name, size_t namelen);

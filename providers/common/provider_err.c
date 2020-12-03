@@ -9,7 +9,7 @@
  */
 
 #include <openssl/err.h>
-#include "prov/providercommonerr.h"
+#include "include/prov/providercommonerr.h"
 
 #ifndef OPENSSL_NO_ERR
 
@@ -104,6 +104,7 @@ static const ERR_STRING_DATA PROV_str_reasons[] = {
     "invalid padding mode"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_INVALID_PSS_SALTLEN),
     "invalid pss saltlen"},
+    {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_INVALID_PUBINFO), "invalid pubinfo"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_INVALID_RSA_KEY), "invalid rsa key"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_INVALID_SALT_LENGTH),
     "invalid salt length"},
@@ -114,6 +115,8 @@ static const ERR_STRING_DATA PROV_str_reasons[] = {
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_INVALID_STATE), "invalid state"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_INVALID_TAG), "invalid tag"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_INVALID_TAGLEN), "invalid taglen"},
+    {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_INVALID_UKM_LENGTH),
+    "invalid ukm length"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_INVALID_X931_DIGEST),
     "invalid x931 digest"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_IN_ERROR_STATE), "in error state"},
@@ -152,6 +155,8 @@ static const ERR_STRING_DATA PROV_str_reasons[] = {
     "operation not supported for this keytype"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_OUTPUT_BUFFER_TOO_SMALL),
     "output buffer too small"},
+    {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_PARENT_CANNOT_GENERATE_RANDOM_NUMBERS),
+    "parent cannot generate random numbers"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_PARENT_LOCKING_NOT_ENABLED),
     "parent locking not enabled"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_PARENT_STRENGTH_TOO_WEAK),
@@ -182,12 +187,8 @@ static const ERR_STRING_DATA PROV_str_reasons[] = {
     "unable to get entropy"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_UNABLE_TO_GET_NONCE),
     "unable to get nonce"},
-    {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_UNABLE_TO_GET_PARENT_RESEED_PROP_COUNTER),
-    "unable to get parent reseed prop counter"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_UNABLE_TO_GET_PARENT_STRENGTH),
     "unable to get parent strength"},
-    {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_UNABLE_TO_GET_RESEED_PROP_CTR),
-    "unable to get reseed prop ctr"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_UNABLE_TO_INITIALISE_CIPHERS),
     "unable to initialise ciphers"},
     {ERR_PACK(ERR_LIB_PROV, 0, PROV_R_UNABLE_TO_LOAD_SHA1),
@@ -225,7 +226,7 @@ static const ERR_STRING_DATA PROV_str_reasons[] = {
 
 #endif
 
-int ERR_load_PROV_strings(void)
+int err_load_PROV_strings_int(void)
 {
 #ifndef OPENSSL_NO_ERR
     if (ERR_reason_error_string(PROV_str_reasons[0].error) == NULL)

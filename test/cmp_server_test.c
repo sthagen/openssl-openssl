@@ -9,7 +9,7 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "cmp_testlib.h"
+#include "helpers/cmp_testlib.h"
 
 typedef struct test_fixture {
     const char *test_case_name;
@@ -55,7 +55,7 @@ static OSSL_CMP_PKISI *process_cert_request(OSSL_CMP_SRV_CTX *srv_ctx,
                                             STACK_OF(X509) **chainOut,
                                             STACK_OF(X509) **caPubs)
 {
-    CMPerr(0, dummy_errorCode);
+    ERR_raise(ERR_LIB_CMP, dummy_errorCode);
     return NULL;
 }
 

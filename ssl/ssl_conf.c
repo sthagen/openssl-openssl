@@ -11,7 +11,8 @@
 #include "ssl_local.h"
 #include <openssl/conf.h>
 #include <openssl/objects.h>
-#include <openssl/dh.h>
+#include <openssl/decoder.h>
+#include <openssl/core_dispatch.h>
 #include "internal/nelem.h"
 
 /*
@@ -574,33 +575,51 @@ static int cmd_ClientCAStore(SSL_CONF_CTX *cctx, const char *value)
     return cmd_RequestCAStore(cctx, value);
 }
 
-#ifndef OPENSSL_NO_DH
 static int cmd_DHParameters(SSL_CONF_CTX *cctx, const char *value)
 {
     int rv = 0;
-    DH *dh = NULL;
+    EVP_PKEY *dhpkey = NULL;
     BIO *in = NULL;
-    if (cctx->ctx || cctx->ssl) {
+    SSL_CTX *sslctx = (cctx->ssl != NULL) ? cctx->ssl->ctx : cctx->ctx;
+    OSSL_DECODER_CTX *decoderctx = NULL;
+
+    if (cctx->ctx != NULL || cctx->ssl != NULL) {
         in = BIO_new(BIO_s_file());
         if (in == NULL)
             goto end;
         if (BIO_read_filename(in, value) <= 0)
             goto end;
-        dh = PEM_read_bio_DHparams(in, NULL, NULL, NULL);
-        if (dh == NULL)
+
+        decoderctx
+            = OSSL_DECODER_CTX_new_by_EVP_PKEY(&dhpkey, "PEM", NULL, "DH",
+                                               OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS,
+                                               sslctx->libctx, sslctx->propq);
+        if (decoderctx == NULL
+                || !OSSL_DECODER_from_bio(decoderctx, in)) {
+            OSSL_DECODER_CTX_free(decoderctx);
             goto end;
-    } else
+        }
+        OSSL_DECODER_CTX_free(decoderctx);
+
+        if (dhpkey == NULL)
+            goto end;
+    } else {
         return 1;
-    if (cctx->ctx)
-        rv = SSL_CTX_set_tmp_dh(cctx->ctx, dh);
-    if (cctx->ssl)
-        rv = SSL_set_tmp_dh(cctx->ssl, dh);
+    }
+
+    if (cctx->ctx != NULL) {
+        if ((rv = SSL_CTX_set0_tmp_dh_pkey(cctx->ctx, dhpkey)) > 0)
+            dhpkey = NULL;
+    }
+    if (cctx->ssl != NULL) {
+        if ((rv = SSL_set0_tmp_dh_pkey(cctx->ssl, dhpkey)) > 0)
+            dhpkey = NULL;
+    }
  end:
-    DH_free(dh);
+    EVP_PKEY_free(dhpkey);
     BIO_free(in);
     return rv > 0;
 }
-#endif
 
 static int cmd_RecordPadding(SSL_CONF_CTX *cctx, const char *value)
 {
@@ -726,11 +745,9 @@ static const ssl_conf_cmd_tbl ssl_conf_cmds[] = {
     SSL_CONF_CMD(ClientCAStore, NULL,
                  SSL_CONF_FLAG_SERVER | SSL_CONF_FLAG_CERTIFICATE,
                  SSL_CONF_TYPE_STORE),
-#ifndef OPENSSL_NO_DH
     SSL_CONF_CMD(DHParameters, "dhparam",
                  SSL_CONF_FLAG_SERVER | SSL_CONF_FLAG_CERTIFICATE,
                  SSL_CONF_TYPE_FILE),
-#endif
     SSL_CONF_CMD_STRING(RecordPadding, "record_padding", 0),
     SSL_CONF_CMD_STRING(NumTickets, "num_tickets", SSL_CONF_FLAG_SERVER),
 };
@@ -851,7 +868,7 @@ int SSL_CONF_cmd(SSL_CONF_CTX *cctx, const char *cmd, const char *value)
 {
     const ssl_conf_cmd_tbl *runcmd;
     if (cmd == NULL) {
-        SSLerr(SSL_F_SSL_CONF_CMD, SSL_R_INVALID_NULL_CMD_NAME);
+        ERR_raise(ERR_LIB_SSL, SSL_R_INVALID_NULL_CMD_NAME);
         return 0;
     }
 
@@ -872,17 +889,14 @@ int SSL_CONF_cmd(SSL_CONF_CTX *cctx, const char *cmd, const char *value)
             return 2;
         if (rv == -2)
             return -2;
-        if (cctx->flags & SSL_CONF_FLAG_SHOW_ERRORS) {
-            SSLerr(SSL_F_SSL_CONF_CMD, SSL_R_BAD_VALUE);
-            ERR_add_error_data(4, "cmd=", cmd, ", value=", value);
-        }
+        if (cctx->flags & SSL_CONF_FLAG_SHOW_ERRORS)
+            ERR_raise_data(ERR_LIB_SSL, SSL_R_BAD_VALUE,
+                           "cmd=%s, value=%s", cmd, value);
         return 0;
     }
 
-    if (cctx->flags & SSL_CONF_FLAG_SHOW_ERRORS) {
-        SSLerr(SSL_F_SSL_CONF_CMD, SSL_R_UNKNOWN_CMD_NAME);
-        ERR_add_error_data(2, "cmd=", cmd);
-    }
+    if (cctx->flags & SSL_CONF_FLAG_SHOW_ERRORS)
+        ERR_raise_data(ERR_LIB_SSL, SSL_R_UNKNOWN_CMD_NAME, "cmd=%s", cmd);
 
     return -2;
 }

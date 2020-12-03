@@ -463,7 +463,7 @@ int OPENSSL_init_crypto(uint64_t opts, const OPENSSL_INIT_SETTINGS *settings)
 
     if (stopped) {
         if (!(opts & OPENSSL_INIT_BASE_ONLY))
-            CRYPTOerr(CRYPTO_F_OPENSSL_INIT_CRYPTO, ERR_R_INIT_FAIL);
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_INIT_FAIL);
         return 0;
     }
 
@@ -655,7 +655,7 @@ int OPENSSL_atexit(void (*handler)(void))
 #endif
 
     if ((newhand = OPENSSL_malloc(sizeof(*newhand))) == NULL) {
-        CRYPTOerr(CRYPTO_F_OPENSSL_ATEXIT, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
         return 0;
     }
 
@@ -666,28 +666,3 @@ int OPENSSL_atexit(void (*handler)(void))
     return 1;
 }
 
-#ifdef OPENSSL_SYS_UNIX
-/*
- * The following three functions are for OpenSSL developers.  This is
- * where we set/reset state across fork (called via pthread_atfork when
- * it exists, or manually by the application when it doesn't).
- *
- * WARNING!  If you put code in either OPENSSL_fork_parent or
- * OPENSSL_fork_child, you MUST MAKE SURE that they are async-signal-
- * safe.  See this link, for example:
- *      http://man7.org/linux/man-pages/man7/signal-safety.7.html
- */
-
-void OPENSSL_fork_prepare(void)
-{
-}
-
-void OPENSSL_fork_parent(void)
-{
-}
-
-void OPENSSL_fork_child(void)
-{
-    /* TODO(3.0): Inform all providers about a fork event */
-}
-#endif

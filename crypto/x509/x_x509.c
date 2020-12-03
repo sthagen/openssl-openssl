@@ -97,6 +97,17 @@ static int x509_cb(int operation, ASN1_VALUE **pval, const ASN1_ITEM *it,
         ASN1_OCTET_STRING_free(ret->distinguishing_id);
         break;
 
+    case ASN1_OP_DUP_POST:
+        {
+            X509 *old = exarg;
+
+            ret->libctx = old->libctx;
+            ret->propq = old->propq;
+        }
+        break;
+
+    default:
+        break;
     }
 
     return 1;
@@ -255,7 +266,7 @@ int i2d_X509_AUX(const X509 *a, unsigned char **pp)
     /* Allocate requisite combined storage */
     *pp = tmp = OPENSSL_malloc(length);
     if (tmp == NULL) {
-        X509err(X509_F_I2D_X509_AUX, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_X509, ERR_R_MALLOC_FAILURE);
         return -1;
     }
 

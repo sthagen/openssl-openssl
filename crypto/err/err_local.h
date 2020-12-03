@@ -64,6 +64,7 @@ static ossl_inline void err_set_data(ERR_STATE *es, size_t i,
 static ossl_inline void err_clear(ERR_STATE *es, size_t i, int deall)
 {
     err_clear_data(es, i, (deall));
+    es->err_marks[i] = 0;
     es->err_flags[i] = 0;
     es->err_buffer[i] = 0;
     es->err_file[i] = NULL;
@@ -71,3 +72,5 @@ static ossl_inline void err_clear(ERR_STATE *es, size_t i, int deall)
 }
 
 ERR_STATE *err_get_state_int(void);
+void ossl_err_string_int(unsigned long e, const char *func,
+                         char *buf, size_t len);

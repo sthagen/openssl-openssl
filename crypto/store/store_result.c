@@ -253,9 +253,29 @@ static EVP_PKEY *try_key_value(struct extracted_param_data_st *data,
     OSSL_DECODER_CTX *decoderctx = NULL;
     const unsigned char *pdata = data->octet_data;
     size_t pdatalen = data->octet_data_size;
+    int selection = 0;
+
+    switch (ctx->expected_type) {
+    case 0:
+        break;
+    case OSSL_STORE_INFO_PARAMS:
+        selection = OSSL_KEYMGMT_SELECT_ALL_PARAMETERS;
+        break;
+    case OSSL_STORE_INFO_PUBKEY:
+        selection =
+            OSSL_KEYMGMT_SELECT_PUBLIC_KEY
+            | OSSL_KEYMGMT_SELECT_ALL_PARAMETERS;
+        break;
+    case OSSL_STORE_INFO_PKEY:
+        selection = OSSL_KEYMGMT_SELECT_ALL;
+        break;
+    default:
+        return NULL;
+    }
 
     decoderctx =
-        OSSL_DECODER_CTX_new_by_EVP_PKEY(&pk, "DER", NULL, libctx, propq);
+        OSSL_DECODER_CTX_new_by_EVP_PKEY(&pk, "DER", NULL, data->data_type,
+                                         selection, libctx, propq);
     (void)OSSL_DECODER_CTX_set_passphrase_cb(decoderctx, cb, cbarg);
 
     /* No error if this couldn't be decoded */
@@ -280,14 +300,20 @@ static EVP_PKEY *try_key_value_legacy(struct extracted_param_data_st *data,
 
     SET_ERR_MARK();
     /* Try PUBKEY first, that's a real easy target */
-    derp = der;
-    pk = d2i_PUBKEY_ex(NULL, &derp, der_len, libctx, propq);
-    if (pk != NULL)
-        *store_info_new = OSSL_STORE_INFO_new_PUBKEY;
-    RESET_ERR_MARK();
+    if (ctx->expected_type == 0
+        || ctx->expected_type == OSSL_STORE_INFO_PUBKEY) {
+        derp = der;
+        pk = d2i_PUBKEY_ex(NULL, &derp, der_len, libctx, propq);
+        if (pk != NULL)
+            *store_info_new = OSSL_STORE_INFO_new_PUBKEY;
+
+        RESET_ERR_MARK();
+    }
 
     /* Try private keys next */
-    if (pk == NULL) {
+    if (pk == NULL
+        && (ctx->expected_type == 0
+            || ctx->expected_type == OSSL_STORE_INFO_PKEY)) {
         unsigned char *new_der = NULL;
         X509_SIG *p8 = NULL;
         PKCS8_PRIV_KEY_INFO *p8info = NULL;
@@ -299,8 +325,7 @@ static EVP_PKEY *try_key_value_legacy(struct extracted_param_data_st *data,
             size_t plen = 0;
 
             if (!cb(pbuf, sizeof(pbuf), &plen, NULL, cbarg)) {
-                ERR_raise(ERR_LIB_OSSL_STORE,
-                          OSSL_STORE_R_BAD_PASSWORD_READ);
+                ERR_raise(ERR_LIB_OSSL_STORE, OSSL_STORE_R_BAD_PASSWORD_READ);
             } else {
                 const X509_ALGOR *alg = NULL;
                 const ASN1_OCTET_STRING *oct = NULL;
@@ -341,8 +366,6 @@ static EVP_PKEY *try_key_value_legacy(struct extracted_param_data_st *data,
             *store_info_new = OSSL_STORE_INFO_new_PKEY;
 
         OPENSSL_free(new_der);
-        der = data->octet_data;
-        der_len = (long)data->octet_data_size;
     }
     CLEAR_ERR_MARK();
 

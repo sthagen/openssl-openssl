@@ -7,6 +7,12 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * DH low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <openssl/core_names.h>
 #include "internal/param_build_set.h"
 #include "crypto/dh.h"
@@ -30,7 +36,7 @@ static int dh_ffc_params_fromdata(DH *dh, const OSSL_PARAM params[])
 
     ret = ossl_ffc_params_fromdata(ffc, params);
     if (ret)
-        dh_cache_named_group(dh); /* This increments dh->dirt_cnt */
+        dh_cache_named_group(dh); /* This increments dh->dirty_cnt */
     return ret;
 }
 

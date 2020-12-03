@@ -407,7 +407,7 @@ static int drbg_hash_new(PROV_DRBG *ctx)
 static void *drbg_hash_new_wrapper(void *provctx, void *parent,
                                    const OSSL_DISPATCH *parent_dispatch)
 {
-    return prov_rand_drbg_new(provctx, parent, parent_dispatch, &drbg_hash_new,
+    return ossl_rand_drbg_new(provctx, parent, parent_dispatch, &drbg_hash_new,
                               &drbg_hash_instantiate, &drbg_hash_uninstantiate,
                               &drbg_hash_reseed, &drbg_hash_generate);
 }
@@ -422,7 +422,7 @@ static void drbg_hash_free(void *vdrbg)
         ossl_prov_digest_reset(&hash->digest);
         OPENSSL_secure_clear_free(hash, sizeof(*hash));
     }
-    prov_rand_drbg_free(drbg);
+    ossl_rand_drbg_free(drbg);
 }
 
 static int drbg_hash_get_ctx_params(void *vdrbg, OSSL_PARAM params[])
@@ -439,7 +439,7 @@ static int drbg_hash_get_ctx_params(void *vdrbg, OSSL_PARAM params[])
             return 0;
     }
 
-    return drbg_get_ctx_params(drbg, params);
+    return ossl_drbg_get_ctx_params(drbg, params);
 }
 
 static const OSSL_PARAM *drbg_hash_gettable_ctx_params(ossl_unused void *p_ctx)
@@ -484,7 +484,7 @@ static int drbg_hash_set_ctx_params(void *vctx, const OSSL_PARAM params[])
         ctx->min_noncelen = ctx->min_entropylen / 2;
     }
 
-    return drbg_set_ctx_params(ctx, params);
+    return ossl_drbg_set_ctx_params(ctx, params);
 }
 
 static const OSSL_PARAM *drbg_hash_settable_ctx_params(ossl_unused void *p_ctx)
@@ -507,9 +507,9 @@ const OSSL_DISPATCH ossl_drbg_hash_functions[] = {
       (void(*)(void))drbg_hash_uninstantiate_wrapper },
     { OSSL_FUNC_RAND_GENERATE, (void(*)(void))drbg_hash_generate_wrapper },
     { OSSL_FUNC_RAND_RESEED, (void(*)(void))drbg_hash_reseed_wrapper },
-    { OSSL_FUNC_RAND_ENABLE_LOCKING, (void(*)(void))drbg_enable_locking },
-    { OSSL_FUNC_RAND_LOCK, (void(*)(void))drbg_lock },
-    { OSSL_FUNC_RAND_UNLOCK, (void(*)(void))drbg_unlock },
+    { OSSL_FUNC_RAND_ENABLE_LOCKING, (void(*)(void))ossl_drbg_enable_locking },
+    { OSSL_FUNC_RAND_LOCK, (void(*)(void))ossl_drbg_lock },
+    { OSSL_FUNC_RAND_UNLOCK, (void(*)(void))ossl_drbg_unlock },
     { OSSL_FUNC_RAND_SETTABLE_CTX_PARAMS,
       (void(*)(void))drbg_hash_settable_ctx_params },
     { OSSL_FUNC_RAND_SET_CTX_PARAMS, (void(*)(void))drbg_hash_set_ctx_params },

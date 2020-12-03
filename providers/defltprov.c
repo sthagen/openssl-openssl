@@ -19,6 +19,7 @@
 #include "prov/providercommon.h"
 #include "prov/implementations.h"
 #include "prov/provider_util.h"
+#include "prov/seeding.h"
 #include "internal/nelem.h"
 
 /*
@@ -204,6 +205,15 @@ static const OSSL_ALGORITHM_CAPABLE deflt_ciphers[] = {
         ossl_aes192wrappad_functions),
     ALG("AES-128-WRAP-PAD:id-aes128-wrap-pad:AES128-WRAP-PAD",
         ossl_aes128wrappad_functions),
+    ALG("AES-256-WRAP-INV:AES256-WRAP-INV", ossl_aes256wrapinv_functions),
+    ALG("AES-192-WRAP-INV:AES192-WRAP-INV", ossl_aes192wrapinv_functions),
+    ALG("AES-128-WRAP-INV:AES128-WRAP-INV", ossl_aes128wrapinv_functions),
+    ALG("AES-256-WRAP-PAD-INV:AES256-WRAP-PAD-INV",
+        ossl_aes256wrappadinv_functions),
+    ALG("AES-192-WRAP-PAD-INV:AES192-WRAP-PAD-INV",
+        ossl_aes192wrappadinv_functions),
+    ALG("AES-128-WRAP-PAD-INV:AES128-WRAP-PAD-INV",
+        ossl_aes128wrappadinv_functions),
     ALGC("AES-128-CBC-HMAC-SHA1", ossl_aes128cbc_hmac_sha1_functions,
          ossl_cipher_capable_aes_cbc_hmac_sha1),
     ALGC("AES-256-CBC-HMAC-SHA1", ossl_aes256cbc_hmac_sha1_functions,
@@ -321,12 +331,10 @@ static const OSSL_ALGORITHM deflt_kdfs[] = {
     { "PBKDF2", "provider=default", ossl_kdf_pbkdf2_functions },
     { "PKCS12KDF", "provider=default", ossl_kdf_pkcs12_functions },
     { "SSHKDF", "provider=default", ossl_kdf_sshkdf_functions },
-    { "X963KDF", "provider=default", ossl_kdf_x963_kdf_functions },
+    { "X963KDF:X942KDF-CONCAT", "provider=default", ossl_kdf_x963_kdf_functions },
     { "TLS1-PRF", "provider=default", ossl_kdf_tls1_prf_functions },
     { "KBKDF", "provider=default", ossl_kdf_kbkdf_functions },
-#ifndef OPENSSL_NO_CMS
-    { "X942KDF", "provider=default", ossl_kdf_x942_kdf_functions },
-#endif
+    { "X942KDF-ASN1:X942KDF", "provider=default", ossl_kdf_x942_kdf_functions },
 #ifndef OPENSSL_NO_SCRYPT
     { "SCRYPT:id-scrypt", "provider=default", ossl_kdf_scrypt_functions },
 #endif
@@ -364,8 +372,8 @@ static const OSSL_ALGORITHM deflt_signature[] = {
 #endif
     { "RSA:rsaEncryption", "provider=default", ossl_rsa_signature_functions },
 #ifndef OPENSSL_NO_EC
-    { "ED25519:Ed25519", "provider=default", ossl_ed25519_signature_functions },
-    { "ED448:Ed448", "provider=default", ossl_ed448_signature_functions },
+    { "ED25519", "provider=default", ossl_ed25519_signature_functions },
+    { "ED448", "provider=default", ossl_ed448_signature_functions },
     { "ECDSA", "provider=default", ecossl_dsa_signature_functions },
 # ifndef OPENSSL_NO_SM2
     { "SM2", "provider=default", sm2_signature_functions },
@@ -433,26 +441,18 @@ static const OSSL_ALGORITHM deflt_keymgmt[] = {
 };
 
 static const OSSL_ALGORITHM deflt_encoder[] = {
-#define ENCODER(name, _fips, _output, func_table)                           \
-    { name,                                                                 \
-      "provider=default,fips=" _fips ",output=" _output,                    \
-      (func_table) }
-
+#define ENCODER_PROVIDER "default"
 #include "encoders.inc"
     { NULL, NULL, NULL }
+#undef ENCODER_PROVIDER
 };
-#undef ENCODER
 
 static const OSSL_ALGORITHM deflt_decoder[] = {
-#define DECODER(name, _fips, _input, func_table)                            \
-    { name,                                                                 \
-      "provider=default,fips=" _fips ",input=" _input,                      \
-      (func_table) }
-
+#define DECODER_PROVIDER "default"
 #include "decoders.inc"
     { NULL, NULL, NULL }
+#undef DECODER_PROVIDER
 };
-#undef DECODER
 
 static const OSSL_ALGORITHM deflt_store[] = {
 #define STORE(name, _fips, func_table)                           \
@@ -526,7 +526,8 @@ int ossl_default_provider_init(const OSSL_CORE_HANDLE *handle,
     OSSL_FUNC_core_get_libctx_fn *c_get_libctx = NULL;
     BIO_METHOD *corebiometh;
 
-    if (!ossl_prov_bio_from_dispatch(in))
+    if (!ossl_prov_bio_from_dispatch(in)
+            || !ossl_prov_seeding_from_dispatch(in))
         return 0;
     for (; in->function_id != 0; in++) {
         switch (in->function_id) {
