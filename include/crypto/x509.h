@@ -116,7 +116,7 @@ struct X509_crl_st {
     CRYPTO_RWLOCK *lock;
 
     OSSL_LIB_CTX *libctx;
-    const char *propq;
+    char *propq;
 };
 
 struct x509_revoked_st {
@@ -196,7 +196,7 @@ struct x509_st {
     ASN1_OCTET_STRING *distinguishing_id;
 
     OSSL_LIB_CTX *libctx;
-    const char *propq;
+    char *propq;
 } /* X509 */ ;
 
 /*
