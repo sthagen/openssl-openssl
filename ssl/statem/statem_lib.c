@@ -14,7 +14,6 @@
 #include "../ssl_local.h"
 #include "statem_local.h"
 #include "internal/cryptlib.h"
-#include "internal/evp.h"
 #include <openssl/buffer.h>
 #include <openssl/objects.h>
 #include <openssl/evp.h>
@@ -1516,8 +1515,8 @@ static int ssl_method_error(const SSL *s, const SSL_METHOD *method)
 
 /*
  * Only called by servers. Returns 1 if the server has a TLSv1.3 capable
- * certificate type, or has PSK or a certificate callback configured. Otherwise
- * returns 0.
+ * certificate type, or has PSK or a certificate callback configured, or has
+ * a servername callback configure. Otherwise returns 0.
  */
 static int is_tls13_capable(const SSL *s)
 {
@@ -1525,6 +1524,17 @@ static int is_tls13_capable(const SSL *s)
 #ifndef OPENSSL_NO_EC
     int curve;
 #endif
+
+    if (!ossl_assert(s->ctx != NULL) || !ossl_assert(s->session_ctx != NULL))
+        return 0;
+
+    /*
+     * A servername callback can change the available certs, so if a servername
+     * cb is set then we just assume TLSv1.3 will be ok
+     */
+    if (s->ctx->ext.servername_cb != NULL
+            || s->session_ctx->ext.servername_cb != NULL)
+        return 1;
 
 #ifndef OPENSSL_NO_PSK
     if (s->psk_server_callback != NULL)
@@ -1555,8 +1565,7 @@ static int is_tls13_capable(const SSL *s)
          * more restrictive so check that our sig algs are consistent with this
          * EC cert. See section 4.2.3 of RFC8446.
          */
-        curve = evp_pkey_get_EC_KEY_curve_nid(s->cert->pkeys[SSL_PKEY_ECC]
-                                              .privatekey);
+        curve = ssl_get_EC_curve_nid(s->cert->pkeys[SSL_PKEY_ECC].privatekey);
         if (tls_check_sigalg_curve(s, curve))
             return 1;
 #else

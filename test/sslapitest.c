@@ -7820,7 +7820,8 @@ static int test_servername(int tst)
     return testresult;
 }
 
-#ifndef OPENSSL_NO_EC
+#if !defined(OPENSSL_NO_EC) \
+    && (!defined(OPENSSL_NO_TLS1_3) || !defined(OPENSSL_NO_TLS1_2))
 /*
  * Test that if signature algorithms are not available, then we do not offer or
  * accept them.
@@ -7889,6 +7890,17 @@ static int test_sigalgs_available(int idx)
                                        &sctx, &cctx, cert, privkey)))
         goto end;
 
+    /* Ensure we only use TLSv1.2 ciphersuites based on SHA256 */
+    if (idx < 4) {
+        if (!TEST_true(SSL_CTX_set_cipher_list(cctx,
+                                               "ECDHE-RSA-AES128-GCM-SHA256")))
+            goto end;
+    } else {
+        if (!TEST_true(SSL_CTX_set_cipher_list(cctx,
+                                               "ECDHE-ECDSA-AES128-GCM-SHA256")))
+            goto end;
+    }
+
     if (idx < 3) {
         if (!SSL_CTX_set1_sigalgs_list(cctx,
                                        "rsa_pss_rsae_sha384"
@@ -7944,7 +7956,10 @@ static int test_sigalgs_available(int idx)
 
     return testresult;
 }
-#endif /* OPENSSL_NO_EC */
+#endif /*
+        * !defined(OPENSSL_NO_EC) \
+        * && (!defined(OPENSSL_NO_TLS1_3) || !defined(OPENSSL_NO_TLS1_2))
+        */
 
 #ifndef OPENSSL_NO_TLS1_3
 static int test_pluggable_group(int idx)
@@ -7957,8 +7972,17 @@ static int test_pluggable_group(int idx)
     OSSL_PROVIDER *legacyprov = OSSL_PROVIDER_load(libctx, "legacy");
     const char *group_name = idx == 0 ? "xorgroup" : "xorkemgroup";
 
-    if (!TEST_ptr(tlsprov) || !TEST_ptr(legacyprov))
+    if (!TEST_ptr(tlsprov))
         goto end;
+
+    if (legacyprov == NULL) {
+        /*
+         * In this case we assume we've been built with "no-legacy" and skip
+         * this test (there is no OPENSSL_NO_LEGACY)
+         */
+        testresult = 1;
+        goto end;
+    }
 
     if (!TEST_true(create_ssl_ctx_pair(libctx, TLS_server_method(),
                                        TLS_client_method(),
@@ -8357,6 +8381,62 @@ static int test_dh_auto(int idx)
 # endif /* OPENSSL_NO_DH */
 #endif /* OPENSSL_NO_TLS1_2 */
 
+#ifndef OPENSSL_NO_TLS1_3
+/*
+ * Test that setting an SNI callback works with TLSv1.3. Specifically we check
+ * that it works even without a certificate configured for the original
+ * SSL_CTX
+ */
+static int test_sni_tls13(void)
+{
+    SSL_CTX *cctx = NULL, *sctx = NULL, *sctx2 = NULL;
+    SSL *clientssl = NULL, *serverssl = NULL;
+    int testresult = 0;
+
+    /* Reset callback counter */
+    snicb = 0;
+
+    /* Create an initial SSL_CTX with no certificate configured */
+    sctx = SSL_CTX_new_ex(libctx, NULL, TLS_server_method());
+    if (!TEST_ptr(sctx))
+        goto end;
+    /* Require TLSv1.3 as a minimum */
+    if (!TEST_true(create_ssl_ctx_pair(libctx, TLS_server_method(),
+                                       TLS_client_method(), TLS1_3_VERSION, 0,
+                                       &sctx2, &cctx, cert, privkey)))
+        goto end;
+
+    /* Set up SNI */
+    if (!TEST_true(SSL_CTX_set_tlsext_servername_callback(sctx, sni_cb))
+            || !TEST_true(SSL_CTX_set_tlsext_servername_arg(sctx, sctx2)))
+        goto end;
+
+    /*
+     * Connection should still succeed because the final SSL_CTX has the right
+     * certificates configured.
+     */
+    if (!TEST_true(create_ssl_objects(sctx, cctx, &serverssl,
+                                      &clientssl, NULL, NULL))
+            || !TEST_true(create_ssl_connection(serverssl, clientssl,
+                                                SSL_ERROR_NONE)))
+        goto end;
+
+    /* We should have had the SNI callback called exactly once */
+    if (!TEST_int_eq(snicb, 1))
+        goto end;
+
+    testresult = 1;
+
+end:
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx2);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+    return testresult;
+}
+#endif
+
 OPT_TEST_DECLARE_USAGE("certfile privkeyfile srpvfile tmpfile provider config\n")
 
 int setup_tests(void)
@@ -8586,7 +8666,8 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_multiblock_write, OSSL_NELEM(multiblock_cipherlist_data));
 #endif
     ADD_ALL_TESTS(test_servername, 10);
-#ifndef OPENSSL_NO_EC
+#if !defined(OPENSSL_NO_EC) \
+    && (!defined(OPENSSL_NO_TLS1_3) || !defined(OPENSSL_NO_TLS1_2))
     ADD_ALL_TESTS(test_sigalgs_available, 6);
 #endif
 #ifndef OPENSSL_NO_TLS1_3
@@ -8598,6 +8679,9 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_set_tmp_dh, 11);
     ADD_ALL_TESTS(test_dh_auto, 7);
 # endif
+#endif
+#ifndef OPENSSL_NO_TLS1_3
+    ADD_TEST(test_sni_tls13);
 #endif
     return 1;
 
@@ -8611,7 +8695,7 @@ int setup_tests(void)
 
 void cleanup_tests(void)
 {
-# ifndef OPENSSL_NO_DH
+# if !defined(OPENSSL_NO_TLS1_2) && !defined(OPENSSL_NO_DH)
     EVP_PKEY_free(tmp_dh_params);
 #endif
     OPENSSL_free(cert);

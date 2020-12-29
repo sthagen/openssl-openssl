@@ -247,6 +247,11 @@ int DSA_up_ref(DSA *r)
     return ((i > 1) ? 1 : 0);
 }
 
+void ossl_dsa_set0_libctx(DSA *d, OSSL_LIB_CTX *libctx)
+{
+    d->libctx = libctx;
+}
+
 void DSA_get0_pqg(const DSA *d,
                   const BIGNUM **p, const BIGNUM **q, const BIGNUM **g)
 {
@@ -335,7 +340,9 @@ int DSA_security_bits(const DSA *d)
 
 int DSA_bits(const DSA *dsa)
 {
-    return BN_num_bits(dsa->params.p);
+    if (dsa->params.p != NULL)
+        return BN_num_bits(dsa->params.p);
+    return -1;
 }
 
 FFC_PARAMS *dsa_get0_params(DSA *dsa)

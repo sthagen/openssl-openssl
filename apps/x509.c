@@ -21,9 +21,7 @@
 #include <openssl/x509v3.h>
 #include <openssl/objects.h>
 #include <openssl/pem.h>
-#ifndef OPENSSL_NO_RSA
-# include <openssl/rsa.h>
-#endif
+#include <openssl/rsa.h>
 #ifndef OPENSSL_NO_DSA
 # include <openssl/dsa.h>
 #endif
@@ -33,7 +31,7 @@
 #define DEF_DAYS        30
 
 static int callb(int ok, X509_STORE_CTX *ctx);
-static int sign(X509 *x, EVP_PKEY *pkey, EVP_PKEY *fkey,
+static int sign(X509 *x, EVP_PKEY *pkey, X509 *issuer,
                 STACK_OF(OPENSSL_STRING) *sigopts,
                 int days, int clrext,
                 const EVP_MD *digest, CONF *conf, const char *section,
@@ -465,7 +463,7 @@ int x509_main(int argc, char **argv)
                     goto opthelp;
                 checkoffset = (time_t)temp;
                 if ((intmax_t)checkoffset != temp) {
-                    BIO_printf(bio_err, "%s: checkend time out of range %s\n",
+                    BIO_printf(bio_err, "%s: Checkend time out of range %s\n",
                                prog, opt_arg());
                     goto opthelp;
                 }
@@ -490,12 +488,11 @@ int x509_main(int argc, char **argv)
                 goto opthelp;
         }
     }
+
+    /* No extra arguments. */
     argc = opt_num_rest();
-    argv = opt_rest();
-    if (argc != 0) {
-        BIO_printf(bio_err, "%s: Unknown parameter %s\n", prog, argv[0]);
+    if (argc != 0)
         goto opthelp;
-    }
 
     if (!app_passwd(passinarg, NULL, &passin, NULL)) {
         BIO_printf(bio_err, "Error getting password\n");
@@ -536,11 +533,11 @@ int x509_main(int argc, char **argv)
         CAkeyfile = CAfile;
     } else if (CA_flag && CAkeyfile == NULL) {
         BIO_printf(bio_err,
-                   "need to specify a CAkey if using the CA command\n");
+                   "Need to specify a CAkey if using the CA command\n");
         goto end;
     } else if (!CA_flag && CAkeyfile != NULL) {
         BIO_printf(bio_err,
-                   "ignoring -CAkey option since no -CA option is given\n");
+                   "Ignoring -CAkey option since no -CA option is given\n");
     }
 
     if (extfile != NULL) {
@@ -558,7 +555,7 @@ int x509_main(int argc, char **argv)
         X509V3_set_nconf(&ctx2, extconf);
         if (!X509V3_EXT_add_nconf(extconf, &ctx2, extsect, NULL)) {
             BIO_printf(bio_err,
-                       "Error Loading extension section %s\n", extsect);
+                       "Error checking extension section %s\n", extsect);
             ERR_print_errors(bio_err);
             goto end;
         }
@@ -572,7 +569,7 @@ int x509_main(int argc, char **argv)
             goto end;
 
         if ((pkey = X509_REQ_get0_pubkey(req)) == NULL) {
-            BIO_printf(bio_err, "error unpacking public key\n");
+            BIO_printf(bio_err, "Error unpacking public key\n");
             goto end;
         }
         i = do_X509_REQ_verify(req, pkey, vfyopts);
@@ -756,7 +753,6 @@ int x509_main(int argc, char **argv)
                     goto end;
                 }
                 BIO_printf(out, "Modulus=");
-#ifndef OPENSSL_NO_RSA
                 if (EVP_PKEY_is_a(pkey, "RSA")) {
                     BIGNUM *n;
 
@@ -764,16 +760,14 @@ int x509_main(int argc, char **argv)
                     EVP_PKEY_get_bn_param(pkey, "n", &n);
                     BN_print(out, n);
                     BN_free(n);
-                } else
-#endif
-#ifndef OPENSSL_NO_DSA
-                if (EVP_PKEY_id(pkey) == EVP_PKEY_DSA) {
-                    const BIGNUM *dsapub = NULL;
-                    DSA_get0_key(EVP_PKEY_get0_DSA(pkey), &dsapub, NULL);
+                } else if (EVP_PKEY_is_a(pkey, "DSA")) {
+                    BIGNUM *dsapub;
+
+                    /* Every DSA key has an 'pub' */
+                    EVP_PKEY_get_bn_param(pkey, "pub", &dsapub);
                     BN_print(out, dsapub);
-                } else
-#endif
-                {
+                    BN_free(dsapub);
+                } else {
                     BIO_printf(out, "Wrong Algorithm type");
                 }
                 BIO_printf(out, "\n");
@@ -807,7 +801,7 @@ int x509_main(int argc, char **argv)
                     fdig = EVP_sha1();
 
                 if (!X509_digest(x, fdig, md, &n)) {
-                    BIO_printf(bio_err, "out of memory\n");
+                    BIO_printf(bio_err, "Out of memory\n");
                     goto end;
                 }
                 BIO_printf(out, "%s Fingerprint=",
@@ -820,19 +814,20 @@ int x509_main(int argc, char **argv)
 
             /* should be in the library */
             else if (sign_flag == i && x509req == 0) {
-                BIO_printf(bio_err, "Getting Private key\n");
                 if (Upkey == NULL) {
                     Upkey = load_key(keyfile, keyformat, 0,
                                      passin, e, "private key");
                     if (Upkey == NULL)
                         goto end;
                 }
-
-                if (!sign(x, Upkey, fkey, sigopts, days, clrext, digest,
-                          extconf, extsect, preserve_dates))
+                if (fkey == NULL && !X509_set_pubkey(x, Upkey))
                     goto end;
+                if (!sign(x, Upkey, x /* self-issuing */, sigopts, days, clrext,
+                          digest, extconf, extsect, preserve_dates)) {
+                    ERR_print_errors(bio_err);
+                    goto end;
+                }
             } else if (CA_flag == i) {
-                BIO_printf(bio_err, "Getting CA Private Key\n");
                 if (CAkeyfile != NULL) {
                     CApkey = load_key(CAkeyfile, CAkeyformat,
                                       0, passin, e, "CA private key");
@@ -848,9 +843,8 @@ int x509_main(int argc, char **argv)
             } else if (x509req == i) {
                 EVP_PKEY *pk;
 
-                BIO_printf(bio_err, "Getting request Private Key\n");
                 if (keyfile == NULL) {
-                    BIO_printf(bio_err, "no request key file specified\n");
+                    BIO_printf(bio_err, "No request key file specified\n");
                     goto end;
                 } else {
                     pk = load_key(keyfile, keyformat, 0,
@@ -858,8 +852,6 @@ int x509_main(int argc, char **argv)
                     if (pk == NULL)
                         goto end;
                 }
-
-                BIO_printf(bio_err, "Generating certificate request\n");
 
                 rq = X509_to_X509_REQ(x, pk, digest);
                 EVP_PKEY_free(pk);
@@ -908,11 +900,11 @@ int x509_main(int argc, char **argv)
         else
             i = PEM_write_bio_X509(out, x);
     } else {
-        BIO_printf(bio_err, "bad output format specified for outfile\n");
+        BIO_printf(bio_err, "Bad output format specified for outfile\n");
         goto end;
     }
     if (!i) {
-        BIO_printf(bio_err, "unable to write certificate\n");
+        BIO_printf(bio_err, "Unable to write certificate\n");
         ERR_print_errors(bio_err);
         goto end;
     }
@@ -962,7 +954,7 @@ static ASN1_INTEGER *x509_load_serial(const char *CAfile,
         goto end;
 
     if (!BN_add_word(serial, 1)) {
-        BIO_printf(bio_err, "add_word failure\n");
+        BIO_printf(bio_err, "Serial number increment failure\n");
         goto end;
     }
 
@@ -1019,30 +1011,13 @@ static int x509_certify(X509_STORE *ctx, const char *CAfile, const EVP_MD *diges
         goto end;
     }
 
-    if (!X509_set_issuer_name(x, X509_get_subject_name(xca)))
-        goto end;
     if (!X509_set_serialNumber(x, bs))
         goto end;
 
-    if (!preserve_dates && !set_cert_times(x, NULL, NULL, days))
+    if (!sign(x, pkey, xca, sigopts, days, clrext, digest,
+              conf, section, preserve_dates))
         goto end;
 
-    if (clrext) {
-        while (X509_get_ext_count(x) > 0)
-            X509_delete_ext(x, 0);
-    }
-
-    if (conf != NULL) {
-        X509V3_CTX ctx2;
-        X509_set_version(x, 2); /* version 3 certificate */
-        X509V3_set_ctx(&ctx2, xca, x, NULL, NULL, 0);
-        X509V3_set_nconf(&ctx2, conf);
-        if (!X509V3_EXT_add_nconf(conf, &ctx2, section, x))
-            goto end;
-    }
-
-    if (!do_X509_sign(x, pkey, digest, sigopts))
-        goto end;
     ret = 1;
  end:
     X509_STORE_CTX_free(xsc);
@@ -1073,50 +1048,47 @@ static int callb(int ok, X509_STORE_CTX *ctx)
      */
     if (ok) {
         BIO_printf(bio_err,
-                   "error with certificate to be certified - should be self-signed\n");
+                   "Error with certificate to be certified - should be self-signed\n");
         return 0;
     } else {
         err_cert = X509_STORE_CTX_get_current_cert(ctx);
         print_name(bio_err, NULL, X509_get_subject_name(err_cert), 0);
         BIO_printf(bio_err,
-                   "error with certificate - error %d at depth %d\n%s\n", err,
+                   "Error with certificate - error %d at depth %d\n%s\n", err,
                    X509_STORE_CTX_get_error_depth(ctx),
                    X509_verify_cert_error_string(err));
         return 1;
     }
 }
 
-/* self-issue; self-sign unless a forced public key (fkey) is given */
-static int sign(X509 *x, EVP_PKEY *pkey, EVP_PKEY *fkey,
+static int sign(X509 *x, EVP_PKEY *pkey, X509 *issuer,
                 STACK_OF(OPENSSL_STRING) *sigopts,
                 int days, int clrext,
                 const EVP_MD *digest, CONF *conf, const char *section,
                 int preserve_dates)
 {
-    if (!X509_set_issuer_name(x, X509_get_subject_name(x)))
-        goto err;
+    if (!X509_set_issuer_name(x, X509_get_subject_name(issuer)))
+        return 0;
+
     if (!preserve_dates && !set_cert_times(x, NULL, NULL, days))
-        goto err;
-    if (fkey == NULL && !X509_set_pubkey(x, pkey))
-        goto err;
+        return 0;
+
     if (clrext) {
         while (X509_get_ext_count(x) > 0)
             X509_delete_ext(x, 0);
     }
     if (conf != NULL) {
-        X509V3_CTX ctx;
-        X509_set_version(x, 2); /* version 3 certificate */
-        X509V3_set_ctx(&ctx, x, x, NULL, NULL, 0);
-        X509V3_set_nconf(&ctx, conf);
-        if (!X509V3_EXT_add_nconf(conf, &ctx, section, x))
-            goto err;
+        X509V3_CTX ext_ctx;
+
+        X509V3_set_ctx(&ext_ctx, issuer, x, NULL, NULL, X509V3_CTX_REPLACE);
+        X509V3_set_nconf(&ext_ctx, conf);
+        if (!X509V3_EXT_add_nconf(conf, &ext_ctx, section, x)) {
+            BIO_printf(bio_err,
+                       "Error adding extensions from section %s\n", section);
+            return 0;
+        }
     }
-    if (!do_X509_sign(x, pkey, digest, sigopts))
-        goto err;
-    return 1;
- err:
-    ERR_print_errors(bio_err);
-    return 0;
+    return do_X509_sign(x, pkey, digest, sigopts);
 }
 
 static int purpose_print(BIO *bio, X509 *cert, X509_PURPOSE *pt)

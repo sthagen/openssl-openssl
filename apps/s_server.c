@@ -48,9 +48,7 @@ typedef unsigned int u_int;
 #ifndef OPENSSL_NO_DH
 # include <openssl/dh.h>
 #endif
-#ifndef OPENSSL_NO_RSA
-# include <openssl/rsa.h>
-#endif
+#include <openssl/rsa.h>
 #ifndef OPENSSL_NO_SRP
 # include <openssl/srp.h>
 #endif
@@ -1252,9 +1250,7 @@ int s_server_main(int argc, char *argv[])
             s_chain_file = opt_arg();
             break;
         case OPT_DHPARAM:
-#ifndef OPENSSL_NO_DH
             dhfile = opt_arg();
-#endif
             break;
         case OPT_DCERTFORM:
             if (!opt_format(opt_arg(), OPT_FMT_ANY, &s_dcert_format))
@@ -1660,8 +1656,11 @@ int s_server_main(int argc, char *argv[])
             break;
         }
     }
+
+    /* No extra arguments. */
     argc = opt_num_rest();
-    argv = opt_rest();
+    if (argc != 0)
+        goto opthelp;
 
 #ifndef OPENSSL_NO_NEXTPROTONEG
     if (min_version == TLS1_3_VERSION && next_proto_neg_in != NULL) {
@@ -1823,10 +1822,7 @@ int s_server_main(int argc, char *argv[])
                 bio_s_out = dup_bio_out(FORMAT_TEXT);
         }
     }
-#if !defined(OPENSSL_NO_RSA) || !defined(OPENSSL_NO_DSA) || !defined(OPENSSL_NO_EC)
-    if (nocert)
-#endif
-    {
+    if (nocert) {
         s_cert_file = NULL;
         s_key_file = NULL;
         s_dcert_file = NULL;

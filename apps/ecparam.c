@@ -172,6 +172,8 @@ int ecparam_main(int argc, char **argv)
             break;
         }
     }
+
+    /* No extra args. */
     argc = opt_num_rest();
     if (argc != 0)
         goto opthelp;
@@ -294,7 +296,6 @@ int ecparam_main(int argc, char **argv)
             goto end;
         }
         BIO_printf(bio_err, "ok\n");
-
     }
 
     if (outformat == FORMAT_ASN1 && genkey)

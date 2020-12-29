@@ -53,7 +53,7 @@ $OpenSSL::safe::opt_v_item = ""
 . "B<-verify_ip>, B<-verify_name>, B<-x509_strict> B<-issuer_checks>\n"
 . "\n"
 . "Set various options of certificate chain verification.\n"
-. "See L<openssl(1)/Verification Options> for details.";
+. "See L<openssl-verification-options(1)/Verification Options> for details.";
 
 
 # Extended validation options.
@@ -70,7 +70,7 @@ $OpenSSL::safe::opt_x_item = ""
 . "B<-xkeyform> B<DER>|B<PEM>\n"
 . "\n"
 . "Set extended certificate verification options.\n"
-. "See L<openssl(1)/Extended Verification Options> for details.";
+. "See L<openssl-verification-options(1)/Extended Verification Options> for details.";
 
 # Name output options
 $OpenSSL::safe::opt_name_synopsis = ""
@@ -79,7 +79,7 @@ $OpenSSL::safe::opt_name_item = ""
 . "=item B<-nameopt> I<option>\n"
 . "\n"
 . "This specifies how the subject or issuer names are displayed.\n"
-. "See L<openssl(1)/Name Format Options> for details.";
+. "See L<openssl-namedisplay-options(1)> for details.";
 
 # Random State Options
 $OpenSSL::safe::opt_r_synopsis = ""
@@ -134,7 +134,7 @@ $OpenSSL::safe::opt_trust_item = ""
 . "=item B<-CAfile> I<file>, B<-no-CAfile>, B<-CApath> I<dir>, B<-no-CApath>,\n"
 . "B<-CAstore> I<uri>, B<-no-CAstore>\n"
 . "\n"
-. "See L<openssl(1)/Trusted Certificate Options> for details.";
+. "See L<openssl-verification-options(1)/Trusted Certificate Options> for details.";
 
 # TLS Version Options
 $OpenSSL::safe::opt_versiontls_synopsis = ""

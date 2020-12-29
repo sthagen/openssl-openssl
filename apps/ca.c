@@ -138,7 +138,7 @@ static int make_revoked(X509_REVOKED *rev, const char *str);
 static int old_entry_print(const ASN1_OBJECT *obj, const ASN1_STRING *str);
 static void write_new_certificate(BIO *bp, X509 *x, int output_der, int notext);
 
-static CONF *extconf = NULL;
+static CONF *extfile_conf = NULL;
 static int preserve = 0;
 static int msie_hack = 0;
 
@@ -488,7 +488,9 @@ opthelp:
             break;
         }
     }
+
 end_of_options:
+    /* Remaining args are files to certify. */
     argc = opt_num_rest();
     argv = opt_rest();
 
@@ -761,7 +763,7 @@ end_of_options:
     /*****************************************************************/
     /* Read extensions config file                                   */
     if (extfile) {
-        if ((extconf = app_load_config(extfile)) == NULL) {
+        if ((extfile_conf = app_load_config(extfile)) == NULL) {
             ret = 1;
             goto end;
         }
@@ -772,7 +774,7 @@ end_of_options:
 
         /* We can have sections in the ext file */
         if (extensions == NULL) {
-            extensions = NCONF_get_string(extconf, "default", "extensions");
+            extensions = NCONF_get_string(extfile_conf, "default", "extensions");
             if (extensions == NULL)
                 extensions = "default";
         }
@@ -836,7 +838,20 @@ end_of_options:
                 goto end;
         }
 
-        if (extconf == NULL) {
+        if (extfile_conf != NULL) {
+            /* Check syntax of extfile */
+            X509V3_CTX ctx;
+
+            X509V3_set_ctx_test(&ctx);
+            X509V3_set_nconf(&ctx, extfile_conf);
+            if (!X509V3_EXT_add_nconf(extfile_conf, &ctx, extensions, NULL)) {
+                BIO_printf(bio_err,
+                           "Error checking certificate extensions from extfile section %s\n",
+                           extensions);
+                ret = 1;
+                goto end;
+            }
+        } else {
             /*
              * no '-extfile' option, so we look for extensions in the main
              * configuration file
@@ -847,13 +862,13 @@ end_of_options:
                     ERR_clear_error();
             }
             if (extensions != NULL) {
-                /* Check syntax of file */
+                /* Check syntax of config file section */
                 X509V3_CTX ctx;
                 X509V3_set_ctx_test(&ctx);
                 X509V3_set_nconf(&ctx, conf);
                 if (!X509V3_EXT_add_nconf(conf, &ctx, extensions, NULL)) {
                     BIO_printf(bio_err,
-                               "Error Loading extension section %s\n",
+                               "Error checking certificate extension config section %s\n",
                                extensions);
                     ret = 1;
                     goto end;
@@ -1131,7 +1146,7 @@ end_of_options:
             X509V3_set_nconf(&ctx, conf);
             if (!X509V3_EXT_add_nconf(conf, &ctx, crl_ext, NULL)) {
                 BIO_printf(bio_err,
-                           "Error Loading CRL extension section %s\n", crl_ext);
+                           "Error checking CRL extension section %s\n", crl_ext);
                 ret = 1;
                 goto end;
             }
@@ -1220,8 +1235,11 @@ end_of_options:
             X509V3_set_nconf(&crlctx, conf);
 
             if (crl_ext != NULL)
-                if (!X509V3_EXT_CRL_add_nconf(conf, &crlctx, crl_ext, crl))
+                if (!X509V3_EXT_CRL_add_nconf(conf, &crlctx, crl_ext, crl)) {
+                    BIO_printf(bio_err,
+                               "Error adding CRL extensions from section %s\n", crl_ext);
                     goto end;
+                }
             if (crlnumberfile != NULL) {
                 tmpser = BN_to_ASN1_INTEGER(crlnumber, NULL);
                 if (!tmpser)
@@ -1312,7 +1330,7 @@ end_of_options:
     X509_free(x509);
     X509_CRL_free(crl);
     NCONF_free(conf);
-    NCONF_free(extconf);
+    NCONF_free(extfile_conf);
     release_engine(e);
     return ret;
 }
@@ -1650,12 +1668,6 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
     if ((ret = X509_new_ex(app_get0_libctx(), app_get0_propq())) == NULL)
         goto end;
 
-#ifdef X509_V3
-    /* Make it an X509 v3 certificate. */
-    if (!X509_set_version(ret, 2))
-        goto end;
-#endif
-
     if (BN_to_ASN1_INTEGER(serial, X509_get_serialNumber(ret)) == NULL)
         goto end;
     if (selfsign) {
@@ -1687,28 +1699,23 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
 
     /* Lets add the extensions, if there are any */
     if (ext_sect) {
-        X509V3_CTX ctx;
+        X509V3_CTX ext_ctx;
 
         /* Initialize the context structure */
-        if (selfsign)
-            X509V3_set_ctx(&ctx, ret, ret, req, NULL, 0);
-        else
-            X509V3_set_ctx(&ctx, x509, ret, req, NULL, 0);
+        X509V3_set_ctx(&ext_ctx, selfsign ? ret : x509,
+                       ret, req, NULL, X509V3_CTX_REPLACE);
 
-        if (extconf != NULL) {
+        if (extfile_conf != NULL) {
             if (verbose)
                 BIO_printf(bio_err, "Extra configuration file found\n");
 
-            /* Use the extconf configuration db LHASH */
-            X509V3_set_nconf(&ctx, extconf);
-
-            /* Test the structure (needed?) */
-            /* X509V3_set_ctx_test(&ctx); */
+            /* Use the extfile_conf configuration db LHASH */
+            X509V3_set_nconf(&ext_ctx, extfile_conf);
 
             /* Adds exts contained in the configuration file */
-            if (!X509V3_EXT_add_nconf(extconf, &ctx, ext_sect, ret)) {
+            if (!X509V3_EXT_add_nconf(extfile_conf, &ext_ctx, ext_sect, ret)) {
                 BIO_printf(bio_err,
-                           "ERROR: adding extensions in section %s\n",
+                           "Error adding certificate extensions from extfile section %s\n",
                            ext_sect);
                 goto end;
             }
@@ -1717,11 +1724,11 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
                            "Successfully added extensions from file.\n");
         } else if (ext_sect) {
             /* We found extensions to be set from config file */
-            X509V3_set_nconf(&ctx, lconf);
+            X509V3_set_nconf(&ext_ctx, lconf);
 
-            if (!X509V3_EXT_add_nconf(lconf, &ctx, ext_sect, ret)) {
+            if (!X509V3_EXT_add_nconf(lconf, &ext_ctx, ext_sect, ret)) {
                 BIO_printf(bio_err,
-                           "ERROR: adding extensions in section %s\n",
+                           "Error adding certificate extensions from config section %s\n",
                            ext_sect);
                 goto end;
             }
@@ -1737,15 +1744,6 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
     if (!copy_extensions(ret, req, ext_copy)) {
         BIO_printf(bio_err, "ERROR: adding extensions from request\n");
         goto end;
-    }
-
-    {
-        const STACK_OF(X509_EXTENSION) *exts = X509_get0_extensions(ret);
-
-        if (exts != NULL && sk_X509_EXTENSION_num(exts) > 0)
-            /* Make it an X509 v3 certificate. */
-            if (!X509_set_version(ret, 2))
-                goto end;
     }
 
     if (verbose)

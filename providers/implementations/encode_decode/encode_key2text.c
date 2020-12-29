@@ -126,6 +126,7 @@ err:
 /* Number of octets per line */
 #define LABELED_BUF_PRINT_WIDTH    15
 
+#if !defined(OPENSSL_NO_DH) || !defined(OPENSSL_NO_DSA) || !defined(OPENSSL_NO_EC)
 static int print_labeled_buf(BIO *out, const char *label,
                              const unsigned char *buf, size_t buflen)
 {
@@ -151,13 +152,15 @@ static int print_labeled_buf(BIO *out, const char *label,
 
     return 1;
 }
+#endif
 
 #if !defined(OPENSSL_NO_DH) || !defined(OPENSSL_NO_DSA)
 static int ffc_params_to_text(BIO *out, const FFC_PARAMS *ffc)
 {
     if (ffc->nid != NID_undef) {
 #ifndef OPENSSL_NO_DH
-        const char *name = ossl_ffc_named_group_from_uid(ffc->nid);
+        const DH_NAMED_GROUP *group = ossl_ffc_uid_to_dh_named_group(ffc->nid);
+        const char *name = ossl_ffc_named_group_get_name(group);
 
         if (name == NULL)
             goto err;
@@ -376,18 +379,17 @@ static int ec_param_explicit_curve_to_text(BIO *out, const EC_GROUP *group,
 static int ec_param_explicit_gen_to_text(BIO *out, const EC_GROUP *group,
                                          BN_CTX *ctx)
 {
-    const EC_POINT *point = NULL;
-    BIGNUM *gen = NULL;
-    const char *glabel = NULL;
+    int ret;
+    size_t buflen;
     point_conversion_form_t form;
+    const EC_POINT *point = NULL;
+    const char *glabel = NULL;
+    unsigned char *buf = NULL;
 
     form = EC_GROUP_get_point_conversion_form(group);
     point = EC_GROUP_get0_generator(group);
-    gen = BN_CTX_get(ctx);
 
-    if (gen == NULL
-        || point == NULL
-        || EC_POINT_point2bn(group, point, form, gen, ctx) == NULL)
+    if (point == NULL)
         return 0;
 
     switch (form) {
@@ -403,7 +405,14 @@ static int ec_param_explicit_gen_to_text(BIO *out, const EC_GROUP *group,
     default:
         return 0;
     }
-    return print_labeled_bignum(out, glabel, gen);
+
+    buflen = EC_POINT_point2buf(group, point, form, &buf, ctx);
+    if (buflen == 0)
+        return 0;
+
+    ret = print_labeled_buf(out, glabel, buf, buflen);
+    OPENSSL_clear_free(buf, buflen);
+    return ret;
 }
 
 /* Print explicit parameters */

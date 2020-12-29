@@ -23,6 +23,12 @@ OpenSSL 3.0
 
 ### Changes between 1.1.1 and 3.0 [xx XXX xxxx]
 
+ * The -cipher-commands and -digest-commands options of the command line
+   utility list has been deprecated.
+   Instead use the -cipher-algorithms and -digest-algorithms options.
+
+   *Dmitry Belyavskiy*
+
  * Deprecated all the libcrypto and libssl error string loading
    functions: ERR_load_ASN1_strings(), ERR_load_ASYNC_strings(),
    ERR_load_BIO_strings(), ERR_load_BN_strings(), ERR_load_BUF_strings(),
@@ -498,20 +504,23 @@ OpenSSL 3.0
 
  * All of the low level DSA functions have been deprecated including:
 
-   DSA_do_sign, DSA_do_verify, DSA_OpenSSL, DSA_set_default_method,
-   DSA_get_default_method, DSA_set_method, DSA_get_method,
-   DSA_new_method, DSA_size, DSA_security_bits, DSA_sign_setup, DSA_sign,
-   DSA_verify, DSA_get_ex_new_index, DSA_set_ex_data, DSA_get_ex_data,
-   DSA_generate_parameters_ex, DSA_generate_key, DSA_meth_new, DSA_get0_engine,
-   DSA_meth_free, DSA_meth_dup, DSA_meth_get0_name, DSA_meth_set1_name,
-   DSA_meth_get_flags, DSA_meth_set_flags, DSA_meth_get0_app_data,
-   DSA_meth_set0_app_data, DSA_meth_get_sign, DSA_meth_set_sign,
-   DSA_meth_get_sign_setup, DSA_meth_set_sign_setup, DSA_meth_get_verify,
-   DSA_meth_set_verify, DSA_meth_get_mod_exp, DSA_meth_set_mod_exp,
-   DSA_meth_get_bn_mod_exp, DSA_meth_set_bn_mod_exp, DSA_meth_get_init,
-   DSA_meth_set_init, DSA_meth_get_finish, DSA_meth_set_finish,
-   DSA_meth_get_paramgen, DSA_meth_set_paramgen, DSA_meth_get_keygen and
-   DSA_meth_set_keygen.
+   DSA_new, DSA_free, DSA_up_ref, DSA_bits, DSA_get0_pqg, DSA_set0_pqg,
+   DSA_get0_key, DSA_set0_key, DSA_get0_p, DSA_get0_q, DSA_get0_g,
+   DSA_get0_pub_key, DSA_get0_priv_key, DSA_clear_flags, DSA_test_flags,
+   DSA_set_flags, DSA_do_sign, DSA_do_verify, DSA_OpenSSL,
+   DSA_set_default_method, DSA_get_default_method, DSA_set_method,
+   DSA_get_method, DSA_new_method, DSA_size, DSA_security_bits,
+   DSA_sign_setup, DSA_sign, DSA_verify, DSA_get_ex_new_index,
+   DSA_set_ex_data, DSA_get_ex_data, DSA_generate_parameters_ex,
+   DSA_generate_key, DSA_meth_new, DSA_get0_engine, DSA_meth_free,
+   DSA_meth_dup, DSA_meth_get0_name, DSA_meth_set1_name, DSA_meth_get_flags,
+   DSA_meth_set_flags, DSA_meth_get0_app_data, DSA_meth_set0_app_data,
+   DSA_meth_get_sign, DSA_meth_set_sign, DSA_meth_get_sign_setup,
+   DSA_meth_set_sign_setup, DSA_meth_get_verify, DSA_meth_set_verify,
+   DSA_meth_get_mod_exp, DSA_meth_set_mod_exp, DSA_meth_get_bn_mod_exp,
+   DSA_meth_set_bn_mod_exp, DSA_meth_get_init, DSA_meth_set_init,
+   DSA_meth_get_finish, DSA_meth_set_finish, DSA_meth_get_paramgen,
+   DSA_meth_set_paramgen, DSA_meth_get_keygen and DSA_meth_set_keygen.
 
    Use of these low level functions has been informally discouraged for a long
    time.  Instead applications should use L<EVP_DigestSignInit_ex(3)>,
@@ -1339,7 +1348,19 @@ OpenSSL 1.1.1
 
 ### Changes between 1.1.1h and 1.1.1i [xx XXX xxxx]
 
- *
+ * Fixed NULL pointer deref in the GENERAL_NAME_cmp function
+   This function could crash if both GENERAL_NAMEs contain an EDIPARTYNAME.
+    If an attacker can control both items being compared  then this could lead
+    to a possible denial of service attack. OpenSSL itself uses the
+    GENERAL_NAME_cmp function for two purposes:
+    1) Comparing CRL distribution point names between an available CRL and a
+       CRL distribution point embedded in an X509 certificate
+    2) When verifying that a timestamp response token signer matches the
+       timestamp authority name (exposed via the API functions
+       TS_RESP_verify_response and TS_RESP_verify_token)
+   ([CVE-2020-1971])
+
+   *Matt Caswell*
 
 ### Changes between 1.1.1g and 1.1.1h [22 Sep 2020]
 
@@ -18662,6 +18683,7 @@ ndif
 
 <!-- Links -->
 
+[CVE-2020-1971]: https://www.openssl.org/news/vulnerabilities.html#CVE-2020-1971
 [CVE-2020-1967]: https://www.openssl.org/news/vulnerabilities.html#CVE-2020-1967
 [CVE-2019-1563]: https://www.openssl.org/news/vulnerabilities.html#CVE-2019-1563
 [CVE-2019-1559]: https://www.openssl.org/news/vulnerabilities.html#CVE-2019-1559

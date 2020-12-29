@@ -3590,22 +3590,12 @@ int setup_tests(void)
     }
 
     /*
+     * Load the provider via configuration into the created library context.
      * Load the 'null' provider into the default library context to ensure that
      * the the tests do not fallback to using the default provider.
      */
-    prov_null = OSSL_PROVIDER_load(NULL, "null");
-    if (prov_null == NULL) {
-        opt_printf_stderr("Failed to load null provider into default libctx\n");
+    if (!test_get_libctx(&libctx, &prov_null, config_file, NULL, NULL))
         return 0;
-    }
-
-    /* load the provider via configuration into the created library context */
-    libctx = OSSL_LIB_CTX_new();
-    if (libctx == NULL
-        || !OSSL_LIB_CTX_load_config(libctx, config_file)) {
-        TEST_error("Failed to load config %s\n", config_file);
-        return 0;
-    }
 
     n = test_get_argument_count();
     if (n == 0)
@@ -3664,10 +3654,6 @@ static int is_digest_disabled(const char *name)
 
 static int is_pkey_disabled(const char *name)
 {
-#ifdef OPENSSL_NO_RSA
-    if (STR_STARTS_WITH(name, "RSA"))
-        return 1;
-#endif
 #ifdef OPENSSL_NO_EC
     if (STR_STARTS_WITH(name, "EC"))
         return 1;

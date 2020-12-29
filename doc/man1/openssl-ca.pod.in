@@ -156,7 +156,7 @@ The CA private key to sign requests with. This must match with B<-cert>.
 
 The format of the private key input file; the default is B<PEM>.
 The only value with effect is B<ENGINE>; all others have become obsolete.
-See L<openssl(1)/Format Options> for details.
+See L<openssl-format-options(1)> for details.
 
 =item B<-sigopt> I<nm>:I<v>
 
@@ -186,7 +186,7 @@ Better use B<-passin>.
 
 The key password source for key files and certificate PKCS#12 files.
 For more information about the format of B<arg>
-see L<openssl(1)/Pass Phrase Options>.
+see L<openssl-passphrase-options(1)>.
 
 =item B<-selfsign>
 
@@ -271,10 +271,10 @@ and all certificates will be certified automatically.
 
 The section of the configuration file containing certificate extensions
 to be added when a certificate is issued (defaults to B<x509_extensions>
-unless the B<-extfile> option is used). If no extension section is
-present then, a V1 certificate is created. If the extension section
-is present (even if it is empty), then a V3 certificate is created. See the
-L<x509v3_config(5)> manual page for details of the
+unless the B<-extfile> option is used).
+If no X.509 extensions are specified then a V1 certificate is created,
+else a V3 certificate is created.
+See the L<x509v3_config(5)> manual page for details of the
 extension section format.
 
 =item B<-extfile> I<file>
@@ -540,11 +540,11 @@ present, it must contain a valid CRL number.
 
 =item B<x509_extensions>
 
-The same as B<-extensions>.
+A fallback to the B<-extensions> option.
 
 =item B<crl_extensions>
 
-The same as B<-crlexts>.
+A fallback to the B<-crlexts> option.
 
 =item B<preserve>
 
