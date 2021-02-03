@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -159,5 +159,23 @@ EVP_PKEY *ssl_dh_to_pkey(DH *dh)
     return ret;
 }
 # endif
-#endif
 
+/* Some deprecated public APIs pass EC_KEY objects */
+# ifndef OPENSSL_NO_EC
+int ssl_set_tmp_ecdh_groups(uint16_t **pext, size_t *pextlen,
+                            void *key)
+{
+    const EC_GROUP *group = EC_KEY_get0_group((const EC_KEY *)key);
+    int nid;
+
+    if (group == NULL) {
+        ERR_raise(ERR_LIB_SSL, SSL_R_MISSING_PARAMETERS);
+        return 0;
+    }
+    nid = EC_GROUP_get_curve_name(group);
+    if (nid == NID_undef)
+        return 0;
+    return tls1_set_groups(pext, pextlen, &nid, 1);
+}
+# endif
+#endif

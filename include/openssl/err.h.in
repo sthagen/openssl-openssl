@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -355,6 +355,8 @@ static ossl_unused ossl_inline int ERR_COMMON_ERROR(unsigned long errcode)
 # define ERR_R_INTERRUPTED_OR_CANCELLED          (265|ERR_RFLAG_COMMON)
 # define ERR_R_NESTED_ASN1_ERROR                 (266|ERR_RFLAG_COMMON)
 # define ERR_R_MISSING_ASN1_EOS                  (267|ERR_RFLAG_COMMON)
+# define ERR_R_UNSUPPORTED                       (268|ERR_RFLAG_COMMON)
+# define ERR_R_FETCH_FAILED                      (269|ERR_RFLAG_COMMON)
 
 typedef struct ERR_string_data_st {
     unsigned long error;

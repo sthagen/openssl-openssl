@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1999-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -478,14 +478,6 @@ int smime_main(int argc, char **argv)
         key = load_key(keyfile, keyform, 0, passin, e, "signing key");
         if (key == NULL)
             goto end;
-
-        /*
-         * TODO: Remove this when CMS has full support for provider-native
-         * EVP_PKEYs
-         */
-        if (EVP_PKEY_get0(key) == NULL)
-            goto end;
-
     }
 
     in = bio_open_default(infile, 'r', informat);
@@ -577,13 +569,6 @@ int smime_main(int argc, char **argv)
                 goto end;
             key = load_key(keyfile, keyform, 0, passin, e, "signing key");
             if (key == NULL)
-                goto end;
-
-            /*
-             * TODO: Remove this when CMS has full support for provider-native
-             * EVP_PKEYs
-             */
-            if (EVP_PKEY_get0(key) == NULL)
                 goto end;
 
             if (!PKCS7_sign_add_signer(p7, signer, key, sign_md, flags))

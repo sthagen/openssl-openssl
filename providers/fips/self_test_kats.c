@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -361,7 +361,7 @@ static int self_test_ka(const ST_KAT_KAS *t,
     OSSL_PARAM *params = NULL;
     OSSL_PARAM *params_peer = NULL;
     unsigned char secret[256];
-    size_t secret_len;
+    size_t secret_len = sizeof(secret);
     OSSL_PARAM_BLD *bld = NULL;
     BN_CTX *bnctx = NULL;
 

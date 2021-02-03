@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -341,6 +341,7 @@ typedef struct string_int_pair_st {
 
 const char *opt_path_end(const char *filename);
 char *opt_progname(const char *argv0);
+char *opt_appname(const char *arg0);
 char *opt_getprog(void);
 char *opt_init(int ac, char **av, const OPTIONS * o);
 int opt_next(void);
@@ -362,6 +363,7 @@ int opt_umax(const char *arg, uintmax_t *result);
 # define uintmax_t unsigned long
 #endif
 int opt_pair(const char *arg, const OPT_PAIR * pairs, int *result);
+int opt_string(const char *name, const char **options);
 int opt_cipher(const char *name, const EVP_CIPHER **cipherp);
 int opt_md(const char *name, const EVP_MD **mdp);
 char *opt_arg(void);

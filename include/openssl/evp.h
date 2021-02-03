@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -37,16 +37,18 @@
 
 # include <openssl/objects.h>
 
-# define EVP_PK_RSA      0x0001
-# define EVP_PK_DSA      0x0002
-# define EVP_PK_DH       0x0004
-# define EVP_PK_EC       0x0008
-# define EVP_PKT_SIGN    0x0010
-# define EVP_PKT_ENC     0x0020
-# define EVP_PKT_EXCH    0x0040
-# define EVP_PKS_RSA     0x0100
-# define EVP_PKS_DSA     0x0200
-# define EVP_PKS_EC      0x0400
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  define EVP_PK_RSA      0x0001
+#  define EVP_PK_DSA      0x0002
+#  define EVP_PK_DH       0x0004
+#  define EVP_PK_EC       0x0008
+#  define EVP_PKT_SIGN    0x0010
+#  define EVP_PKT_ENC     0x0020
+#  define EVP_PKT_EXCH    0x0040
+#  define EVP_PKS_RSA     0x0100
+#  define EVP_PKS_DSA     0x0200
+#  define EVP_PKS_EC      0x0400
+# endif
 
 # define EVP_PKEY_NONE   NID_undef
 # define EVP_PKEY_RSA    NID_rsaEncryption
@@ -494,9 +496,11 @@ typedef int (EVP_PBE_KEYGEN) (EVP_CIPHER_CTX *ctx, const char *pass,
 #  define EVP_PKEY_assign_DH(pkey,dh) EVP_PKEY_assign((pkey),EVP_PKEY_DH,(dh))
 # endif
 
-# ifndef OPENSSL_NO_EC
-#  define EVP_PKEY_assign_EC_KEY(pkey,eckey) EVP_PKEY_assign((pkey),EVP_PKEY_EC,\
-                                        (eckey))
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  ifndef OPENSSL_NO_EC
+#   define EVP_PKEY_assign_EC_KEY(pkey,eckey) \
+        EVP_PKEY_assign((pkey), EVP_PKEY_EC, (eckey))
+#  endif
 # endif
 # ifndef OPENSSL_NO_SIPHASH
 #  define EVP_PKEY_assign_SIPHASH(pkey,shkey) EVP_PKEY_assign((pkey),\
@@ -529,11 +533,15 @@ int EVP_MD_block_size(const EVP_MD *md);
 unsigned long EVP_MD_flags(const EVP_MD *md);
 
 const EVP_MD *EVP_MD_CTX_md(const EVP_MD_CTX *ctx);
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+OSSL_DEPRECATEDIN_3_0
 int (*EVP_MD_CTX_update_fn(EVP_MD_CTX *ctx))(EVP_MD_CTX *ctx,
                                              const void *data, size_t count);
+OSSL_DEPRECATEDIN_3_0
 void EVP_MD_CTX_set_update_fn(EVP_MD_CTX *ctx,
                               int (*update) (EVP_MD_CTX *ctx,
                                              const void *data, size_t count));
+# endif
 # define EVP_MD_CTX_name(e)              EVP_MD_name(EVP_MD_CTX_md(e))
 # define EVP_MD_CTX_size(e)              EVP_MD_size(EVP_MD_CTX_md(e))
 # define EVP_MD_CTX_block_size(e)        EVP_MD_block_size(EVP_MD_CTX_md(e))
@@ -573,8 +581,8 @@ OSSL_DEPRECATEDIN_3_0 const unsigned char *EVP_CIPHER_CTX_iv(const EVP_CIPHER_CT
 OSSL_DEPRECATEDIN_3_0 const unsigned char *EVP_CIPHER_CTX_original_iv(const EVP_CIPHER_CTX *ctx);
 OSSL_DEPRECATEDIN_3_0 unsigned char *EVP_CIPHER_CTX_iv_noconst(EVP_CIPHER_CTX *ctx);
 # endif
-int EVP_CIPHER_CTX_get_iv_state(EVP_CIPHER_CTX *ctx, void *buf, size_t len);
-int EVP_CIPHER_CTX_get_iv(EVP_CIPHER_CTX *ctx, void *buf, size_t len);
+int EVP_CIPHER_CTX_get_updated_iv(EVP_CIPHER_CTX *ctx, void *buf, size_t len);
+int EVP_CIPHER_CTX_get_original_iv(EVP_CIPHER_CTX *ctx, void *buf, size_t len);
 unsigned char *EVP_CIPHER_CTX_buf_noconst(EVP_CIPHER_CTX *ctx);
 int EVP_CIPHER_CTX_num(const EVP_CIPHER_CTX *ctx);
 int EVP_CIPHER_CTX_set_num(EVP_CIPHER_CTX *ctx, int num);
@@ -1261,11 +1269,16 @@ OSSL_DEPRECATEDIN_3_0 struct dh_st *EVP_PKEY_get0_DH(const EVP_PKEY *pkey);
 OSSL_DEPRECATEDIN_3_0 struct dh_st *EVP_PKEY_get1_DH(EVP_PKEY *pkey);
 #  endif
 # endif
-# ifndef OPENSSL_NO_EC
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  ifndef OPENSSL_NO_EC
 struct ec_key_st;
+OSSL_DEPRECATEDIN_3_0
 int EVP_PKEY_set1_EC_KEY(EVP_PKEY *pkey, struct ec_key_st *key);
+OSSL_DEPRECATEDIN_3_0
 struct ec_key_st *EVP_PKEY_get0_EC_KEY(const EVP_PKEY *pkey);
+OSSL_DEPRECATEDIN_3_0
 struct ec_key_st *EVP_PKEY_get1_EC_KEY(EVP_PKEY *pkey);
+#  endif
 # endif
 
 EVP_PKEY *EVP_PKEY_new(void);
@@ -1678,11 +1691,11 @@ int EVP_PKEY_get_raw_private_key(const EVP_PKEY *pkey, unsigned char *priv,
 int EVP_PKEY_get_raw_public_key(const EVP_PKEY *pkey, unsigned char *pub,
                                 size_t *len);
 
-EVP_PKEY *EVP_PKEY_new_CMAC_key_ex(const unsigned char *priv, size_t len,
-                                   const char *cipher_name, OSSL_LIB_CTX *libctx,
-                                   const char *propq);
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+OSSL_DEPRECATEDIN_3_0
 EVP_PKEY *EVP_PKEY_new_CMAC_key(ENGINE *e, const unsigned char *priv,
                                 size_t len, const EVP_CIPHER *cipher);
+# endif
 
 void EVP_PKEY_CTX_set_data(EVP_PKEY_CTX *ctx, void *data);
 void *EVP_PKEY_CTX_get_data(const EVP_PKEY_CTX *ctx);
@@ -1794,6 +1807,19 @@ int EVP_PKEY_get_utf8_string_param(const EVP_PKEY *pkey, const char *key_name,
 int EVP_PKEY_get_octet_string_param(const EVP_PKEY *pkey, const char *key_name,
                                     unsigned char *buf, size_t max_buf_sz,
                                     size_t *out_sz);
+
+const OSSL_PARAM *EVP_PKEY_settable_params(EVP_PKEY *pkey);
+int EVP_PKEY_set_params(EVP_PKEY *pkey, OSSL_PARAM params[]);
+int EVP_PKEY_set_int_param(EVP_PKEY *pkey, const char *key_name, int in);
+int EVP_PKEY_set_size_t_param(EVP_PKEY *pkey, const char *key_name, size_t in);
+int EVP_PKEY_set_bn_param(EVP_PKEY *pkey, const char *key_name, BIGNUM *bn);
+int EVP_PKEY_set_utf8_string_param(EVP_PKEY *pkey, const char *key_name,
+                                   char *str);
+int EVP_PKEY_set_octet_string_param(EVP_PKEY *pkey, const char *key_name,
+                                    unsigned char *buf, size_t bsize);
+
+int EVP_PKEY_get_ec_point_conv_form(const EVP_PKEY *pkey);
+int EVP_PKEY_get_field_type(const EVP_PKEY *pkey);
 
 int EVP_PKEY_paramgen_init(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_paramgen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -78,6 +78,12 @@ static int chacha20_poly1305_initiv(PROV_CIPHER_CTX *bctx)
     PROV_CHACHA20_POLY1305_CTX *ctx = (PROV_CHACHA20_POLY1305_CTX *)bctx;
     unsigned char tempiv[CHACHA_CTR_SIZE] = { 0 };
     int ret = 1;
+
+    ctx->len.aad = 0;
+    ctx->len.text = 0;
+    ctx->aad = 0;
+    ctx->mac_inited = 0;
+    ctx->tls_payload_length = NO_TLS_PAYLOAD_LENGTH;
 
         /* pad on the left */
     if (ctx->nonce_len <= CHACHA_CTR_SIZE) {

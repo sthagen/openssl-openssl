@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -514,7 +514,7 @@ int EVP_PKEY_CTX_set0_dh_kdf_ukm(EVP_PKEY_CTX *ctx, unsigned char *ukm, int len)
     int ret;
     OSSL_PARAM params[2], *p = params;
 
-    if (len <= 0)
+    if (len < 0)
         return -1;
 
     ret = dh_param_derive_check(ctx);
@@ -550,7 +550,7 @@ int EVP_PKEY_CTX_get0_dh_kdf_ukm(EVP_PKEY_CTX *ctx, unsigned char **pukm)
 {
     int ret;
     size_t ukmlen;
-    OSSL_PARAM params[3], *p = params;
+    OSSL_PARAM params[2], *p = params;
 
     ret = dh_param_derive_check(ctx);
     if (ret != 1)
@@ -563,8 +563,6 @@ int EVP_PKEY_CTX_get0_dh_kdf_ukm(EVP_PKEY_CTX *ctx, unsigned char **pukm)
 
     *p++ = OSSL_PARAM_construct_octet_ptr(OSSL_EXCHANGE_PARAM_KDF_UKM,
                                           (void **)pukm, 0);
-    *p++ = OSSL_PARAM_construct_size_t(OSSL_EXCHANGE_PARAM_KDF_UKM_LEN,
-                                       &ukmlen);
     *p = OSSL_PARAM_construct_end();
 
     ret = evp_pkey_ctx_get_params_strict(ctx, params);
@@ -576,6 +574,7 @@ int EVP_PKEY_CTX_get0_dh_kdf_ukm(EVP_PKEY_CTX *ctx, unsigned char **pukm)
         return -1;
     }
 
+    ukmlen = params[0].return_size;
     if (ukmlen > INT_MAX)
         return -1;
 

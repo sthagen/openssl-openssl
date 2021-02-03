@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -548,6 +548,91 @@ end:
     return testresult;
 }
 #endif
+
+static int verify_retry_cb(X509_STORE_CTX *ctx, void *arg)
+{
+    int res = X509_verify_cert(ctx);
+
+    if (res == 0 && X509_STORE_CTX_get_error(ctx) ==
+        X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY)
+        return -1; /* indicate SSL_ERROR_WANT_RETRY_VERIFY */
+    return res;
+}
+
+static int test_client_cert_verify_cb(void)
+{
+    /* server key, cert, chain, and root */
+    char *skey = test_mk_file_path(certsdir, "leaf.key");
+    char *leaf = test_mk_file_path(certsdir, "leaf.pem");
+    char *int2 = test_mk_file_path(certsdir, "subinterCA.pem");
+    char *int1 = test_mk_file_path(certsdir, "interCA.pem");
+    char *root = test_mk_file_path(certsdir, "rootCA.pem");
+    X509 *crt1 = NULL, *crt2 = NULL;
+    STACK_OF(X509) *server_chain;
+    SSL_CTX *cctx = NULL, *sctx = NULL;
+    SSL *clientssl = NULL, *serverssl = NULL;
+    int testresult = 0;
+
+    if (!TEST_true(create_ssl_ctx_pair(libctx, TLS_server_method(),
+                                       TLS_client_method(), TLS1_VERSION, 0,
+                                       &sctx, &cctx, NULL, NULL)))
+        goto end;
+    if (!TEST_int_eq(SSL_CTX_use_certificate_chain_file(sctx, leaf), 1)
+            || !TEST_int_eq(SSL_CTX_use_PrivateKey_file(sctx, skey,
+                                                        SSL_FILETYPE_PEM), 1)
+            || !TEST_int_eq(SSL_CTX_check_private_key(sctx), 1))
+        goto end;
+    if (!TEST_true(SSL_CTX_load_verify_locations(cctx, root, NULL)))
+        goto end;
+    SSL_CTX_set_verify(cctx, SSL_VERIFY_PEER, NULL);
+    SSL_CTX_set_cert_verify_callback(cctx, verify_retry_cb, NULL);
+    if (!TEST_true(create_ssl_objects(sctx, cctx, &serverssl,
+                                      &clientssl, NULL, NULL)))
+        goto end;
+
+    /* attempt SSL_connect() with incomplete server chain */
+    if (!TEST_false(create_ssl_connection(serverssl, clientssl,
+                                          SSL_ERROR_WANT_RETRY_VERIFY)))
+        goto end;
+
+    /* application provides intermediate certs needed to verify server cert */
+    if (!TEST_ptr((crt1 = load_cert_pem(int1, libctx)))
+        || !TEST_ptr((crt2 = load_cert_pem(int2, libctx)))
+        || !TEST_ptr((server_chain = SSL_get_peer_cert_chain(clientssl))))
+        goto end;
+    /* add certs in reverse order to demonstrate real chain building */
+    if (!TEST_true(sk_X509_push(server_chain, crt1)))
+        goto end;
+    crt1 = NULL;
+    if (!TEST_true(sk_X509_push(server_chain, crt2)))
+        goto end;
+    crt2 = NULL;
+
+    /* continue SSL_connect(), must now succeed with completed server chain */
+    if (!TEST_true(create_ssl_connection(serverssl, clientssl,
+                                         SSL_ERROR_NONE)))
+        goto end;
+
+    testresult = 1;
+
+end:
+    X509_free(crt1);
+    X509_free(crt2);
+    SSL_shutdown(clientssl);
+    SSL_shutdown(serverssl);
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+
+    OPENSSL_free(skey);
+    OPENSSL_free(leaf);
+    OPENSSL_free(int2);
+    OPENSSL_free(int1);
+    OPENSSL_free(root);
+
+    return testresult;
+}
 
 #ifndef OPENSSL_NO_TLS1_2
 static int full_client_hello_callback(SSL *s, int *al, void *arg)
@@ -4318,6 +4403,7 @@ static int test_key_exchange(int idx)
     int *kexch_groups = &kexch_alg;
     int kexch_groups_size = 1;
     int max_version = TLS1_3_VERSION;
+    char *kexch_name0 = NULL;
 
     switch (idx) {
 # ifndef OPENSSL_NO_EC
@@ -4329,47 +4415,60 @@ static int test_key_exchange(int idx)
         case 0:
             kexch_groups = ecdhe_kexch_groups;
             kexch_groups_size = OSSL_NELEM(ecdhe_kexch_groups);
+            kexch_name0 = "secp256r1";
             break;
         case 1:
             kexch_alg = NID_X9_62_prime256v1;
+            kexch_name0 = "secp256r1";
             break;
         case 2:
             kexch_alg = NID_secp384r1;
+            kexch_name0 = "secp384r1";
             break;
         case 3:
             kexch_alg = NID_secp521r1;
+            kexch_name0 = "secp521r1";
             break;
         case 4:
             kexch_alg = NID_X25519;
+            kexch_name0 = "x25519";
             break;
         case 5:
             kexch_alg = NID_X448;
+            kexch_name0 = "x448";
             break;
 # endif
 # ifndef OPENSSL_NO_DH
 # ifndef OPENSSL_NO_TLS1_2
         case 13:
             max_version = TLS1_2_VERSION;
+            kexch_name0 = "ffdhe2048";
 # endif
             /* Fall through */
         case 6:
             kexch_groups = ffdhe_kexch_groups;
             kexch_groups_size = OSSL_NELEM(ffdhe_kexch_groups);
+            kexch_name0 = "ffdhe2048";
             break;
         case 7:
             kexch_alg = NID_ffdhe2048;
+            kexch_name0 = "ffdhe2048";
             break;
         case 8:
             kexch_alg = NID_ffdhe3072;
+            kexch_name0 = "ffdhe3072";
             break;
         case 9:
             kexch_alg = NID_ffdhe4096;
+            kexch_name0 = "ffdhe4096";
             break;
         case 10:
             kexch_alg = NID_ffdhe6144;
+            kexch_name0 = "ffdhe6144";
             break;
         case 11:
             kexch_alg = NID_ffdhe8192;
+            kexch_name0 = "ffdhe8192";
             break;
 # endif
         default:
@@ -4425,6 +4524,11 @@ static int test_key_exchange(int idx)
     if (!TEST_int_eq(SSL_get_shared_group(serverssl, 0),
                      idx == 13 ? 0 : kexch_groups[0]))
         goto end;
+
+    if (!TEST_str_eq(SSL_group_to_name(serverssl, kexch_groups[0]),
+                     kexch_name0))
+        goto end;
+
     if (max_version == TLS1_3_VERSION) {
         if (!TEST_int_eq(SSL_get_negotiated_group(serverssl), kexch_groups[0]))
             goto end;
@@ -8000,6 +8104,10 @@ static int test_pluggable_group(int idx)
     if (!TEST_true(create_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE)))
         goto end;
 
+    if (!TEST_str_eq(group_name,
+                     SSL_group_to_name(serverssl, SSL_get_shared_group(serverssl, 0))))
+        goto end;
+
     testresult = 1;
 
  end:
@@ -8134,7 +8242,7 @@ static EVP_PKEY *get_tmp_dh_params(void)
     return tmp_dh_params;
 }
 
-#  ifndef OPENSSL_NO_DEPRECATED
+#  ifndef OPENSSL_NO_DEPRECATED_3_0
 /* Callback used by test_set_tmp_dh() */
 static DH *tmp_dh_callback(SSL *s, int is_export, int keylen)
 {
@@ -8595,6 +8703,7 @@ int setup_tests(void)
 #ifndef OPENSSL_NO_TLS1_3
     ADD_TEST(test_keylog_no_master_key);
 #endif
+    ADD_TEST(test_client_cert_verify_cb);
 #ifndef OPENSSL_NO_TLS1_2
     ADD_TEST(test_client_hello_cb);
     ADD_TEST(test_no_ems);

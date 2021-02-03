@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -702,7 +702,7 @@ X509_OBJECT *X509_OBJECT_retrieve_match(STACK_OF(X509_OBJECT) *h,
             if (!X509_cmp(obj->data.x509, x->data.x509))
                 return obj;
         } else if (x->type == X509_LU_CRL) {
-            if (!X509_CRL_match(obj->data.crl, x->data.crl))
+            if (X509_CRL_match(obj->data.crl, x->data.crl) == 0)
                 return obj;
         } else
             return obj;

@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -455,11 +455,15 @@ DECLARE_PEM_rw_attr(OSSL_DEPRECATEDIN_3_0, DSA_PUBKEY, DSA)
 DECLARE_PEM_rw_attr(OSSL_DEPRECATEDIN_3_0, DSAparams, DSA)
 #  endif
 # endif
-# ifndef OPENSSL_NO_EC
-DECLARE_PEM_rw(ECPKParameters, EC_GROUP)
-DECLARE_PEM_rw_cb(ECPrivateKey, EC_KEY)
-DECLARE_PEM_rw(EC_PUBKEY, EC_KEY)
+
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  ifndef OPENSSL_NO_EC
+DECLARE_PEM_rw_attr(OSSL_DEPRECATEDIN_3_0, ECPKParameters, EC_GROUP)
+DECLARE_PEM_rw_cb_attr(OSSL_DEPRECATEDIN_3_0, ECPrivateKey, EC_KEY)
+DECLARE_PEM_rw_attr(OSSL_DEPRECATEDIN_3_0, EC_PUBKEY, EC_KEY)
+#  endif
 # endif
+
 # ifndef OPENSSL_NO_DH
 #  ifndef OPENSSL_NO_DEPRECATED_3_0
 DECLARE_PEM_rw_attr(OSSL_DEPRECATEDIN_3_0, DHparams, DH)

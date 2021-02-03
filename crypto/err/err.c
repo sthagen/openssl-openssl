@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -117,6 +117,15 @@ static ERR_STRING_DATA ERR_str_reasons[] = {
     {ERR_R_INVALID_PROVIDER_FUNCTIONS, "invalid provider functions"},
     {ERR_R_INTERRUPTED_OR_CANCELLED, "interrupted or cancelled"},
 
+    /*
+     * Something is unsupported, exactly what is expressed with additional data
+     */
+    {ERR_R_UNSUPPORTED, "unsupported"},
+    /*
+     * A fetch failed for other reasons than the name to be fetched being
+     * unsupported.
+     */
+    {ERR_R_FETCH_FAILED, "fetch failed"},
     {0, NULL},
 };
 #endif

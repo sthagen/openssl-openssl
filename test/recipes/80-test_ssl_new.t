@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -157,12 +157,12 @@ sub test_conf {
            "Getting output from generate_ssl_tests.pl.");
 
     SKIP: {
-        # Test 2. Compare against existing output in test/ssl_tests.cnf.
+        # Test 2. Compare against existing output in test/ssl-tests/
         skip "Skipping generated source test for $conf", 1
           if !$check_source;
 
         $run_test = is(cmp_text($output_file, $conf_file), 0,
-                       "Comparing generated sources.");
+                       "Comparing generated $output_file with $conf_file.");
       }
 
       # Test 3. Run the test.

@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -310,13 +310,6 @@ void DSA_get0_key(const DSA *d,
 
 int DSA_set0_key(DSA *d, BIGNUM *pub_key, BIGNUM *priv_key)
 {
-    /* If the field pub_key in d is NULL, the corresponding input
-     * parameters MUST be non-NULL.  The priv_key field may
-     * be left NULL.
-     */
-    if (d->pub_key == NULL && pub_key == NULL)
-        return 0;
-
     if (pub_key != NULL) {
         BN_free(d->pub_key);
         d->pub_key = pub_key;

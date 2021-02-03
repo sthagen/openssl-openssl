@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -19,13 +19,16 @@
 /* The spec allows for a longer length than this, but we limit it */
 #define HELLO_VERIFY_REQUEST_MAX_LENGTH 258
 #define END_OF_EARLY_DATA_MAX_LENGTH    0
-#define SERVER_HELLO_MAX_LENGTH         20000
 #define HELLO_RETRY_REQUEST_MAX_LENGTH  20000
 #define ENCRYPTED_EXTENSIONS_MAX_LENGTH 20000
 #define SERVER_KEY_EXCH_MAX_LENGTH      102400
 #define SERVER_HELLO_DONE_MAX_LENGTH    0
 #define KEY_UPDATE_MAX_LENGTH           1
 #define CCS_MAX_LENGTH                  1
+
+/* Max ServerHello size permitted by RFC 8446 */
+#define SERVER_HELLO_MAX_LENGTH         65607
+
 /* Max should actually be 36 but we are generous */
 #define FINISHED_MAX_LENGTH             64
 
@@ -126,6 +129,7 @@ __owur int tls_construct_cert_status_body(SSL *s, WPACKET *pkt);
 __owur int tls_construct_cert_status(SSL *s, WPACKET *pkt);
 __owur MSG_PROCESS_RETURN tls_process_key_exchange(SSL *s, PACKET *pkt);
 __owur MSG_PROCESS_RETURN tls_process_server_certificate(SSL *s, PACKET *pkt);
+__owur WORK_STATE tls_post_process_server_certificate(SSL *s, WORK_STATE wst);
 __owur int ssl3_check_cert_and_algorithm(SSL *s);
 #ifndef OPENSSL_NO_NEXTPROTONEG
 __owur int tls_construct_next_proto(SSL *s, WPACKET *pkt);

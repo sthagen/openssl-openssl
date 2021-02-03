@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -73,7 +73,7 @@ extern "C" {
 #define OSSL_CIPHER_PARAM_KEYLEN               "keylen"       /* size_t */
 #define OSSL_CIPHER_PARAM_IVLEN                "ivlen"        /* size_t */
 #define OSSL_CIPHER_PARAM_IV                   "iv"           /* octet_string OR octet_ptr */
-#define OSSL_CIPHER_PARAM_IV_STATE             "iv-state"     /* octet_string OR octet_ptr */
+#define OSSL_CIPHER_PARAM_UPDATED_IV           "updated-iv"   /* octet_string OR octet_ptr */
 #define OSSL_CIPHER_PARAM_NUM                  "num"          /* uint */
 #define OSSL_CIPHER_PARAM_ROUNDS               "rounds"       /* uint */
 #define OSSL_CIPHER_PARAM_AEAD_TAG             "tag"          /* octet_string */
@@ -385,13 +385,13 @@ extern "C" {
 #define OSSL_PKEY_RSA_PSS_SALT_LEN_AUTO   "auto"
 
 /* Key generation parameters */
-#define OSSL_PKEY_PARAM_RSA_BITS            OSSL_PKEY_PARAM_BITS
-#define OSSL_PKEY_PARAM_RSA_PRIMES          "primes"
-#define OSSL_PKEY_PARAM_RSA_DIGEST          OSSL_PKEY_PARAM_DIGEST
-#define OSSL_PKEY_PARAM_RSA_DIGEST_PROPS    OSSL_PKEY_PARAM_PROPERTIES
-#define OSSL_PKEY_PARAM_RSA_MASKGENFUNC     OSSL_PKEY_PARAM_MASKGENFUNC
-#define OSSL_PKEY_PARAM_RSA_MGF1_DIGEST     OSSL_PKEY_PARAM_MGF1_DIGEST
-#define OSSL_PKEY_PARAM_RSA_PSS_SALTLEN     "saltlen"
+#define OSSL_PKEY_PARAM_RSA_BITS             OSSL_PKEY_PARAM_BITS
+#define OSSL_PKEY_PARAM_RSA_PRIMES           "primes"
+#define OSSL_PKEY_PARAM_RSA_DIGEST           OSSL_PKEY_PARAM_DIGEST
+#define OSSL_PKEY_PARAM_RSA_DIGEST_PROPS     OSSL_PKEY_PARAM_PROPERTIES
+#define OSSL_PKEY_PARAM_RSA_MASKGENFUNC      OSSL_PKEY_PARAM_MASKGENFUNC
+#define OSSL_PKEY_PARAM_RSA_MGF1_DIGEST      OSSL_PKEY_PARAM_MGF1_DIGEST
+#define OSSL_PKEY_PARAM_RSA_PSS_SALTLEN      "saltlen"
 
 /* Key generation parameters */
 #define OSSL_PKEY_PARAM_FFC_TYPE         "type"
@@ -400,11 +400,22 @@ extern "C" {
 #define OSSL_PKEY_PARAM_FFC_DIGEST       OSSL_PKEY_PARAM_DIGEST
 #define OSSL_PKEY_PARAM_FFC_DIGEST_PROPS OSSL_PKEY_PARAM_PROPERTIES
 
-#define OSSL_PKEY_PARAM_EC_ENCODING      "encoding" /* utf8_string */
+#define OSSL_PKEY_PARAM_EC_ENCODING                "encoding" /* utf8_string */
+#define OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT "point-format"
+#define OSSL_PKEY_PARAM_EC_GROUP_CHECK_TYPE        "group-check"
+#define OSSL_PKEY_PARAM_EC_INCLUDE_PUBLIC          "include-public"
 
 /* OSSL_PKEY_PARAM_EC_ENCODING values */
 #define OSSL_PKEY_EC_ENCODING_EXPLICIT  "explicit"
 #define OSSL_PKEY_EC_ENCODING_GROUP     "named_curve"
+
+#define OSSL_PKEY_EC_POINT_CONVERSION_FORMAT_UNCOMPRESSED "uncompressed"
+#define OSSL_PKEY_EC_POINT_CONVERSION_FORMAT_COMPRESSED   "compressed"
+#define OSSL_PKEY_EC_POINT_CONVERSION_FORMAT_HYBRID       "hybrid"
+
+#define OSSL_PKEY_EC_GROUP_CHECK_DEFAULT     "default"
+#define OSSL_PKEY_EC_GROUP_CHECK_NAMED       "named"
+#define OSSL_PKEY_EC_GROUP_CHECK_NAMED_NIST  "named-nist"
 
 /* Key Exchange parameters */
 #define OSSL_EXCHANGE_PARAM_PAD                   "pad" /* uint */
@@ -427,7 +438,6 @@ extern "C" {
  * EVP_PKEY_CTX_{set0,get0}_rsa_oaep_label().
  */
 #define OSSL_EXCHANGE_PARAM_KDF_UKM               "kdf-ukm" /* see note above */
-#define OSSL_EXCHANGE_PARAM_KDF_UKM_LEN           "kdf-ukm-len" /* size_t */
 
 /* Signature parameters */
 #define OSSL_SIGNATURE_PARAM_ALGORITHM_ID       "algorithm-id"
@@ -452,7 +462,6 @@ extern "C" {
 #define OSSL_ASYM_CIPHER_PARAM_OAEP_DIGEST              OSSL_ALG_PARAM_DIGEST
 #define OSSL_ASYM_CIPHER_PARAM_OAEP_DIGEST_PROPS        "digest-props"
 #define OSSL_ASYM_CIPHER_PARAM_OAEP_LABEL               "oaep-label"
-#define OSSL_ASYM_CIPHER_PARAM_OAEP_LABEL_LEN           "oaep-label-len"
 #define OSSL_ASYM_CIPHER_PARAM_TLS_CLIENT_VERSION       "tls-client-version"
 #define OSSL_ASYM_CIPHER_PARAM_TLS_NEGOTIATED_VERSION   "tls-negotiated-version"
 

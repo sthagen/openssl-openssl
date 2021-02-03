@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -318,3 +318,5 @@ int X509_add_cert_new(STACK_OF(X509) **sk, X509 *cert, int flags);
 
 int X509_PUBKEY_get0_libctx(OSSL_LIB_CTX **plibctx, const char **ppropq,
                             const X509_PUBKEY *key);
+/* Calculate default key identifier according to RFC 5280 section 4.2.1.2 (1) */
+ASN1_OCTET_STRING *x509_pubkey_hash(X509_PUBKEY *pubkey);

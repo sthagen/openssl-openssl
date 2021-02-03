@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -125,12 +125,16 @@ IMPLEMENT_ASN1_DUP_FUNCTION(X509)
 X509 *d2i_X509(X509 **a, const unsigned char **in, long len)
 {
     X509 *cert = NULL;
+    int free_on_error = a != NULL && *a == NULL;
 
     cert = (X509 *)ASN1_item_d2i((ASN1_VALUE **)a, in, len, (X509_it()));
     /* Only cache the extensions if the cert object was passed in */
     if (cert != NULL && a != NULL) {
-        if (!x509v3_cache_extensions(cert))
+        if (!x509v3_cache_extensions(cert)) {
+            if (free_on_error)
+                X509_free(cert);
             cert = NULL;
+        }
     }
     return cert;
 }

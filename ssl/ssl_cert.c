@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -601,7 +601,8 @@ static int xname_sk_cmp(const X509_NAME *const *a, const X509_NAME *const *b)
 
 static unsigned long xname_hash(const X509_NAME *a)
 {
-    return X509_NAME_hash((X509_NAME *)a);
+    /* This returns 0 also if SHA1 is not available */
+    return X509_NAME_hash_ex((X509_NAME *)a, NULL, NULL, NULL);
 }
 
 STACK_OF(X509_NAME) *SSL_load_client_CA_file_ex(const char *file,

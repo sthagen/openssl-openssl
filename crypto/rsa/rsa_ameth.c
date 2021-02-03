@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -492,19 +492,6 @@ static int rsa_pkey_ctrl(EVP_PKEY *pkey, int op, long arg1, void *arg2)
     int min_saltlen;
 
     switch (op) {
-
-    case ASN1_PKEY_CTRL_PKCS7_SIGN:
-        if (arg1 == 0)
-            PKCS7_SIGNER_INFO_get0_algs(arg2, NULL, NULL, &alg);
-        break;
-
-    case ASN1_PKEY_CTRL_PKCS7_ENCRYPT:
-        if (pkey_is_pss(pkey))
-            return -2;
-        if (arg1 == 0)
-            PKCS7_RECIP_INFO_get0_alg(arg2, &alg);
-        break;
-
     case ASN1_PKEY_CTRL_DEFAULT_MD_NID:
         if (pkey->pkey.rsa->pss != NULL) {
             if (!rsa_pss_get_param(pkey->pkey.rsa->pss, &md, &mgf1md,
@@ -1121,7 +1108,7 @@ const EVP_PKEY_ASN1_METHOD rsa_pss_asn1_meth = {
      0, 0,
      rsa_item_verify,
      rsa_item_sign,
-     0,
+     rsa_sig_info_set,
      rsa_pkey_check,
 
      0, 0,

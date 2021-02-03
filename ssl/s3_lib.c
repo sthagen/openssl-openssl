@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -18,6 +18,7 @@
 #include <openssl/rand.h>
 #include <openssl/trace.h>
 #include <openssl/x509v3.h>
+#include <openssl/core_names.h>
 #include "internal/cryptlib.h"
 
 #define TLS13_NUM_CIPHERS       OSSL_NELEM(tls13_ciphers)
@@ -3472,34 +3473,22 @@ long ssl3_ctrl(SSL *s, int cmd, long larg, void *parg)
             ERR_raise(ERR_LIB_SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
             return ret;
         }
-# endif
+#endif
     case SSL_CTRL_SET_DH_AUTO:
         s->cert->dh_tmp_auto = larg;
         return 1;
-#ifndef OPENSSL_NO_EC
+#if !defined(OPENSSL_NO_EC) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     case SSL_CTRL_SET_TMP_ECDH:
         {
-            const EC_GROUP *group = NULL;
-            int nid;
-
             if (parg == NULL) {
                 ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
                 return 0;
             }
-            group = EC_KEY_get0_group((const EC_KEY *)parg);
-            if (group == NULL) {
-                ERR_raise(ERR_LIB_SSL, EC_R_MISSING_PARAMETERS);
-                return 0;
-            }
-            nid = EC_GROUP_get_curve_name(group);
-            if (nid == NID_undef)
-                return 0;
-            return tls1_set_groups(&s->ext.supportedgroups,
-                                   &s->ext.supportedgroups_len,
-                                   &nid, 1);
+            return ssl_set_tmp_ecdh_groups(&s->ext.supportedgroups,
+                                           &s->ext.supportedgroups_len,
+                                           parg);
         }
-        break;
-#endif                          /* !OPENSSL_NO_EC */
+#endif
     case SSL_CTRL_SET_TLSEXT_HOSTNAME:
         /*
          * TODO(OpenSSL1.2)
@@ -3816,29 +3805,18 @@ long ssl3_ctx_ctrl(SSL_CTX *ctx, int cmd, long larg, void *parg)
     case SSL_CTRL_SET_DH_AUTO:
         ctx->cert->dh_tmp_auto = larg;
         return 1;
-#ifndef OPENSSL_NO_EC
+#if !defined(OPENSSL_NO_EC) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     case SSL_CTRL_SET_TMP_ECDH:
         {
-            const EC_GROUP *group = NULL;
-            int nid;
-
             if (parg == NULL) {
                 ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
                 return 0;
             }
-            group = EC_KEY_get0_group((const EC_KEY *)parg);
-            if (group == NULL) {
-                ERR_raise(ERR_LIB_SSL, EC_R_MISSING_PARAMETERS);
-                return 0;
-            }
-            nid = EC_GROUP_get_curve_name(group);
-            if (nid == NID_undef)
-                return 0;
-            return tls1_set_groups(&ctx->ext.supportedgroups,
-                                   &ctx->ext.supportedgroups_len,
-                                   &nid, 1);
+            return ssl_set_tmp_ecdh_groups(&ctx->ext.supportedgroups,
+                                           &ctx->ext.supportedgroups_len,
+                                           parg);
         }
-#endif                          /* !OPENSSL_NO_EC */
+#endif
     case SSL_CTRL_SET_TLSEXT_SERVERNAME_ARG:
         ctx->ext.servername_arg = parg;
         break;
@@ -4985,4 +4963,22 @@ int ssl_encapsulate(SSL *s, EVP_PKEY *pubkey,
     OPENSSL_free(ct);
     EVP_PKEY_CTX_free(pctx);
     return rv;
+}
+
+const char *SSL_group_to_name(SSL *s, int nid) {
+    int group_id = 0;
+    const TLS_GROUP_INFO *cinf = NULL;
+
+    /* first convert to real group id for internal and external IDs */
+    if (nid & TLSEXT_nid_unknown)
+        group_id = nid & 0xFFFF;
+    else
+        group_id = tls1_nid2group_id(nid);
+
+    /* then look up */
+    cinf = tls1_group_id_lookup(s->ctx, group_id);
+
+    if (cinf != NULL)
+        return cinf->tlsname;
+    return NULL;
 }

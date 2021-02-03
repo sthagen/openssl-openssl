@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -172,7 +172,7 @@ int ccm_get_ctx_params(void *vctx, OSSL_PARAM params[])
         }
     }
 
-    p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IV_STATE);
+    p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_UPDATED_IV);
     if (p != NULL) {
         if (ccm_get_ivlen(ctx) > p->data_size) {
             ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_IVLEN);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -8,13 +8,16 @@
  * https://www.openssl.org/source/license.html
  */
 
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include <openssl/evp.h>
 #include <openssl/ec.h>
 #include <openssl/bn.h>
 
-#ifndef OPENSSL_NO_STDIO
+#ifndef OPENSSL_NO_DEPRECATED_3_0
+# ifndef OPENSSL_NO_STDIO
 int ECPKParameters_print_fp(FILE *fp, const EC_GROUP *x, int off)
 {
     BIO *b;
@@ -59,7 +62,7 @@ int ECParameters_print_fp(FILE *fp, const EC_KEY *x)
     BIO_free(b);
     return ret;
 }
-#endif
+#endif /* OPENSSL_NO_STDIO */
 
 static int print_bin(BIO *fp, const char *str, const unsigned char *num,
                      size_t len, int off);
@@ -256,3 +259,4 @@ static int print_bin(BIO *fp, const char *name, const unsigned char *buf,
 
     return 1;
 }
+#endif /* OPENSSL_NO_DEPRECATED_3_0 */
