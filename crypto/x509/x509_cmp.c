@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the OpenSSL license (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -133,14 +133,21 @@ unsigned long X509_subject_name_hash_old(X509 *x)
  */
 int X509_cmp(const X509 *a, const X509 *b)
 {
-    int rv;
-    /* ensure hash is valid */
-    X509_check_purpose((X509 *)a, -1, 0);
-    X509_check_purpose((X509 *)b, -1, 0);
+    int rv = 0;
 
-    rv = memcmp(a->sha1_hash, b->sha1_hash, SHA_DIGEST_LENGTH);
-    if (rv)
+    if (a == b) /* for efficiency */
+        return 0;
+
+    /* try to make sure hash is valid */
+    (void)X509_check_purpose((X509 *)a, -1, 0);
+    (void)X509_check_purpose((X509 *)b, -1, 0);
+
+    if ((a->ex_flags & EXFLAG_NO_FINGERPRINT) == 0
+            && (b->ex_flags & EXFLAG_NO_FINGERPRINT) == 0)
+        rv = memcmp(a->sha1_hash, b->sha1_hash, SHA_DIGEST_LENGTH);
+    if (rv != 0)
         return rv;
+
     /* Check for match against stored encoding too */
     if (!a->cert_info.enc.modified && !b->cert_info.enc.modified) {
         if (a->cert_info.enc.len < b->cert_info.enc.len)

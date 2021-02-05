@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the OpenSSL license (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -992,6 +992,31 @@ int tls_check_sigalg_curve(const SSL *s, int curve)
 #endif
 
 /*
+ * Return the number of security bits for the signature algorithm, or 0 on
+ * error.
+ */
+static int sigalg_security_bits(const SIGALG_LOOKUP *lu)
+{
+    const EVP_MD *md = NULL;
+    int secbits = 0;
+
+    if (!tls1_lookup_md(lu, &md))
+        return 0;
+    if (md != NULL)
+    {
+        /* Security bits: half digest bits */
+        secbits = EVP_MD_size(md) * 4;
+    } else {
+        /* Values from https://tools.ietf.org/html/rfc8032#section-8.5 */
+        if (lu->sigalg == TLSEXT_SIGALG_ed25519)
+            secbits = 128;
+        else if (lu->sigalg == TLSEXT_SIGALG_ed448)
+            secbits = 224;
+    }
+    return secbits;
+}
+
+/*
  * Check signature algorithm is consistent with sent supported signature
  * algorithms and if so set relevant digest and signature scheme in
  * s.
@@ -1004,6 +1029,7 @@ int tls12_check_peer_sigalg(SSL *s, uint16_t sig, EVP_PKEY *pkey)
     size_t sent_sigslen, i, cidx;
     int pkeyid = EVP_PKEY_id(pkey);
     const SIGALG_LOOKUP *lu;
+    int secbits = 0;
 
     /* Should never happen */
     if (pkeyid == -1)
@@ -1105,20 +1131,20 @@ int tls12_check_peer_sigalg(SSL *s, uint16_t sig, EVP_PKEY *pkey)
                  SSL_R_UNKNOWN_DIGEST);
         return 0;
     }
-    if (md != NULL) {
-        /*
-         * Make sure security callback allows algorithm. For historical
-         * reasons we have to pass the sigalg as a two byte char array.
-         */
-        sigalgstr[0] = (sig >> 8) & 0xff;
-        sigalgstr[1] = sig & 0xff;
-        if (!ssl_security(s, SSL_SECOP_SIGALG_CHECK,
-                    EVP_MD_size(md) * 4, EVP_MD_type(md),
-                    (void *)sigalgstr)) {
-            SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE, SSL_F_TLS12_CHECK_PEER_SIGALG,
-                     SSL_R_WRONG_SIGNATURE_TYPE);
-            return 0;
-        }
+    /*
+     * Make sure security callback allows algorithm. For historical
+     * reasons we have to pass the sigalg as a two byte char array.
+     */
+    sigalgstr[0] = (sig >> 8) & 0xff;
+    sigalgstr[1] = sig & 0xff;
+    secbits = sigalg_security_bits(lu);
+    if (secbits == 0 ||
+        !ssl_security(s, SSL_SECOP_SIGALG_CHECK, secbits,
+                      md != NULL ? EVP_MD_type(md) : NID_undef,
+                      (void *)sigalgstr)) {
+        SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE, SSL_F_TLS12_CHECK_PEER_SIGALG,
+                 SSL_R_WRONG_SIGNATURE_TYPE);
+        return 0;
     }
     /* Store the sigalg the peer uses */
     s->s3->tmp.peer_sigalg = lu;
@@ -1625,11 +1651,8 @@ static int tls12_sigalg_allowed(const SSL *s, int op, const SIGALG_LOOKUP *lu)
         }
     }
 
-    if (lu->hash == NID_undef)
-        return 1;
-    /* Security bits: half digest bits */
-    secbits = EVP_MD_size(ssl_md(lu->hash_idx)) * 4;
     /* Finally see if security callback allows it */
+    secbits = sigalg_security_bits(lu);
     sigalgstr[0] = (lu->sigalg >> 8) & 0xff;
     sigalgstr[1] = lu->sigalg & 0xff;
     return ssl_security(s, op, secbits, lu->hash, (void *)sigalgstr);
@@ -2107,7 +2130,7 @@ static int tls1_check_sig_alg(SSL *s, X509 *x, int default_nid)
         sigalg = use_pc_sigalgs
                  ? tls1_lookup_sigalg(s->s3->tmp.peer_cert_sigalgs[i])
                  : s->shared_sigalgs[i];
-        if (sig_nid == sigalg->sigandhash)
+        if (sigalg != NULL && sig_nid == sigalg->sigandhash)
             return 1;
     }
     return 0;
@@ -2416,46 +2439,48 @@ int SSL_check_chain(SSL *s, X509 *x, EVP_PKEY *pk, STACK_OF(X509) *chain)
 #ifndef OPENSSL_NO_DH
 DH *ssl_get_auto_dh(SSL *s)
 {
+    DH *dhp = NULL;
+    BIGNUM *p = NULL, *g = NULL;
     int dh_secbits = 80;
-    if (s->cert->dh_tmp_auto == 2)
-        return DH_get_1024_160();
-    if (s->s3->tmp.new_cipher->algorithm_auth & (SSL_aNULL | SSL_aPSK)) {
-        if (s->s3->tmp.new_cipher->strength_bits == 256)
-            dh_secbits = 128;
-        else
-            dh_secbits = 80;
-    } else {
-        if (s->s3->tmp.cert == NULL)
-            return NULL;
-        dh_secbits = EVP_PKEY_security_bits(s->s3->tmp.cert->privatekey);
+    if (s->cert->dh_tmp_auto != 2) {
+        if (s->s3->tmp.new_cipher->algorithm_auth & (SSL_aNULL | SSL_aPSK)) {
+            if (s->s3->tmp.new_cipher->strength_bits == 256)
+                dh_secbits = 128;
+            else
+                dh_secbits = 80;
+        } else {
+            if (s->s3->tmp.cert == NULL)
+                return NULL;
+            dh_secbits = EVP_PKEY_security_bits(s->s3->tmp.cert->privatekey);
+        }
     }
 
-    if (dh_secbits >= 128) {
-        DH *dhp = DH_new();
-        BIGNUM *p, *g;
-        if (dhp == NULL)
-            return NULL;
-        g = BN_new();
-        if (g == NULL || !BN_set_word(g, 2)) {
-            DH_free(dhp);
-            BN_free(g);
-            return NULL;
-        }
-        if (dh_secbits >= 192)
-            p = BN_get_rfc3526_prime_8192(NULL);
-        else
-            p = BN_get_rfc3526_prime_3072(NULL);
-        if (p == NULL || !DH_set0_pqg(dhp, p, NULL, g)) {
-            DH_free(dhp);
-            BN_free(p);
-            BN_free(g);
-            return NULL;
-        }
-        return dhp;
+    dhp = DH_new();
+    if (dhp == NULL)
+        return NULL;
+    g = BN_new();
+    if (g == NULL || !BN_set_word(g, 2)) {
+        DH_free(dhp);
+        BN_free(g);
+        return NULL;
     }
-    if (dh_secbits >= 112)
-        return DH_get_2048_224();
-    return DH_get_1024_160();
+    if (dh_secbits >= 192)
+        p = BN_get_rfc3526_prime_8192(NULL);
+    else if (dh_secbits >= 152)
+        p = BN_get_rfc3526_prime_4096(NULL);
+    else if (dh_secbits >= 128)
+        p = BN_get_rfc3526_prime_3072(NULL);
+    else if (dh_secbits >= 112)
+        p = BN_get_rfc3526_prime_2048(NULL);
+    else
+        p = BN_get_rfc2409_prime_1024(NULL);
+    if (p == NULL || !DH_set0_pqg(dhp, p, NULL, g)) {
+        DH_free(dhp);
+        BN_free(p);
+        BN_free(g);
+        return NULL;
+    }
+    return dhp;
 }
 #endif
 
