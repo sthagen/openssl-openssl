@@ -117,13 +117,18 @@ int EVP_PKEY_copy_parameters(EVP_PKEY *to, const EVP_PKEY *from)
      * Clean up legacy stuff from this function when legacy support is gone.
      */
 
+    EVP_PKEY *downgraded_from = NULL;
+    int ok = 0;
+
     /*
-     * If |to| is a legacy key and |from| isn't, we must downgrade |from|.
-     * If that fails, this function fails.
+     * If |to| is a legacy key and |from| isn't, we must make a downgraded
+     * copy of |from|.  If that fails, this function fails.
      */
-    if (evp_pkey_is_legacy(to) && evp_pkey_is_provided(from))
-        if (!evp_pkey_downgrade((EVP_PKEY *)from))
-            return 0;
+    if (evp_pkey_is_legacy(to) && evp_pkey_is_provided(from)) {
+        if (!evp_pkey_copy_downgraded(&downgraded_from, from))
+            goto end;
+        from = downgraded_from;
+    }
 
     /*
      * Make sure |to| is typed.  Content is less important at this early
@@ -140,33 +145,36 @@ int EVP_PKEY_copy_parameters(EVP_PKEY *to, const EVP_PKEY *from)
     if (evp_pkey_is_blank(to)) {
         if (evp_pkey_is_legacy(from)) {
             if (EVP_PKEY_set_type(to, from->type) == 0)
-                return 0;
+                goto end;
         } else {
             if (EVP_PKEY_set_type_by_keymgmt(to, from->keymgmt) == 0)
-                return 0;
+                goto end;
         }
     } else if (evp_pkey_is_legacy(to)) {
         if (to->type != from->type) {
             ERR_raise(ERR_LIB_EVP, EVP_R_DIFFERENT_KEY_TYPES);
-            goto err;
+            goto end;
         }
     }
 
     if (EVP_PKEY_missing_parameters(from)) {
         ERR_raise(ERR_LIB_EVP, EVP_R_MISSING_PARAMETERS);
-        goto err;
+        goto end;
     }
 
     if (!EVP_PKEY_missing_parameters(to)) {
         if (EVP_PKEY_parameters_eq(to, from) == 1)
-            return 1;
-        ERR_raise(ERR_LIB_EVP, EVP_R_DIFFERENT_PARAMETERS);
-        return 0;
+            ok = 1;
+        else
+            ERR_raise(ERR_LIB_EVP, EVP_R_DIFFERENT_PARAMETERS);
+        goto end;
     }
 
     /* For purely provided keys, we just call the keymgmt utility */
-    if (to->keymgmt != NULL && from->keymgmt != NULL)
-        return evp_keymgmt_util_copy(to, (EVP_PKEY *)from, SELECT_PARAMETERS);
+    if (to->keymgmt != NULL && from->keymgmt != NULL) {
+        ok = evp_keymgmt_util_copy(to, (EVP_PKEY *)from, SELECT_PARAMETERS);
+        goto end;
+    }
 
     /*
      * If |to| is provided, we know that |from| is legacy at this point.
@@ -183,19 +191,20 @@ int EVP_PKEY_copy_parameters(EVP_PKEY *to, const EVP_PKEY *from)
          * If we get a NULL, it could be an internal error, or it could be
          * that there's a key mismatch.  We're pretending the latter...
          */
-        if (from_keydata == NULL) {
+        if (from_keydata == NULL)
             ERR_raise(ERR_LIB_EVP, EVP_R_DIFFERENT_KEY_TYPES);
-            return 0;
-        }
-        return evp_keymgmt_copy(to->keymgmt, to->keydata, from_keydata,
-                                SELECT_PARAMETERS);
+        else
+            ok = evp_keymgmt_copy(to->keymgmt, to->keydata, from_keydata,
+                                  SELECT_PARAMETERS);
+        goto end;
     }
 
     /* Both keys are legacy */
     if (from->ameth != NULL && from->ameth->param_copy != NULL)
-        return from->ameth->param_copy(to, from);
- err:
-    return 0;
+        ok = from->ameth->param_copy(to, from);
+ end:
+    EVP_PKEY_free(downgraded_from);
+    return ok;
 }
 
 int EVP_PKEY_missing_parameters(const EVP_PKEY *pkey)
@@ -382,7 +391,7 @@ static EVP_PKEY *new_raw_key_int(OSSL_LIB_CTX *libctx,
             goto err;
         /* May fail if no provider available */
         ERR_set_mark();
-        if (EVP_PKEY_key_fromdata_init(ctx) == 1) {
+        if (EVP_PKEY_fromdata_init(ctx) == 1) {
             OSSL_PARAM params[] = { OSSL_PARAM_END, OSSL_PARAM_END };
 
             ERR_clear_last_mark();
@@ -391,7 +400,7 @@ static EVP_PKEY *new_raw_key_int(OSSL_LIB_CTX *libctx,
                                         : OSSL_PKEY_PARAM_PUB_KEY,
                             (void *)key, len);
 
-            if (EVP_PKEY_fromdata(ctx, &pkey, params) != 1) {
+            if (EVP_PKEY_fromdata(ctx, &pkey, EVP_PKEY_KEYPAIR, params) != 1) {
                 ERR_raise(ERR_LIB_EVP, EVP_R_KEY_SETUP_FAILED);
                 goto err;
             }
@@ -601,7 +610,7 @@ static EVP_PKEY *new_cmac_key_int(const unsigned char *priv, size_t len,
     if (ctx == NULL)
         goto err;
 
-    if (!EVP_PKEY_key_fromdata_init(ctx)) {
+    if (!EVP_PKEY_fromdata_init(ctx)) {
         ERR_raise(ERR_LIB_EVP, EVP_R_KEY_SETUP_FAILED);
         goto err;
     }
@@ -620,7 +629,7 @@ static EVP_PKEY *new_cmac_key_int(const unsigned char *priv, size_t len,
 #  endif
     *p = OSSL_PARAM_construct_end();
 
-    if (!EVP_PKEY_fromdata(ctx, &pkey, params)) {
+    if (!EVP_PKEY_fromdata(ctx, &pkey, EVP_PKEY_KEYPAIR, params)) {
         ERR_raise(ERR_LIB_EVP, EVP_R_KEY_SETUP_FAILED);
         goto err;
     }
@@ -1084,8 +1093,8 @@ static int print_pkey(const EVP_PKEY *pkey, BIO *out, int indent,
     if (!print_set_indent(&out, &pop_f_prefix, &saved_indent, indent))
         return 0;
 
-    ctx = OSSL_ENCODER_CTX_new_by_EVP_PKEY(pkey, selection, "TEXT", NULL,
-                                           propquery);
+    ctx = OSSL_ENCODER_CTX_new_for_pkey(pkey, selection, "TEXT", NULL,
+                                        propquery);
     if (OSSL_ENCODER_CTX_get_num_encoders(ctx) != 0)
         ret = OSSL_ENCODER_to_bio(ctx, out);
     OSSL_ENCODER_CTX_free(ctx);
@@ -1618,7 +1627,6 @@ void evp_pkey_free_legacy(EVP_PKEY *x)
 static void evp_pkey_free_it(EVP_PKEY *x)
 {
     /* internal function; x is never NULL */
-
     evp_keymgmt_util_clear_operation_cache(x, 1);
 #ifndef FIPS_MODULE
     evp_pkey_free_legacy(x);
@@ -1725,7 +1733,7 @@ void *evp_pkey_export_to_provider(EVP_PKEY *pk, OSSL_LIB_CTX *libctx,
 
 #ifndef FIPS_MODULE
     if (pk->pkey.ptr != NULL) {
-        size_t i = 0;
+        OP_CACHE_ELEM *op;
 
         /*
          * If the legacy "origin" hasn't changed since last time, we try
@@ -1735,7 +1743,7 @@ void *evp_pkey_export_to_provider(EVP_PKEY *pk, OSSL_LIB_CTX *libctx,
         if (pk->ameth->dirty_cnt(pk) == pk->dirty_cnt_copy) {
             if (!CRYPTO_THREAD_read_lock(pk->lock))
                 goto end;
-            i = evp_keymgmt_util_find_operation_cache_index(pk, tmp_keymgmt);
+            op = evp_keymgmt_util_find_operation_cache(pk, tmp_keymgmt);
 
             /*
              * If |tmp_keymgmt| is present in the operation cache, it means
@@ -1743,22 +1751,13 @@ void *evp_pkey_export_to_provider(EVP_PKEY *pk, OSSL_LIB_CTX *libctx,
              * token copies of the cached pointers, to have token success
              * values to return.
              */
-            if (i < OSSL_NELEM(pk->operation_cache)
-                && pk->operation_cache[i].keymgmt != NULL) {
-                keydata = pk->operation_cache[i].keydata;
+            if (op != NULL && op->keymgmt != NULL) {
+                keydata = op->keydata;
                 CRYPTO_THREAD_unlock(pk->lock);
                 goto end;
             }
             CRYPTO_THREAD_unlock(pk->lock);
         }
-
-        /*
-         * TODO(3.0) Right now, we assume we have ample space.  We will have
-         * to think about a cache aging scheme, though, if |i| indexes outside
-         * the array.
-         */
-        if (!ossl_assert(i < OSSL_NELEM(pk->operation_cache)))
-            goto end;
 
         /* Make sure that the keymgmt key type matches the legacy NID */
         if (!ossl_assert(EVP_KEYMGMT_is_a(tmp_keymgmt, OBJ_nid2sn(pk->type))))
@@ -1797,8 +1796,19 @@ void *evp_pkey_export_to_provider(EVP_PKEY *pk, OSSL_LIB_CTX *libctx,
         }
         EVP_KEYMGMT_free(tmp_keymgmt); /* refcnt-- */
 
+        /* Check to make sure some other thread didn't get there first */
+        op = evp_keymgmt_util_find_operation_cache(pk, tmp_keymgmt);
+        if (op != NULL && op->keymgmt != NULL) {
+            void *tmp_keydata = op->keydata;
+
+            CRYPTO_THREAD_unlock(pk->lock);
+            evp_keymgmt_freedata(tmp_keymgmt, keydata);
+            keydata = tmp_keydata;
+            goto end;
+        }
+
         /* Add the new export to the operation cache */
-        if (!evp_keymgmt_util_cache_keydata(pk, i, tmp_keymgmt, keydata)) {
+        if (!evp_keymgmt_util_cache_keydata(pk, tmp_keymgmt, keydata)) {
             CRYPTO_THREAD_unlock(pk->lock);
             evp_keymgmt_freedata(tmp_keymgmt, keydata);
             keydata = NULL;
@@ -1963,7 +1973,7 @@ int evp_pkey_downgrade(EVP_PKEY *pk)
          * reference count, so we need to decrement it, or there will be a
          * leak.
          */
-        evp_keymgmt_util_cache_keydata(pk, 0, tmp_copy.keymgmt,
+        evp_keymgmt_util_cache_keydata(pk, tmp_copy.keymgmt,
                                        tmp_copy.keydata);
         EVP_KEYMGMT_free(tmp_copy.keymgmt);
 

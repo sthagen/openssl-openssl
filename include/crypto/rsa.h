@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -9,6 +9,7 @@
 
 #ifndef OSSL_INTERNAL_RSA_H
 # define OSSL_INTERNAL_RSA_H
+# pragma once
 
 # include <openssl/core.h>
 # include <openssl/rsa.h>
@@ -65,6 +66,7 @@ int ossl_rsa_fromdata(RSA *rsa, const OSSL_PARAM params[]);
 int ossl_rsa_pss_params_30_todata(const RSA_PSS_PARAMS_30 *pss,
                                   OSSL_PARAM_BLD *bld, OSSL_PARAM params[]);
 int ossl_rsa_pss_params_30_fromdata(RSA_PSS_PARAMS_30 *pss_params,
+                                    int *defaults_set,
                                     const OSSL_PARAM params[],
                                     OSSL_LIB_CTX *libctx);
 
