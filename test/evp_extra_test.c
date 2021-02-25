@@ -2418,15 +2418,13 @@ err:
 static int test_EVP_rsa_pss_with_keygen_bits(void)
 {
     int ret;
-    OSSL_PROVIDER *provider;
     EVP_PKEY_CTX *ctx;
     EVP_PKEY *pkey;
     const EVP_MD *md;
     pkey = NULL;
     ret = 0;
-    provider = OSSL_PROVIDER_load(NULL, "default");
-    md = EVP_get_digestbyname("sha256");
 
+    md = EVP_get_digestbyname("sha256");
     ret = TEST_ptr((ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA_PSS, NULL)))
         && TEST_true(EVP_PKEY_keygen_init(ctx))
         && TEST_int_gt(EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 512), 0)
@@ -2435,10 +2433,56 @@ static int test_EVP_rsa_pss_with_keygen_bits(void)
 
     EVP_PKEY_free(pkey);
     EVP_PKEY_CTX_free(ctx);
-    OSSL_PROVIDER_unload(provider);
     return ret;
 }
 
+static int success = 1;
+static void md_names(const char *name, void *vctx)
+{
+    OSSL_LIB_CTX *ctx = (OSSL_LIB_CTX *)vctx;
+    /* Force a namemap update */
+    EVP_CIPHER *aes128 = EVP_CIPHER_fetch(ctx, "AES-128-CBC", NULL);
+
+    if (!TEST_ptr(aes128))
+        success = 0;
+
+    EVP_CIPHER_free(aes128);
+}
+
+/*
+ * Test that changing the namemap in a user callback works in a names_do_all
+ * function.
+ */
+static int test_names_do_all(void)
+{
+    /* We use a custom libctx so that we know the state of the namemap */
+    OSSL_LIB_CTX *ctx = OSSL_LIB_CTX_new();
+    EVP_MD *sha256 = NULL;
+    int testresult = 0;
+
+    if (!TEST_ptr(ctx))
+        goto err;
+
+    sha256 = EVP_MD_fetch(ctx, "SHA2-256", NULL);
+    if (!TEST_ptr(sha256))
+        goto err;
+
+    /*
+     * We loop through all the names for a given digest. This should still work
+     * even if the namemap changes part way through.
+     */
+    if (!TEST_true(EVP_MD_names_do_all(sha256, md_names, ctx)))
+        goto err;
+
+    if (!TEST_true(success))
+        goto err;
+
+    testresult = 1;
+ err:
+    EVP_MD_free(sha256);
+    OSSL_LIB_CTX_free(ctx);
+    return testresult;
+}
 
 int setup_tests(void)
 {
@@ -2512,6 +2556,8 @@ int setup_tests(void)
     ADD_TEST(test_rand_agglomeration);
     ADD_ALL_TESTS(test_evp_iv, 10);
     ADD_TEST(test_EVP_rsa_pss_with_keygen_bits);
+
+    ADD_TEST(test_names_do_all);
 
     return 1;
 }

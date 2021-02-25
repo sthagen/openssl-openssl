@@ -52,22 +52,20 @@ const OSSL_PARAM *EVP_KDF_settable_ctx_params(const EVP_KDF *kdf);
 void EVP_KDF_do_all_provided(OSSL_LIB_CTX *libctx,
                              void (*fn)(EVP_KDF *kdf, void *arg),
                              void *arg);
-void EVP_KDF_names_do_all(const EVP_KDF *kdf,
-                          void (*fn)(const char *name, void *data),
-                          void *data);
+int EVP_KDF_names_do_all(const EVP_KDF *kdf,
+                         void (*fn)(const char *name, void *data),
+                         void *data);
 
 # define EVP_KDF_HKDF_MODE_EXTRACT_AND_EXPAND  0
 # define EVP_KDF_HKDF_MODE_EXTRACT_ONLY        1
 # define EVP_KDF_HKDF_MODE_EXPAND_ONLY         2
 
-/* SSHKDF key exchange stages.*/
-/* See https://tools.ietf.org/html/rfc4253#section-7.2 */
-#define EVP_KDF_SSHKDF_TYPE_INITIAL_IV_CLI_TO_SRV     {65, 0}
-#define EVP_KDF_SSHKDF_TYPE_INITIAL_IV_SRV_TO_CLI     {66, 0}
-#define EVP_KDF_SSHKDF_TYPE_ENCRYPTION_KEY_CLI_TO_SRV {67, 0}
-#define EVP_KDF_SSHKDF_TYPE_ENCRYPTION_KEY_SRV_TO_CLI {68, 0}
-#define EVP_KDF_SSHKDF_TYPE_INTEGRITY_KEY_CLI_TO_SRV  {69, 0}
-#define EVP_KDF_SSHKDF_TYPE_INTEGRITY_KEY_SRV_TO_CLI  {70, 0}
+#define EVP_KDF_SSHKDF_TYPE_INITIAL_IV_CLI_TO_SRV     65
+#define EVP_KDF_SSHKDF_TYPE_INITIAL_IV_SRV_TO_CLI     66
+#define EVP_KDF_SSHKDF_TYPE_ENCRYPTION_KEY_CLI_TO_SRV 67
+#define EVP_KDF_SSHKDF_TYPE_ENCRYPTION_KEY_SRV_TO_CLI 68
+#define EVP_KDF_SSHKDF_TYPE_INTEGRITY_KEY_CLI_TO_SRV  69
+#define EVP_KDF_SSHKDF_TYPE_INTEGRITY_KEY_SRV_TO_CLI  70
 
 /**** The legacy PKEY-based KDF API follows. ****/
 
