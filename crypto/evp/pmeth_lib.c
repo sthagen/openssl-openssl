@@ -51,25 +51,25 @@ static STACK_OF(EVP_PKEY_METHOD) *app_pkey_methods = NULL;
 static pmeth_fn standard_methods[] = {
     ossl_rsa_pkey_method,
 # ifndef OPENSSL_NO_DH
-    dh_pkey_method,
+    ossl_dh_pkey_method,
 # endif
 # ifndef OPENSSL_NO_DSA
-    dsa_pkey_method,
+    ossl_dsa_pkey_method,
 # endif
 # ifndef OPENSSL_NO_EC
-    ec_pkey_method,
+    ossl_ec_pkey_method,
 # endif
     ossl_rsa_pss_pkey_method,
 # ifndef OPENSSL_NO_DH
-    dhx_pkey_method,
+    ossl_dhx_pkey_method,
 # endif
 # ifndef OPENSSL_NO_EC
-    ecx25519_pkey_method,
-    ecx448_pkey_method,
+    ossl_ecx25519_pkey_method,
+    ossl_ecx448_pkey_method,
 # endif
 # ifndef OPENSSL_NO_EC
-    ed25519_pkey_method,
-    ed448_pkey_method,
+    ossl_ed25519_pkey_method,
+    ossl_ed448_pkey_method,
 # endif
 };
 
@@ -1325,6 +1325,7 @@ int EVP_PKEY_CTX_ctrl_uint64(EVP_PKEY_CTX *ctx, int keytype, int optype,
 {
     return EVP_PKEY_CTX_ctrl(ctx, keytype, optype, cmd, 0, &value);
 }
+
 
 static int evp_pkey_ctx_ctrl_str_int(EVP_PKEY_CTX *ctx,
                                      const char *name, const char *value)

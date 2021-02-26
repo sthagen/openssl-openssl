@@ -816,6 +816,8 @@ int EVP_CIPHER_CTX_get_params(EVP_CIPHER_CTX *ctx, OSSL_PARAM params[]);
 const OSSL_PARAM *EVP_CIPHER_gettable_params(const EVP_CIPHER *cipher);
 const OSSL_PARAM *EVP_CIPHER_settable_ctx_params(const EVP_CIPHER *cipher);
 const OSSL_PARAM *EVP_CIPHER_gettable_ctx_params(const EVP_CIPHER *cipher);
+const OSSL_PARAM *EVP_CIPHER_CTX_settable_params(EVP_CIPHER_CTX *ctx);
+const OSSL_PARAM *EVP_CIPHER_CTX_gettable_params(EVP_CIPHER_CTX *ctx);
 
 const BIO_METHOD *BIO_f_md(void);
 const BIO_METHOD *BIO_f_base64(void);
@@ -1149,6 +1151,8 @@ int EVP_MAC_final(EVP_MAC_CTX *ctx,
 const OSSL_PARAM *EVP_MAC_gettable_params(const EVP_MAC *mac);
 const OSSL_PARAM *EVP_MAC_gettable_ctx_params(const EVP_MAC *mac);
 const OSSL_PARAM *EVP_MAC_settable_ctx_params(const EVP_MAC *mac);
+const OSSL_PARAM *EVP_MAC_CTX_gettable_params(EVP_MAC_CTX *ctx);
+const OSSL_PARAM *EVP_MAC_CTX_settable_params(EVP_MAC_CTX *ctx);
 
 void EVP_MAC_do_all_provided(OSSL_LIB_CTX *libctx,
                              void (*fn)(EVP_MAC *mac, void *arg),
@@ -1176,6 +1180,8 @@ int EVP_RAND_set_ctx_params(EVP_RAND_CTX *ctx, const OSSL_PARAM params[]);
 const OSSL_PARAM *EVP_RAND_gettable_params(const EVP_RAND *rand);
 const OSSL_PARAM *EVP_RAND_gettable_ctx_params(const EVP_RAND *rand);
 const OSSL_PARAM *EVP_RAND_settable_ctx_params(const EVP_RAND *rand);
+const OSSL_PARAM *EVP_RAND_CTX_gettable_params(EVP_RAND_CTX *ctx);
+const OSSL_PARAM *EVP_RAND_CTX_settable_params(EVP_RAND_CTX *ctx);
 
 void EVP_RAND_do_all_provided(OSSL_LIB_CTX *libctx,
                               void (*fn)(EVP_RAND *rand, void *arg),

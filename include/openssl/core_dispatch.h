@@ -262,9 +262,9 @@ OSSL_CORE_MAKE_FUNC(int, digest_get_ctx_params,
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, digest_gettable_params,
                     (void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, digest_settable_ctx_params,
-                    (void *provctx))
+                    (void *dctx, void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, digest_gettable_ctx_params,
-                    (void *provctx))
+                    (void *dctx, void *provctx))
 
 /* Symmetric Ciphers */
 
@@ -315,9 +315,9 @@ OSSL_CORE_MAKE_FUNC(int, cipher_set_ctx_params, (void *cctx,
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, cipher_gettable_params,
                     (void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, cipher_settable_ctx_params,
-                    (void *provctx))
+                    (void *cctx, void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, cipher_gettable_ctx_params,
-                    (void *provctx))
+                    (void *cctx, void *provctx))
 
 /* MACs */
 
@@ -345,9 +345,9 @@ OSSL_CORE_MAKE_FUNC(int, mac_final,
                      unsigned char *out, size_t *outl, size_t outsize))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, mac_gettable_params, (void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, mac_gettable_ctx_params,
-                    (void *provctx))
+                    (void *mctx, void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, mac_settable_ctx_params,
-                    (void *provctx))
+                    (void *mctx, void *provctx))
 OSSL_CORE_MAKE_FUNC(int, mac_get_params, (OSSL_PARAM params[]))
 OSSL_CORE_MAKE_FUNC(int, mac_get_ctx_params,
                     (void *mctx, OSSL_PARAM params[]))
@@ -376,9 +376,9 @@ OSSL_CORE_MAKE_FUNC(int, kdf_derive, (void *kctx, unsigned char *key,
                                           size_t keylen))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, kdf_gettable_params, (void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, kdf_gettable_ctx_params,
-                    (void *provctx))
+                    (void *kctx, void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, kdf_settable_ctx_params,
-                    (void *provctx))
+                    (void *kctx, void *provctx))
 OSSL_CORE_MAKE_FUNC(int, kdf_get_params, (OSSL_PARAM params[]))
 OSSL_CORE_MAKE_FUNC(int, kdf_get_ctx_params,
                     (void *kctx, OSSL_PARAM params[]))
@@ -432,9 +432,9 @@ OSSL_CORE_MAKE_FUNC(int,rand_lock, (void *vctx))
 OSSL_CORE_MAKE_FUNC(void,rand_unlock, (void *vctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *,rand_gettable_params, (void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *,rand_gettable_ctx_params,
-                    (void *provctx))
+                    (void *vctx, void *provctx))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *,rand_settable_ctx_params,
-                    (void *provctx))
+                    (void *vctx, void *provctx))
 OSSL_CORE_MAKE_FUNC(int,rand_get_params, (OSSL_PARAM params[]))
 OSSL_CORE_MAKE_FUNC(int,rand_get_ctx_params,
                     (void *vctx, OSSL_PARAM params[]))
