@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -105,9 +105,10 @@ size_t EVP_MAC_CTX_get_mac_size(EVP_MAC_CTX *ctx)
     return 0;
 }
 
-int EVP_MAC_init(EVP_MAC_CTX *ctx)
+int EVP_MAC_init(EVP_MAC_CTX *ctx, const unsigned char *key, size_t keylen,
+                 const OSSL_PARAM params[])
 {
-    return ctx->meth->init(ctx->data);
+    return ctx->meth->init(ctx->data, key, keylen, params);
 }
 
 int EVP_MAC_update(EVP_MAC_CTX *ctx, const unsigned char *data, size_t datalen)

@@ -98,9 +98,30 @@ static size_t gmac_size(void)
     return EVP_GCM_TLS_TAG_LEN;
 }
 
-static int gmac_init(void *vmacctx)
+static int gmac_setkey(struct gmac_data_st *macctx,
+                       const unsigned char *key, size_t keylen)
 {
-    return ossl_prov_is_running();
+    EVP_CIPHER_CTX *ctx = macctx->ctx;
+
+    if (keylen != (size_t)EVP_CIPHER_CTX_key_length(ctx)) {
+        ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
+        return 0;
+    }
+    if (!EVP_EncryptInit_ex(ctx, NULL, NULL, key, NULL))
+        return 0;
+    return 1;
+}
+
+static int gmac_init(void *vmacctx, const unsigned char *key,
+                     size_t keylen, const OSSL_PARAM params[])
+{
+    struct gmac_data_st *macctx = vmacctx;
+
+    if (!ossl_prov_is_running() || !gmac_set_ctx_params(macctx, params))
+        return 0;
+    if (key != NULL)
+        return gmac_setkey(macctx, key, keylen);
+    return 1;
 }
 
 static int gmac_update(void *vmacctx, const unsigned char *data,
@@ -125,6 +146,7 @@ static int gmac_update(void *vmacctx, const unsigned char *data,
 static int gmac_final(void *vmacctx, unsigned char *out, size_t *outl,
                       size_t outsize)
 {
+    OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
     struct gmac_data_st *macctx = vmacctx;
     int hlen = 0;
 
@@ -134,10 +156,10 @@ static int gmac_final(void *vmacctx, unsigned char *out, size_t *outl,
     if (!EVP_EncryptFinal_ex(macctx->ctx, out, &hlen))
         return 0;
 
-    /* TODO(3.0) Use params */
     hlen = gmac_size();
-    if (!EVP_CIPHER_CTX_ctrl(macctx->ctx, EVP_CTRL_AEAD_GET_TAG,
-                             hlen, out))
+    params[0] = OSSL_PARAM_construct_octet_string(OSSL_CIPHER_PARAM_AEAD_TAG,
+                                                  out, (size_t)hlen);
+    if (!EVP_CIPHER_CTX_get_params(macctx->ctx, params))
         return 0;
 
     *outl = hlen;
@@ -186,7 +208,9 @@ static int gmac_set_ctx_params(void *vmacctx, const OSSL_PARAM params[])
     OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(macctx->provctx);
     const OSSL_PARAM *p;
 
-   if (ctx == NULL
+    if (params == NULL)
+        return 1;
+    if (ctx == NULL
         || !ossl_prov_cipher_load_from_params(&macctx->cipher, params, provctx))
         return 0;
 
@@ -200,17 +224,11 @@ static int gmac_set_ctx_params(void *vmacctx, const OSSL_PARAM params[])
                             NULL))
         return 0;
 
-    if ((p = OSSL_PARAM_locate_const(params, OSSL_MAC_PARAM_KEY)) != NULL) {
-        if (p->data_type != OSSL_PARAM_OCTET_STRING)
+    if ((p = OSSL_PARAM_locate_const(params, OSSL_MAC_PARAM_KEY)) != NULL)
+        if (p->data_type != OSSL_PARAM_OCTET_STRING
+                || !gmac_setkey(macctx, p->data, p->data_size))
             return 0;
 
-        if (p->data_size != (size_t)EVP_CIPHER_CTX_key_length(ctx)) {
-            ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
-            return 0;
-        }
-        if (!EVP_EncryptInit_ex(ctx, NULL, NULL, p->data, NULL))
-            return 0;
-    }
     if ((p = OSSL_PARAM_locate_const(params, OSSL_MAC_PARAM_IV)) != NULL) {
         if (p->data_type != OSSL_PARAM_OCTET_STRING)
             return 0;

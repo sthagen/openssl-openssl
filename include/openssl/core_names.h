@@ -158,6 +158,8 @@ extern "C" {
 #define OSSL_MAC_PARAM_XOF            "xof"            /* int, 0 or 1 */
 #define OSSL_MAC_PARAM_DIGEST_NOINIT  "digest-noinit"  /* int, 0 or 1 */
 #define OSSL_MAC_PARAM_DIGEST_ONESHOT "digest-oneshot" /* int, 0 or 1 */
+#define OSSL_MAC_PARAM_C_ROUNDS       "c-rounds"       /* unsigned int */
+#define OSSL_MAC_PARAM_D_ROUNDS       "d-rounds"       /* unsigned int */
 
 /*
  * If "engine" or "properties" are specified, they should always be paired
@@ -382,7 +384,6 @@ extern "C" {
 /* RSA padding modes */
 #define OSSL_PKEY_RSA_PAD_MODE_NONE    "none"
 #define OSSL_PKEY_RSA_PAD_MODE_PKCSV15 "pkcs1"
-#define OSSL_PKEY_RSA_PAD_MODE_SSLV23  "sslv23"
 #define OSSL_PKEY_RSA_PAD_MODE_OAEP    "oaep"
 #define OSSL_PKEY_RSA_PAD_MODE_X931    "x931"
 #define OSSL_PKEY_RSA_PAD_MODE_PSS     "pss"

@@ -188,9 +188,9 @@ unsigned long get_nameopt(void)
 
 int dump_cert_text(BIO *out, X509 *x)
 {
-    print_name(out, "subject=", X509_get_subject_name(x), get_nameopt());
+    print_name(out, "subject=", X509_get_subject_name(x));
     BIO_puts(out, "\n");
-    print_name(out, "issuer=", X509_get_issuer_name(x), get_nameopt());
+    print_name(out, "issuer=", X509_get_issuer_name(x));
     BIO_puts(out, "\n");
 
     return 0;
@@ -1071,14 +1071,14 @@ static int set_table_opts(unsigned long *flags, const char *arg,
     return 0;
 }
 
-void print_name(BIO *out, const char *title, const X509_NAME *nm,
-                unsigned long lflags)
+void print_name(BIO *out, const char *title, const X509_NAME *nm)
 {
     char *buf;
     char mline = 0;
     int indent = 0;
+    unsigned long lflags = get_nameopt();
 
-    if (title)
+    if (title != NULL)
         BIO_puts(out, title);
     if ((lflags & XN_FLAG_SEP_MASK) == XN_FLAG_SEP_MULTILINE) {
         mline = 1;
@@ -2271,7 +2271,8 @@ ASN1_VALUE *app_http_get_asn1(const char *url, const char *proxy,
         return NULL;
     }
 
-    if (!OSSL_HTTP_parse_url(url, &server, &port, NULL, NULL, &use_ssl))
+    if (!OSSL_HTTP_parse_url(url, &use_ssl, NULL /* userinfo */, &server, &port,
+                             NULL /* port_num, */, NULL, NULL, NULL))
         return NULL;
     if (use_ssl && ssl_ctx == NULL) {
         ERR_raise_data(ERR_LIB_HTTP, ERR_R_PASSED_NULL_PARAMETER,

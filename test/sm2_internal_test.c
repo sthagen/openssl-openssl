@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2017-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -28,12 +28,16 @@
 
 # include "crypto/sm2.h"
 
+static fake_random_generate_cb get_faked_bytes;
+
 static OSSL_PROVIDER *fake_rand = NULL;
 static uint8_t *fake_rand_bytes = NULL;
 static size_t fake_rand_bytes_offset = 0;
 static size_t fake_rand_size = 0;
 
-static int get_faked_bytes(unsigned char *buf, size_t num)
+static int get_faked_bytes(unsigned char *buf, size_t num,
+                           ossl_unused const char *name,
+                           ossl_unused EVP_RAND_CTX *ctx)
 {
     if (!TEST_ptr(fake_rand_bytes) || !TEST_size_t_gt(fake_rand_size, 0))
         return 0;
@@ -56,14 +60,14 @@ static int start_fake_rand(const char *hex_bytes)
         return 0;
 
     /* use own random function */
-    fake_rand_set_callback(get_faked_bytes);
+    fake_rand_set_public_private_callbacks(NULL, get_faked_bytes);
     return 1;
 
 }
 
 static void restore_rand(void)
 {
-    fake_rand_set_callback(NULL);
+    fake_rand_set_public_private_callbacks(NULL, NULL);
     OPENSSL_free(fake_rand_bytes);
     fake_rand_bytes = NULL;
     fake_rand_bytes_offset = 0;
@@ -377,7 +381,7 @@ int setup_tests(void)
 
 void cleanup_tests(void)
 {
-#ifdef OPENSSL_NO_SM2
+#ifndef OPENSSL_NO_SM2
     fake_rand_finish(fake_rand);
 #endif
 }

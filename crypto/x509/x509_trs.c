@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1999-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -220,7 +220,7 @@ static int trust_1oidany(X509_TRUST *trust, X509 *x, int flags)
      * Declare the chain verified if the desired trust OID is not rejected in
      * any auxiliary trust info for this certificate, and the OID is either
      * expressly trusted, or else either "anyEKU" is trusted, or the
-     * certificate is self-signed.
+     * certificate is self-signed and X509_TRUST_NO_SS_COMPAT is not set.
      */
     flags |= X509_TRUST_DO_SS_COMPAT | X509_TRUST_OK_ANY_EKU;
     return obj_trust(trust->arg1, x, flags);

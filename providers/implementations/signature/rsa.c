@@ -61,7 +61,6 @@ static OSSL_FUNC_signature_settable_ctx_md_params_fn rsa_settable_ctx_md_params;
 
 static OSSL_ITEM padding_item[] = {
     { RSA_PKCS1_PADDING,        OSSL_PKEY_RSA_PAD_MODE_PKCSV15 },
-    { RSA_SSLV23_PADDING,       OSSL_PKEY_RSA_PAD_MODE_SSLV23 },
     { RSA_NO_PADDING,           OSSL_PKEY_RSA_PAD_MODE_NONE },
     { RSA_X931_PADDING,         OSSL_PKEY_RSA_PAD_MODE_X931 },
     { RSA_PKCS1_PSS_PADDING,    OSSL_PKEY_RSA_PAD_MODE_PSS },
@@ -1098,7 +1097,8 @@ static const OSSL_PARAM known_gettable_ctx_params[] = {
     OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *rsa_gettable_ctx_params(ossl_unused void *vctx)
+static const OSSL_PARAM *rsa_gettable_ctx_params(ossl_unused void *vprsactx,
+                                                 ossl_unused void *provctx)
 {
     return known_gettable_ctx_params;
 }
@@ -1186,9 +1186,6 @@ static int rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
             break;
         case RSA_PKCS1_PADDING:
             err_extra_text = "PKCS#1 padding not allowed with RSA-PSS";
-            goto cont;
-        case RSA_SSLV23_PADDING:
-            err_extra_text = "SSLv3 padding not allowed with RSA-PSS";
             goto cont;
         case RSA_NO_PADDING:
             err_extra_text = "No padding not allowed with RSA-PSS";
@@ -1328,25 +1325,32 @@ static int rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
     return 1;
 }
 
-static const OSSL_PARAM known_settable_ctx_params[] = {
-    OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_PAD_MODE, NULL, 0),
+static const OSSL_PARAM settable_ctx_params[] = {
     OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_DIGEST, NULL, 0),
     OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_PROPERTIES, NULL, 0),
+    OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_PAD_MODE, NULL, 0),
     OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_MGF1_DIGEST, NULL, 0),
     OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_MGF1_PROPERTIES, NULL, 0),
     OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_PSS_SALTLEN, NULL, 0),
     OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *rsa_settable_ctx_params(ossl_unused void *provctx)
+static const OSSL_PARAM settable_ctx_params_no_digest[] = {
+    OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_PAD_MODE, NULL, 0),
+    OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_MGF1_DIGEST, NULL, 0),
+    OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_MGF1_PROPERTIES, NULL, 0),
+    OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_PSS_SALTLEN, NULL, 0),
+    OSSL_PARAM_END
+};
+
+static const OSSL_PARAM *rsa_settable_ctx_params(void *vprsactx,
+                                                 ossl_unused void *provctx)
 {
-    /*
-     * TODO(3.0): Should this function return a different set of settable ctx
-     * params if the ctx is being used for a DigestSign/DigestVerify? In that
-     * case it is not allowed to set the digest size/digest name because the
-     * digest is explicitly set as part of the init.
-     */
-    return known_settable_ctx_params;
+    PROV_RSA_CTX *prsactx = (PROV_RSA_CTX *)vprsactx;
+
+    if (prsactx != NULL && !prsactx->flag_allow_md)
+        return settable_ctx_params_no_digest;
+    return settable_ctx_params;
 }
 
 static int rsa_get_ctx_md_params(void *vprsactx, OSSL_PARAM *params)

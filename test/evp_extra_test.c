@@ -700,9 +700,8 @@ static int test_EC_priv_pub(void)
         || !TEST_true(OSSL_PARAM_BLD_push_octet_string(bld,
                                                        OSSL_PKEY_PARAM_PUB_KEY,
                                                        ec_pub, sizeof(ec_pub)))
-        || !TEST_true(OSSL_PARAM_BLD_push_octet_string(bld,
-                                                       OSSL_PKEY_PARAM_PUB_KEY,
-                                                       ec_pub, sizeof(ec_pub))))
+        || !TEST_true(OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_PRIV_KEY,
+                                             priv)))
         goto err;
     if (!TEST_ptr(params = OSSL_PARAM_BLD_to_param(bld)))
         goto err;
@@ -1320,7 +1319,6 @@ static int test_EVP_SM2(void)
     if (!TEST_true(EVP_PKEY_paramgen_init(pctx) == 1))
         goto done;
 
-    /* TODO is this even needed? */
     if (!TEST_true(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, NID_sm2)))
         goto done;
 
@@ -2415,6 +2413,74 @@ err:
     return ret;
 }
 
+#ifndef OPENSSL_NO_EC
+static int ecpub_nids[] = { NID_brainpoolP256r1, NID_X9_62_prime256v1,
+    NID_secp384r1, NID_secp521r1, NID_sect233k1, NID_sect233r1, NID_sect283r1,
+    NID_sect409k1, NID_sect409r1, NID_sect571k1, NID_sect571r1,
+    NID_brainpoolP384r1, NID_brainpoolP512r1};
+
+static int test_ecpub(int idx)
+{
+    int ret = 0, len, savelen;
+    int nid;
+    unsigned char buf[1024];
+    unsigned char *p;
+    EVP_PKEY *pkey = NULL;
+    EVP_PKEY_CTX *ctx = NULL;
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+    const unsigned char *q;
+    EVP_PKEY *pkey2 = NULL;
+    EC_KEY *ec = NULL;
+# endif
+
+    nid = ecpub_nids[idx];
+
+    ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
+    if (!TEST_ptr(ctx)
+        || !TEST_true(EVP_PKEY_keygen_init(ctx))
+        || !TEST_true(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx, nid))
+        || !TEST_true(EVP_PKEY_keygen(ctx, &pkey)))
+        goto done;
+    len = i2d_PublicKey(pkey, NULL);
+    savelen = len;
+    if (!TEST_int_ge(len, 1)
+        || !TEST_int_lt(len, 1024))
+        goto done;
+    p = buf;
+    len = i2d_PublicKey(pkey, &p);
+    if (!TEST_int_ge(len, 1)
+            || !TEST_int_eq(len, savelen))
+        goto done;
+
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+    /* Now try to decode the just-created DER. */
+    q = buf;
+    if (!TEST_ptr((pkey2 = EVP_PKEY_new()))
+            || !TEST_ptr((ec = EC_KEY_new_by_curve_name(nid)))
+            || !TEST_true(EVP_PKEY_assign_EC_KEY(pkey2, ec)))
+        goto done;
+    /* EC_KEY ownership transferred */
+    ec = NULL;
+    if (!TEST_ptr(d2i_PublicKey(EVP_PKEY_EC, &pkey2, &q, savelen)))
+        goto done;
+    /* The keys should match. */
+    if (!TEST_int_eq(EVP_PKEY_cmp(pkey, pkey2), 1))
+        goto done;
+# endif
+
+    ret = 1;
+
+ done:
+    EVP_PKEY_CTX_free(ctx);
+    EVP_PKEY_free(pkey);
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+    EVP_PKEY_free(pkey2);
+    EC_KEY_free(ec);
+# endif
+    return ret;
+}
+#endif
+
 static int test_EVP_rsa_pss_with_keygen_bits(void)
 {
     int ret;
@@ -2556,6 +2622,9 @@ int setup_tests(void)
     ADD_TEST(test_rand_agglomeration);
     ADD_ALL_TESTS(test_evp_iv, 10);
     ADD_TEST(test_EVP_rsa_pss_with_keygen_bits);
+#ifndef OPENSSL_NO_EC
+    ADD_ALL_TESTS(test_ecpub, OSSL_NELEM(ecpub_nids));
+#endif
 
     ADD_TEST(test_names_do_all);
 

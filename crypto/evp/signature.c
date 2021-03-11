@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -347,7 +347,7 @@ const OSSL_PARAM *EVP_SIGNATURE_gettable_ctx_params(const EVP_SIGNATURE *sig)
         return NULL;
 
     provctx = ossl_provider_ctx(EVP_SIGNATURE_provider(sig));
-    return sig->gettable_ctx_params(provctx);
+    return sig->gettable_ctx_params(NULL, provctx);
 }
 
 const OSSL_PARAM *EVP_SIGNATURE_settable_ctx_params(const EVP_SIGNATURE *sig)
@@ -358,7 +358,7 @@ const OSSL_PARAM *EVP_SIGNATURE_settable_ctx_params(const EVP_SIGNATURE *sig)
         return NULL;
 
     provctx = ossl_provider_ctx(EVP_SIGNATURE_provider(sig));
-    return sig->settable_ctx_params(provctx);
+    return sig->settable_ctx_params(NULL, provctx);
 }
 
 static int evp_pkey_signature_init(EVP_PKEY_CTX *ctx, int operation)
@@ -555,7 +555,7 @@ int EVP_PKEY_sign(EVP_PKEY_CTX *ctx,
     }
 
     if (ctx->operation != EVP_PKEY_OP_SIGN) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATON_NOT_INITIALIZED);
+        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_INITIALIZED);
         return -1;
     }
 
@@ -594,7 +594,7 @@ int EVP_PKEY_verify(EVP_PKEY_CTX *ctx,
     }
 
     if (ctx->operation != EVP_PKEY_OP_VERIFY) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATON_NOT_INITIALIZED);
+        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_INITIALIZED);
         return -1;
     }
 
@@ -631,7 +631,7 @@ int EVP_PKEY_verify_recover(EVP_PKEY_CTX *ctx,
     }
 
     if (ctx->operation != EVP_PKEY_OP_VERIFYRECOVER) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATON_NOT_INITIALIZED);
+        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_INITIALIZED);
         return -1;
     }
 

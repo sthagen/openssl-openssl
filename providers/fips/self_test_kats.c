@@ -217,12 +217,10 @@ static int self_test_kdf(const ST_KAT_KDF *t, OSSL_SELF_TEST *st,
     params = OSSL_PARAM_BLD_to_param(bld);
     if (params == NULL)
         goto err;
-    if (!EVP_KDF_CTX_set_params(ctx, params))
-        goto err;
 
     if (t->expected_len > sizeof(out))
         goto err;
-    if (EVP_KDF_derive(ctx, out, t->expected_len) <= 0)
+    if (EVP_KDF_derive(ctx, out, t->expected_len, params) <= 0)
         goto err;
 
     OSSL_SELF_TEST_oncorrupt_byte(st, out);
@@ -296,10 +294,10 @@ static int self_test_drbg(const ST_KAT_DRBG *t, OSSL_SELF_TEST *st,
     drbg_params[1] =
         OSSL_PARAM_construct_octet_string(OSSL_RAND_PARAM_TEST_NONCE,
                                           (void *)t->nonce, t->noncelen);
-    if (!EVP_RAND_set_ctx_params(test, drbg_params)
-            || !EVP_RAND_instantiate(test, strength, 0, NULL, 0))
+    if (!EVP_RAND_instantiate(test, strength, 0, NULL, 0, drbg_params))
         goto err;
-    if (!EVP_RAND_instantiate(drbg, strength, 0, t->persstr, t->persstrlen))
+    if (!EVP_RAND_instantiate(drbg, strength, 0, t->persstr, t->persstrlen,
+                              NULL))
         goto err;
 
     drbg_params[0] =
