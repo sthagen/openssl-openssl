@@ -148,7 +148,7 @@ static int dsa_setup_md(PROV_DSA_CTX *ctx,
         EVP_MD_free(ctx->md);
 
         /*
-         * TODO(3.0) Should we care about DER writing errors?
+         * We do not care about DER writing errors.
          * All it really means is that for some reason, there's no
          * AlgorithmIdentifier to be had, but the operation itself is
          * still valid, just as long as it's not used to construct
@@ -313,7 +313,7 @@ int dsa_digest_sign_final(void *vpdsactx, unsigned char *sig, size_t *siglen,
      */
     if (sig != NULL) {
         /*
-         * TODO(3.0): There is the possibility that some externally provided
+         * There is the possibility that some externally provided
          * digests exceed EVP_MAX_MD_SIZE. We should probably handle that somehow -
          * but that problem is much larger than just in DSA.
          */
@@ -338,7 +338,7 @@ int dsa_digest_verify_final(void *vpdsactx, const unsigned char *sig,
         return 0;
 
     /*
-     * TODO(3.0): There is the possibility that some externally provided
+     * There is the possibility that some externally provided
      * digests exceed EVP_MAX_MD_SIZE. We should probably handle that somehow -
      * but that problem is much larger than just in DSA.
      */
@@ -434,7 +434,8 @@ static const OSSL_PARAM known_gettable_ctx_params[] = {
     OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *dsa_gettable_ctx_params(ossl_unused void *vctx)
+static const OSSL_PARAM *dsa_gettable_ctx_params(ossl_unused void *ctx,
+                                                 ossl_unused void *provctx)
 {
     return known_gettable_ctx_params;
 }
@@ -470,27 +471,24 @@ static int dsa_set_ctx_params(void *vpdsactx, const OSSL_PARAM params[])
     return 1;
 }
 
-static const OSSL_PARAM known_settable_ctx_params[] = {
+static const OSSL_PARAM settable_ctx_params[] = {
     OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_DIGEST, NULL, 0),
     OSSL_PARAM_utf8_string(OSSL_SIGNATURE_PARAM_PROPERTIES, NULL, 0),
     OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *dsa_settable_ctx_params(ossl_unused void *provctx)
+static const OSSL_PARAM settable_ctx_params_no_digest[] = {
+    OSSL_PARAM_END
+};
+
+static const OSSL_PARAM *dsa_settable_ctx_params(void *vpdsactx,
+                                                 ossl_unused void *provctx)
 {
-    /*
-     * TODO(3.0): Should this function return a different set of settable ctx
-     * params if the ctx is being used for a DigestSign/DigestVerify? In that
-     * case it is not allowed to set the digest size/digest name because the
-     * digest is explicitly set as part of the init.
-     * NOTE: Ideally we would check pdsactx->flag_allow_md, but this is
-     * problematic because there is no nice way of passing the
-     * PROV_DSA_CTX down to this function...
-     * Because we have API's that dont know about their parent..
-     * e.g: EVP_SIGNATURE_gettable_ctx_params(const EVP_SIGNATURE *sig).
-     * We could pass NULL for that case (but then how useful is the check?).
-     */
-    return known_settable_ctx_params;
+    PROV_DSA_CTX *pdsactx = (PROV_DSA_CTX *)vpdsactx;
+
+    if (pdsactx != NULL && !pdsactx->flag_allow_md)
+        return settable_ctx_params_no_digest;
+    return settable_ctx_params;
 }
 
 static int dsa_get_ctx_md_params(void *vpdsactx, OSSL_PARAM *params)

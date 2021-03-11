@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -135,7 +135,7 @@ opthelp:
     if (dkm_bytes == NULL)
         goto err;
 
-    if (!EVP_KDF_derive(ctx, dkm_bytes, dkm_len)) {
+    if (!EVP_KDF_derive(ctx, dkm_bytes, dkm_len, NULL)) {
         BIO_printf(bio_err, "EVP_KDF_derive failed\n");
         goto err;
     }

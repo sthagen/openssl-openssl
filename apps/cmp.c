@@ -71,6 +71,7 @@ static char server_port[32] = { '\0' };
 static char *opt_path = NULL;
 static char *opt_proxy = NULL;
 static char *opt_no_proxy = NULL;
+static char *opt_recipient = NULL;
 static int opt_msg_timeout = -1;
 static int opt_total_timeout = -1;
 
@@ -78,7 +79,6 @@ static int opt_total_timeout = -1;
 static char *opt_trusted = NULL;
 static char *opt_untrusted = NULL;
 static char *opt_srvcert = NULL;
-static char *opt_recipient = NULL;
 static char *opt_expect_sender = NULL;
 static int opt_ignore_keyusage = 0;
 static int opt_unprotected_errors = 0;
@@ -204,10 +204,11 @@ typedef enum OPTION_choice {
     OPT_OLDCERT, OPT_REVREASON,
 
     OPT_SERVER, OPT_PATH, OPT_PROXY, OPT_NO_PROXY,
+    OPT_RECIPIENT,
     OPT_MSG_TIMEOUT, OPT_TOTAL_TIMEOUT,
 
     OPT_TRUSTED, OPT_UNTRUSTED, OPT_SRVCERT,
-    OPT_RECIPIENT, OPT_EXPECT_SENDER,
+    OPT_EXPECT_SENDER,
     OPT_IGNORE_KEYUSAGE, OPT_UNPROTECTED_ERRORS,
     OPT_EXTRACERTSOUT, OPT_CACERTSOUT,
 
@@ -340,6 +341,8 @@ const OPTIONS cmp_options[] = {
      "List of addresses of servers not to use HTTP(S) proxy for"},
     {OPT_MORE_STR, 0, 0,
      "Default from environment variable 'no_proxy', else 'NO_PROXY', else none"},
+    {"recipient", OPT_RECIPIENT, 's',
+     "DN of CA. Default: subject of -srvcert, -issuer, issuer of -oldcert or -cert"},
     {"msg_timeout", OPT_MSG_TIMEOUT, 'n',
      "Timeout per CMP message round trip (or 0 for none). Default 120 seconds"},
     {"total_timeout", OPT_TOTAL_TIMEOUT, 'n',
@@ -353,8 +356,6 @@ const OPTIONS cmp_options[] = {
      "Intermediate CA certs for chain construction for CMP/TLS/enrolled certs"},
     {"srvcert", OPT_SRVCERT, 's',
      "Server cert to pin and trust directly when verifying signed CMP responses"},
-    {"recipient", OPT_RECIPIENT, 's',
-     "DN of CA. Default: subject of -srvcert, -issuer, issuer of -oldcert or -cert"},
     {"expect_sender", OPT_EXPECT_SENDER, 's',
      "DN of expected sender of responses. Defaults to subject of -srvcert, if any"},
     {"ignore_keyusage", OPT_IGNORE_KEYUSAGE, '-',
@@ -527,10 +528,11 @@ static varref cmp_vars[] = { /* must be in same order as enumerated above! */
     {&opt_oldcert}, {(char **)&opt_revreason},
 
     {&opt_server}, {&opt_path}, {&opt_proxy}, {&opt_no_proxy},
+    {&opt_recipient},
     {(char **)&opt_msg_timeout}, {(char **)&opt_total_timeout},
 
     {&opt_trusted}, {&opt_untrusted}, {&opt_srvcert},
-    {&opt_recipient}, {&opt_expect_sender},
+    {&opt_expect_sender},
     {(char **)&opt_ignore_keyusage}, {(char **)&opt_unprotected_errors},
     {&opt_extracertsout}, {&opt_cacertsout},
 
@@ -1610,11 +1612,84 @@ static int setup_request_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
             && opt_csr == NULL && opt_oldcert == NULL && opt_cert == NULL
             && opt_cmd != CMP_RR && opt_cmd != CMP_GENM)
         CMP_warn("no -subject given; no -csr or -oldcert or -cert available for fallback");
-    if (!set_name(opt_subject, OSSL_CMP_CTX_set1_subjectName, ctx, "subject")
-            || !set_name(opt_issuer, OSSL_CMP_CTX_set1_issuer, ctx, "issuer"))
-        return 0;
 
-    if (opt_newkey != NULL) {
+    if (opt_cmd == CMP_IR || opt_cmd == CMP_CR || opt_cmd == CMP_KUR) {
+        if (opt_newkey == NULL && opt_key == NULL && opt_csr == NULL) {
+            CMP_err("missing -newkey (or -key) to be certified and no -csr given");
+            return 0;
+        }
+        if (opt_certout == NULL) {
+            CMP_err("-certout not given, nowhere to save newly enrolled certificate");
+            return 0;
+        }
+        if (!set_name(opt_subject, OSSL_CMP_CTX_set1_subjectName, ctx, "subject")
+                || !set_name(opt_issuer, OSSL_CMP_CTX_set1_issuer, ctx, "issuer"))
+            return 0;
+    } else {
+        const char *msg = "option is ignored for commands other than 'ir', 'cr', and 'kur'";
+
+        if (opt_subject != NULL) {
+            if (opt_ref == NULL && opt_cert == NULL) {
+                /* use subject as default sender unless oldcert subject is used */
+                if (!set_name(opt_subject, OSSL_CMP_CTX_set1_subjectName, ctx, "subject"))
+                    return 0;
+            } else {
+                CMP_warn1("-subject %s since -ref or -cert is given", msg);
+            }
+        }
+        if (opt_issuer != NULL)
+            CMP_warn1("-issuer %s", msg);
+        if (opt_reqexts != NULL)
+            CMP_warn1("-reqexts %s", msg);
+        if (opt_san_nodefault)
+            CMP_warn1("-san_nodefault %s", msg);
+        if (opt_sans != NULL)
+            CMP_warn1("-sans %s", msg);
+        if (opt_policies != NULL)
+            CMP_warn1("-policies %s", msg);
+        if (opt_policy_oids != NULL)
+            CMP_warn1("-policy_oids %s", msg);
+    }
+    if (opt_cmd == CMP_KUR) {
+        char *ref_cert = opt_oldcert != NULL ? opt_oldcert : opt_cert;
+
+        if (ref_cert == NULL && opt_csr == NULL) {
+            CMP_err("missing -oldcert for certificate to be updated and no -csr given");
+            return 0;
+        }
+        if (opt_subject != NULL)
+            CMP_warn2("given -subject '%s' overrides the subject of '%s' for KUR",
+                      opt_subject, ref_cert != NULL ? ref_cert : opt_csr);
+    }
+    if (opt_cmd == CMP_RR) {
+        if (opt_oldcert == NULL && opt_csr == NULL) {
+            CMP_err("missing -oldcert for certificate to be revoked and no -csr given");
+            return 0;
+        }
+        if (opt_oldcert != NULL && opt_csr != NULL)
+            CMP_warn("ignoring -csr since certificate to be revoked is given");
+    }
+    if (opt_cmd == CMP_P10CR && opt_csr == NULL) {
+        CMP_err("missing PKCS#10 CSR for p10cr");
+        return 0;
+    }
+
+    if (opt_recipient == NULL && opt_srvcert == NULL && opt_issuer == NULL
+            && opt_oldcert == NULL && opt_cert == NULL)
+        CMP_warn("missing -recipient, -srvcert, -issuer, -oldcert or -cert; recipient will be set to \"NULL-DN\"");
+
+    if (opt_cmd == CMP_P10CR || opt_cmd == CMP_RR) {
+        const char *msg = "option is ignored for 'p10cr' and 'rr' commands";
+
+        if (opt_newkeypass != NULL)
+            CMP_warn1("-newkeytype %s", msg);
+        if (opt_newkey != NULL)
+            CMP_warn1("-newkey %s", msg);
+        if (opt_days != 0)
+            CMP_warn1("-days %s", msg);
+        if (opt_popo != OSSL_CRMF_POPO_NONE - 1)
+            CMP_warn1("-popo %s", msg);
+    } else if (opt_newkey != NULL) {
         const char *file = opt_newkey;
         const int format = opt_keyform;
         const char *pass = opt_newkeypass;
@@ -1855,7 +1930,8 @@ static int setup_client_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         CMP_err("missing -server option");
         goto err;
     }
-    if (!OSSL_HTTP_parse_url(opt_server, &server, &port, &portnum, &path, &ssl)) {
+    if (!OSSL_HTTP_parse_url(opt_server, &ssl, NULL /* user */, &server, &port,
+                             &portnum, &path, NULL /* q */, NULL /* frag */)) {
         CMP_err1("cannot parse -server URL: %s", opt_server);
         goto err;
     }
@@ -1882,44 +1958,6 @@ static int setup_client_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
 
     if (!transform_opts())
         goto err;
-
-    if (opt_cmd == CMP_IR || opt_cmd == CMP_CR || opt_cmd == CMP_KUR) {
-        if (opt_newkey == NULL && opt_key == NULL && opt_csr == NULL) {
-            CMP_err("missing -newkey (or -key) to be certified");
-            goto err;
-        }
-        if (opt_certout == NULL) {
-            CMP_err("-certout not given, nowhere to save certificate");
-            goto err;
-        }
-    }
-    if (opt_cmd == CMP_KUR) {
-        char *ref_cert = opt_oldcert != NULL ? opt_oldcert : opt_cert;
-
-        if (ref_cert == NULL && opt_csr == NULL) {
-            CMP_err("missing -oldcert for certificate to be updated and no fallback -csr given");
-            goto err;
-        }
-        if (opt_subject != NULL)
-            CMP_warn2("given -subject '%s' overrides the subject of '%s' for KUR",
-                      opt_subject, ref_cert != NULL ? ref_cert : opt_csr);
-    }
-    if (opt_cmd == CMP_RR) {
-        if (opt_oldcert == NULL && opt_csr == NULL) {
-            CMP_err("missing -oldcert for certificate to be revoked and no fallback -csr given");
-            goto err;
-        }
-        if (opt_oldcert != NULL && opt_csr != NULL)
-            CMP_warn("ignoring -csr since certificate to be revoked is given");
-    }
-    if (opt_cmd == CMP_P10CR && opt_csr == NULL) {
-        CMP_err("missing PKCS#10 CSR for p10cr");
-        goto err;
-    }
-
-    if (opt_recipient == NULL && opt_srvcert == NULL && opt_issuer == NULL
-            && opt_oldcert == NULL && opt_cert == NULL)
-        CMP_warn("missing -recipient, -srvcert, -issuer, -oldcert or -cert; recipient will be set to \"NULL-DN\"");
 
     if (opt_infotype_s != NULL) {
         char id_buf[100] = "id-it-";
@@ -2339,6 +2377,9 @@ static int get_opts(int argc, char **argv)
         case OPT_PATH:
             opt_path = opt_str("path");
             break;
+        case OPT_RECIPIENT:
+            opt_recipient = opt_str("recipient");
+            break;
         case OPT_MSG_TIMEOUT:
             if ((opt_msg_timeout = opt_nat()) < 0)
                 goto opthelp;
@@ -2407,9 +2448,6 @@ static int get_opts(int argc, char **argv)
             break;
         case OPT_SRVCERT:
             opt_srvcert = opt_str("srvcert");
-            break;
-        case OPT_RECIPIENT:
-            opt_recipient = opt_str("recipient");
             break;
         case OPT_EXPECT_SENDER:
             opt_expect_sender = opt_str("expect_sender");

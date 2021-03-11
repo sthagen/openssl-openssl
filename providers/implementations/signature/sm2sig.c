@@ -192,7 +192,7 @@ static int sm2sig_digest_signverify_init(void *vpsm2ctx, const char *mdname,
         goto error;
 
     /*
-     * TODO(3.0) Should we care about DER writing errors?
+     * We do not care about DER writing errors.
      * All it really means is that for some reason, there's no
      * AlgorithmIdentifier to be had, but the operation itself is
      * still valid, just as long as it's not used to construct
@@ -381,7 +381,8 @@ static const OSSL_PARAM known_gettable_ctx_params[] = {
     OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *sm2sig_gettable_ctx_params(ossl_unused void *provctx)
+static const OSSL_PARAM *sm2sig_gettable_ctx_params(ossl_unused void *vpsm2ctx,
+                                                    ossl_unused void *provctx)
 {
     return known_gettable_ctx_params;
 }
@@ -446,7 +447,8 @@ static const OSSL_PARAM known_settable_ctx_params[] = {
     OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *sm2sig_settable_ctx_params(ossl_unused void *provctx)
+static const OSSL_PARAM *sm2sig_settable_ctx_params(ossl_unused void *vpsm2ctx,
+                                                    ossl_unused void *provctx)
 {
     /*
      * TODO(3.0): Should this function return a different set of settable ctx

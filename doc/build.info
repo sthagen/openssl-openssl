@@ -570,6 +570,10 @@ DEPEND[html/man3/BIO_f_prefix.html]=man3/BIO_f_prefix.pod
 GENERATE[html/man3/BIO_f_prefix.html]=man3/BIO_f_prefix.pod
 DEPEND[man/man3/BIO_f_prefix.3]=man3/BIO_f_prefix.pod
 GENERATE[man/man3/BIO_f_prefix.3]=man3/BIO_f_prefix.pod
+DEPEND[html/man3/BIO_f_readbuffer.html]=man3/BIO_f_readbuffer.pod
+GENERATE[html/man3/BIO_f_readbuffer.html]=man3/BIO_f_readbuffer.pod
+DEPEND[man/man3/BIO_f_readbuffer.3]=man3/BIO_f_readbuffer.pod
+GENERATE[man/man3/BIO_f_readbuffer.3]=man3/BIO_f_readbuffer.pod
 DEPEND[html/man3/BIO_f_ssl.html]=man3/BIO_f_ssl.pod
 GENERATE[html/man3/BIO_f_ssl.html]=man3/BIO_f_ssl.pod
 DEPEND[man/man3/BIO_f_ssl.3]=man3/BIO_f_ssl.pod
@@ -1594,6 +1598,10 @@ DEPEND[html/man3/OSSL_HTTP_REQ_CTX.html]=man3/OSSL_HTTP_REQ_CTX.pod
 GENERATE[html/man3/OSSL_HTTP_REQ_CTX.html]=man3/OSSL_HTTP_REQ_CTX.pod
 DEPEND[man/man3/OSSL_HTTP_REQ_CTX.3]=man3/OSSL_HTTP_REQ_CTX.pod
 GENERATE[man/man3/OSSL_HTTP_REQ_CTX.3]=man3/OSSL_HTTP_REQ_CTX.pod
+DEPEND[html/man3/OSSL_HTTP_parse_url.html]=man3/OSSL_HTTP_parse_url.pod
+GENERATE[html/man3/OSSL_HTTP_parse_url.html]=man3/OSSL_HTTP_parse_url.pod
+DEPEND[man/man3/OSSL_HTTP_parse_url.3]=man3/OSSL_HTTP_parse_url.pod
+GENERATE[man/man3/OSSL_HTTP_parse_url.3]=man3/OSSL_HTTP_parse_url.pod
 DEPEND[html/man3/OSSL_HTTP_transfer.html]=man3/OSSL_HTTP_transfer.pod
 GENERATE[html/man3/OSSL_HTTP_transfer.html]=man3/OSSL_HTTP_transfer.pod
 DEPEND[man/man3/OSSL_HTTP_transfer.3]=man3/OSSL_HTTP_transfer.pod
@@ -2768,6 +2776,7 @@ html/man3/BIO_f_cipher.html \
 html/man3/BIO_f_md.html \
 html/man3/BIO_f_null.html \
 html/man3/BIO_f_prefix.html \
+html/man3/BIO_f_readbuffer.html \
 html/man3/BIO_f_ssl.html \
 html/man3/BIO_find_type.html \
 html/man3/BIO_get_data.html \
@@ -3024,6 +3033,7 @@ html/man3/OSSL_ENCODER_CTX.html \
 html/man3/OSSL_ENCODER_CTX_new_for_pkey.html \
 html/man3/OSSL_ENCODER_to_bio.html \
 html/man3/OSSL_HTTP_REQ_CTX.html \
+html/man3/OSSL_HTTP_parse_url.html \
 html/man3/OSSL_HTTP_transfer.html \
 html/man3/OSSL_LIB_CTX.html \
 html/man3/OSSL_PARAM.html \
@@ -3337,6 +3347,7 @@ man/man3/BIO_f_cipher.3 \
 man/man3/BIO_f_md.3 \
 man/man3/BIO_f_null.3 \
 man/man3/BIO_f_prefix.3 \
+man/man3/BIO_f_readbuffer.3 \
 man/man3/BIO_f_ssl.3 \
 man/man3/BIO_find_type.3 \
 man/man3/BIO_get_data.3 \
@@ -3593,6 +3604,7 @@ man/man3/OSSL_ENCODER_CTX.3 \
 man/man3/OSSL_ENCODER_CTX_new_for_pkey.3 \
 man/man3/OSSL_ENCODER_to_bio.3 \
 man/man3/OSSL_HTTP_REQ_CTX.3 \
+man/man3/OSSL_HTTP_parse_url.3 \
 man/man3/OSSL_HTTP_transfer.3 \
 man/man3/OSSL_LIB_CTX.3 \
 man/man3/OSSL_PARAM.3 \

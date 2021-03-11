@@ -197,7 +197,7 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
 #endif
 
     /*
-     * Because we still have legacy keys, and evp_pkey_downgrade()
+     * Because we still have legacy keys
      * TODO remove this #legacy internal keys are gone
      */
     (*ppkey)->type = ctx->legacy_keytype;
@@ -208,8 +208,17 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
 #ifdef FIPS_MODULE
     goto not_supported;
 #else
-    if (ctx->pkey && !evp_pkey_downgrade(ctx->pkey))
+    /*
+     * If we get here then we're using legacy paramgen/keygen. In that case
+     * the pkey in ctx (if there is one) had better not be provided (because the
+     * legacy methods may not know how to handle it). However we can only get
+     * here if ctx->op.keymgmt.genctx == NULL, but that should never be the case
+     * if ctx->pkey is provided because we don't allow this when we initialise
+     * the ctx.
+     */
+    if (ctx->pkey != NULL && !ossl_assert(!evp_pkey_is_provided(ctx->pkey)))
         goto not_accessible;
+
     switch (ctx->operation) {
     case EVP_PKEY_OP_PARAMGEN:
         ret = ctx->pmeth->paramgen(ctx, *ppkey);
@@ -235,7 +244,7 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
     ret = -2;
     goto end;
  not_initialized:
-    ERR_raise(ERR_LIB_EVP, EVP_R_OPERATON_NOT_INITIALIZED);
+    ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_INITIALIZED);
     ret = -1;
     goto end;
 #ifndef FIPS_MODULE
@@ -249,7 +258,7 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
 int EVP_PKEY_paramgen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
 {
     if (ctx->operation != EVP_PKEY_OP_PARAMGEN) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATON_NOT_INITIALIZED);
+        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_INITIALIZED);
         return -1;
     }
     return EVP_PKEY_gen(ctx, ppkey);
@@ -258,7 +267,7 @@ int EVP_PKEY_paramgen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
 int EVP_PKEY_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
 {
     if (ctx->operation != EVP_PKEY_OP_KEYGEN) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATON_NOT_INITIALIZED);
+        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_INITIALIZED);
         return -1;
     }
     return EVP_PKEY_gen(ctx, ppkey);

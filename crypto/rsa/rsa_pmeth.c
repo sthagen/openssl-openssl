@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -604,8 +604,6 @@ static int pkey_rsa_ctrl_str(EVP_PKEY_CTX *ctx,
 
         if (strcmp(value, "pkcs1") == 0) {
             pm = RSA_PKCS1_PADDING;
-        } else if (strcmp(value, "sslv23") == 0) {
-            pm = RSA_SSLV23_PADDING;
         } else if (strcmp(value, "none") == 0) {
             pm = RSA_NO_PADDING;
         } else if (strcmp(value, "oeap") == 0) {
