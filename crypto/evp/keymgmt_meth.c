@@ -287,9 +287,9 @@ void *evp_keymgmt_newdata(const EVP_KEYMGMT *keymgmt)
     void *provctx = ossl_provider_ctx(EVP_KEYMGMT_provider(keymgmt));
 
     /*
-     * TODO(3.0) 'new' is currently mandatory on its own, but when new
-     * constructors appear, it won't be quite as mandatory, so we have
-     * a check for future cases.
+     * 'new' is currently mandatory on its own, but when new
+     * constructors appear, it won't be quite as mandatory,
+     * so we have a check for future cases.
      */
     if (keymgmt->new == NULL)
         return NULL;
@@ -302,13 +302,14 @@ void evp_keymgmt_freedata(const EVP_KEYMGMT *keymgmt, void *keydata)
     keymgmt->free(keydata);
 }
 
-void *evp_keymgmt_gen_init(const EVP_KEYMGMT *keymgmt, int selection)
+void *evp_keymgmt_gen_init(const EVP_KEYMGMT *keymgmt, int selection,
+                           const OSSL_PARAM params[])
 {
     void *provctx = ossl_provider_ctx(EVP_KEYMGMT_provider(keymgmt));
 
     if (keymgmt->gen_init == NULL)
         return NULL;
-    return keymgmt->gen_init(provctx, selection);
+    return keymgmt->gen_init(provctx, selection, params);
 }
 
 int evp_keymgmt_gen_set_template(const EVP_KEYMGMT *keymgmt, void *genctx,
@@ -319,7 +320,6 @@ int evp_keymgmt_gen_set_template(const EVP_KEYMGMT *keymgmt, void *genctx,
      * it allows the caller to set a template key, which is then ignored.
      * However, this is how the legacy methods (EVP_PKEY_METHOD) operate,
      * so we do this in the interest of backward compatibility.
-     * TODO(3.0) Investigate if we should change this behaviour.
      */
     if (keymgmt->gen_set_template == NULL)
         return 1;

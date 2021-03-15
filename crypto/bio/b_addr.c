@@ -616,8 +616,6 @@ static int addrinfo_wrap(int family, int socktype,
 
 DEFINE_RUN_ONCE_STATIC(do_bio_lookup_init)
 {
-    if (!OPENSSL_init_crypto(0, NULL))
-        return 0;
     bio_lookup_lock = CRYPTO_THREAD_lock_new();
     return bio_lookup_lock != NULL;
 }
@@ -784,7 +782,10 @@ int BIO_lookup_ex(const char *host, const char *service, int lookup_type,
             goto err;
         }
 
-        CRYPTO_THREAD_write_lock(bio_lookup_lock);
+        if (!CRYPTO_THREAD_write_lock(bio_lookup_lock)) {
+            ret = 0;
+            goto err;
+        }
         he_fallback_address = INADDR_ANY;
         if (host == NULL) {
             he = &he_fallback;

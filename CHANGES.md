@@ -23,6 +23,19 @@ OpenSSL 3.0
 
 ### Changes between 1.1.1 and 3.0 [xx XXX xxxx]
 
+ * The EVP_PKEY_public_check() and EVP_PKEY_param_check() functions now work for
+   more key types including RSA, DSA, ED25519, X25519, ED448 and X448.
+   Previously (in 1.1.1) they would return -2. For key types that do not have
+   parameters then EVP_PKEY_param_check() will always return 1.
+
+ * The output from numerous "printing" functions such as X509_signature_print(),
+   X509_print_ex(), X509_CRL_print_ex(), and other similar functions has been
+   amended such that there may be cosmetic differences between the output
+   observed in 1.1.1 and 3.0. This also applies to the "-text" output from the
+   x509 and crl applications.
+
+   *David von Oheimb*
+
  * Windows thread synchronization uses read/write primitives (SRWLock) when
    supported by the OS, otherwise CriticalSection continues to be used.
 
@@ -538,6 +551,13 @@ OpenSSL 3.0
  * Add CAdES-BES signature scheme and attributes support (RFC 5126) to CMS API.
 
    *Antonio Iacono*
+
+ * Added the AuthEnvelopedData content type structure (RFC 5083) with AES-GCM
+   parameter (RFC 5084) for the Cryptographic Message Syntax (CMS). Its purpose
+   is to support encryption and decryption of a digital envelope that is both
+   authenticated and encrypted using AES GCM mode.
+
+   *Jakub Zelenka*
 
  * Deprecated EC_POINT_make_affine() and EC_POINTs_make_affine(). These
    functions are not widely used and now OpenSSL automatically perform this
