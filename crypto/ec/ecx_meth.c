@@ -469,7 +469,7 @@ static int x25519_import_from(const OSSL_PARAM params[], void *vpctx)
     return ecx_generic_import_from(params, vpctx, EVP_PKEY_X25519);
 }
 
-const EVP_PKEY_ASN1_METHOD ecx25519_asn1_meth = {
+const EVP_PKEY_ASN1_METHOD ossl_ecx25519_asn1_meth = {
     EVP_PKEY_X25519,
     EVP_PKEY_X25519,
     0,
@@ -522,7 +522,7 @@ static int x448_import_from(const OSSL_PARAM params[], void *vpctx)
     return ecx_generic_import_from(params, vpctx, EVP_PKEY_X448);
 }
 
-const EVP_PKEY_ASN1_METHOD ecx448_asn1_meth = {
+const EVP_PKEY_ASN1_METHOD ossl_ecx448_asn1_meth = {
     EVP_PKEY_X448,
     EVP_PKEY_X448,
     0,
@@ -649,7 +649,7 @@ static int ed25519_import_from(const OSSL_PARAM params[], void *vpctx)
     return ecx_generic_import_from(params, vpctx, EVP_PKEY_ED25519);
 }
 
-const EVP_PKEY_ASN1_METHOD ed25519_asn1_meth = {
+const EVP_PKEY_ASN1_METHOD ossl_ed25519_asn1_meth = {
     EVP_PKEY_ED25519,
     EVP_PKEY_ED25519,
     0,
@@ -701,7 +701,7 @@ static int ed448_import_from(const OSSL_PARAM params[], void *vpctx)
     return ecx_generic_import_from(params, vpctx, EVP_PKEY_ED448);
 }
 
-const EVP_PKEY_ASN1_METHOD ed448_asn1_meth = {
+const EVP_PKEY_ASN1_METHOD ossl_ed448_asn1_meth = {
     EVP_PKEY_ED448,
     EVP_PKEY_ED448,
     0,
@@ -788,7 +788,7 @@ static int pkey_ecx_derive25519(EVP_PKEY_CTX *ctx, unsigned char *key,
 
     if (!validate_ecx_derive(ctx, key, keylen, &privkey, &pubkey)
             || (key != NULL
-                && X25519(key, privkey, pubkey) == 0))
+                && ossl_x25519(key, privkey, pubkey) == 0))
         return 0;
     *keylen = X25519_KEYLEN;
     return 1;
@@ -801,7 +801,7 @@ static int pkey_ecx_derive448(EVP_PKEY_CTX *ctx, unsigned char *key,
 
     if (!validate_ecx_derive(ctx, key, keylen, &privkey, &pubkey)
             || (key != NULL
-                && X448(key, privkey, pubkey) == 0))
+                && ossl_x448(key, privkey, pubkey) == 0))
         return 0;
     *keylen = X448_KEYLEN;
     return 1;
@@ -850,8 +850,8 @@ static int pkey_ecd_digestsign25519(EVP_MD_CTX *ctx, unsigned char *sig,
         return 0;
     }
 
-    if (ED25519_sign(sig, tbs, tbslen, edkey->pubkey, edkey->privkey, NULL,
-                     NULL) == 0)
+    if (ossl_ed25519_sign(sig, tbs, tbslen, edkey->pubkey, edkey->privkey, NULL,
+                          NULL) == 0)
         return 0;
     *siglen = ED25519_SIGSIZE;
     return 1;
@@ -872,8 +872,8 @@ static int pkey_ecd_digestsign448(EVP_MD_CTX *ctx, unsigned char *sig,
         return 0;
     }
 
-    if (ED448_sign(edkey->libctx, sig, tbs, tbslen, edkey->pubkey, edkey->privkey,
-                   NULL, 0, edkey->propq) == 0)
+    if (ossl_ed448_sign(edkey->libctx, sig, tbs, tbslen, edkey->pubkey,
+                        edkey->privkey, NULL, 0, edkey->propq) == 0)
         return 0;
     *siglen = ED448_SIGSIZE;
     return 1;
@@ -888,8 +888,8 @@ static int pkey_ecd_digestverify25519(EVP_MD_CTX *ctx, const unsigned char *sig,
     if (siglen != ED25519_SIGSIZE)
         return 0;
 
-    return ED25519_verify(tbs, tbslen, sig, edkey->pubkey,
-                          edkey->libctx, edkey->propq);
+    return ossl_ed25519_verify(tbs, tbslen, sig, edkey->pubkey,
+                               edkey->libctx, edkey->propq);
 }
 
 static int pkey_ecd_digestverify448(EVP_MD_CTX *ctx, const unsigned char *sig,
@@ -901,8 +901,8 @@ static int pkey_ecd_digestverify448(EVP_MD_CTX *ctx, const unsigned char *sig,
     if (siglen != ED448_SIGSIZE)
         return 0;
 
-    return ED448_verify(edkey->libctx, tbs, tbslen, sig, edkey->pubkey, NULL, 0,
-                        edkey->propq);
+    return ossl_ed448_verify(edkey->libctx, tbs, tbslen, sig, edkey->pubkey,
+                             NULL, 0, edkey->propq);
 }
 
 static int pkey_ecd_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)

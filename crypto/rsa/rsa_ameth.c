@@ -299,7 +299,7 @@ static int rsa_pss_param_print(BIO *bp, int pss_key, RSA_PSS_PARAMS *pss,
             goto err;
         if (BIO_puts(bp, " with ") <= 0)
             goto err;
-        maskHash = x509_algor_mgf1_decode(pss->maskGenAlgorithm);
+        maskHash = ossl_x509_algor_mgf1_decode(pss->maskGenAlgorithm);
         if (maskHash != NULL) {
             if (i2a_ASN1_OBJECT(bp, maskHash->algorithm) <= 0)
                 goto err;
@@ -455,7 +455,7 @@ static RSA_PSS_PARAMS *rsa_pss_decode(const X509_ALGOR *alg)
         return NULL;
 
     if (pss->maskGenAlgorithm != NULL) {
-        pss->maskHash = x509_algor_mgf1_decode(pss->maskGenAlgorithm);
+        pss->maskHash = ossl_x509_algor_mgf1_decode(pss->maskGenAlgorithm);
         if (pss->maskHash == NULL) {
             RSA_PSS_PARAMS_free(pss);
             return NULL;
@@ -493,8 +493,8 @@ static int rsa_pkey_ctrl(EVP_PKEY *pkey, int op, long arg1, void *arg2)
     switch (op) {
     case ASN1_PKEY_CTRL_DEFAULT_MD_NID:
         if (pkey->pkey.rsa->pss != NULL) {
-            if (!rsa_pss_get_param(pkey->pkey.rsa->pss, &md, &mgf1md,
-                                   &min_saltlen)) {
+            if (!ossl_rsa_pss_get_param(pkey->pkey.rsa->pss, &md, &mgf1md,
+                                        &min_saltlen)) {
                 ERR_raise(ERR_LIB_RSA, ERR_R_INTERNAL_ERROR);
                 return 0;
             }
@@ -537,11 +537,11 @@ static RSA_PSS_PARAMS *rsa_ctx_to_pss(EVP_PKEY_CTX *pkctx)
             return NULL;
     }
 
-    return rsa_pss_params_create(sigmd, mgf1md, saltlen);
+    return ossl_rsa_pss_params_create(sigmd, mgf1md, saltlen);
 }
 
-RSA_PSS_PARAMS *rsa_pss_params_create(const EVP_MD *sigmd,
-                                      const EVP_MD *mgf1md, int saltlen)
+RSA_PSS_PARAMS *ossl_rsa_pss_params_create(const EVP_MD *sigmd,
+                                           const EVP_MD *mgf1md, int saltlen)
 {
     RSA_PSS_PARAMS *pss = RSA_PSS_PARAMS_new();
 
@@ -554,13 +554,13 @@ RSA_PSS_PARAMS *rsa_pss_params_create(const EVP_MD *sigmd,
         if (!ASN1_INTEGER_set(pss->saltLength, saltlen))
             goto err;
     }
-    if (!x509_algor_new_from_md(&pss->hashAlgorithm, sigmd))
+    if (!ossl_x509_algor_new_from_md(&pss->hashAlgorithm, sigmd))
         goto err;
     if (mgf1md == NULL)
         mgf1md = sigmd;
-    if (!x509_algor_md_to_mgf1(&pss->maskGenAlgorithm, mgf1md))
+    if (!ossl_x509_algor_md_to_mgf1(&pss->maskGenAlgorithm, mgf1md))
         goto err;
-    if (!x509_algor_new_from_md(&pss->maskHash, mgf1md))
+    if (!ossl_x509_algor_new_from_md(&pss->maskHash, mgf1md))
         goto err;
     return pss;
  err:
@@ -603,7 +603,7 @@ int ossl_rsa_pss_to_ctx(EVP_MD_CTX *ctx, EVP_PKEY_CTX *pkctx,
     /* Decode PSS parameters */
     pss = rsa_pss_decode(sigalg);
 
-    if (!rsa_pss_get_param(pss, &md, &mgf1md, &saltlen)) {
+    if (!ossl_rsa_pss_get_param(pss, &md, &mgf1md, &saltlen)) {
         ERR_raise(ERR_LIB_RSA, RSA_R_INVALID_PSS_PARAMETERS);
         goto err;
     }
@@ -668,10 +668,10 @@ static int rsa_pss_get_param_unverified(const RSA_PSS_PARAMS *pss,
 
     if (pss == NULL)
         return 0;
-    *pmd = x509_algor_get_md(pss->hashAlgorithm);
+    *pmd = ossl_x509_algor_get_md(pss->hashAlgorithm);
     if (*pmd == NULL)
         return 0;
-    *pmgf1md = x509_algor_get_md(pss->maskHash);
+    *pmgf1md = ossl_x509_algor_get_md(pss->maskHash);
     if (*pmgf1md == NULL)
         return 0;
     if (pss->saltLength)
@@ -686,8 +686,8 @@ static int rsa_pss_get_param_unverified(const RSA_PSS_PARAMS *pss,
     return 1;
 }
 
-int rsa_pss_get_param(const RSA_PSS_PARAMS *pss, const EVP_MD **pmd,
-                      const EVP_MD **pmgf1md, int *psaltlen)
+int ossl_rsa_pss_get_param(const RSA_PSS_PARAMS *pss, const EVP_MD **pmd,
+                           const EVP_MD **pmgf1md, int *psaltlen)
 {
     /*
      * Callers do not care about the trailer field, and yet, we must
@@ -717,7 +717,7 @@ static int rsa_sync_to_pss_params_30(RSA *rsa)
          * to even read a key with invalid values, making it hard to test
          * a bad situation.
          *
-         * Other routines use rsa_pss_get_param(), so the values will be
+         * Other routines use ossl_rsa_pss_get_param(), so the values will be
          * checked, eventually.
          */
         if (!rsa_pss_get_param_unverified(rsa->pss, &md, &mgf1md,
@@ -807,7 +807,7 @@ static int rsa_sig_info_set(X509_SIG_INFO *siginf, const X509_ALGOR *sigalg,
         return 0;
     /* Decode PSS parameters */
     pss = rsa_pss_decode(sigalg);
-    if (!rsa_pss_get_param(pss, &md, &mgf1md, &saltlen))
+    if (!ossl_rsa_pss_get_param(pss, &md, &mgf1md, &saltlen))
         goto err;
     mdnid = EVP_MD_type(md);
     /*
@@ -965,7 +965,8 @@ static int rsa_int_import_from(const OSSL_PARAM params[], void *vpctx,
             const EVP_MD *md = EVP_get_digestbynid(mdnid);
             const EVP_MD *mgf1md = EVP_get_digestbynid(mgf1mdnid);
 
-            if ((rsa->pss = rsa_pss_params_create(md, mgf1md, saltlen)) == NULL)
+            if ((rsa->pss = ossl_rsa_pss_params_create(md, mgf1md,
+                                                       saltlen)) == NULL)
                 goto err;
         }
         break;
@@ -1018,7 +1019,7 @@ static int rsa_pss_pkey_import_from(const OSSL_PARAM params[], void *vpctx)
     return rsa_int_import_from(params, vpctx, RSA_FLAG_TYPE_RSASSAPSS);
 }
 
-const EVP_PKEY_ASN1_METHOD rsa_asn1_meths[2] = {
+const EVP_PKEY_ASN1_METHOD ossl_rsa_asn1_meths[2] = {
     {
      EVP_PKEY_RSA,
      EVP_PKEY_RSA,
@@ -1066,7 +1067,7 @@ const EVP_PKEY_ASN1_METHOD rsa_asn1_meths[2] = {
      ASN1_PKEY_ALIAS}
 };
 
-const EVP_PKEY_ASN1_METHOD rsa_pss_asn1_meth = {
+const EVP_PKEY_ASN1_METHOD ossl_rsa_pss_asn1_meth = {
      EVP_PKEY_RSA_PSS,
      EVP_PKEY_RSA_PSS,
      ASN1_PKEY_SIGPARAM_NULL,
