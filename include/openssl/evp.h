@@ -1396,7 +1396,7 @@ int EVP_PKEY_set1_encoded_public_key(EVP_PKEY *pkey,
 
 size_t EVP_PKEY_get1_encoded_public_key(EVP_PKEY *pkey, unsigned char **ppub);
 
-int EVP_CIPHER_type(const EVP_CIPHER *ctx);
+int EVP_CIPHER_type(const EVP_CIPHER *cipher);
 
 /* calls methods */
 int EVP_CIPHER_param_to_asn1(EVP_CIPHER_CTX *c, ASN1_TYPE *type);
@@ -1825,6 +1825,8 @@ int EVP_PKEY_decrypt(EVP_PKEY_CTX *ctx,
 
 int EVP_PKEY_derive_init(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_derive_init_ex(EVP_PKEY_CTX *ctx, const OSSL_PARAM params[]);
+int EVP_PKEY_derive_set_peer_ex(EVP_PKEY_CTX *ctx, EVP_PKEY *peer,
+                                int validate_peer);
 int EVP_PKEY_derive_set_peer(EVP_PKEY_CTX *ctx, EVP_PKEY *peer);
 int EVP_PKEY_derive(EVP_PKEY_CTX *ctx, unsigned char *key, size_t *keylen);
 
