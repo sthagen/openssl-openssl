@@ -249,16 +249,18 @@ static int dh_computekey_range_test(void)
         || !TEST_true(DH_set0_pqg(dh, p, q, g)))
         goto err;
     p = q = g = NULL;
-    sz = DH_size(dh);
 
-    if (!TEST_ptr(buf = OPENSSL_malloc(sz))
+    if (!TEST_int_gt(sz = DH_size(dh), 0)
+        || !TEST_ptr(buf = OPENSSL_malloc(sz))
         || !TEST_ptr(pub = BN_new())
         || !TEST_ptr(priv = BN_new()))
         goto err;
 
     if (!TEST_true(BN_set_word(priv, 1))
-        || !TEST_true(DH_set0_key(dh, NULL, priv))
-        || !TEST_true(BN_set_word(pub, 1)))
+        || !TEST_true(DH_set0_key(dh, NULL, priv)))
+        goto err;
+    priv = NULL;
+    if (!TEST_true(BN_set_word(pub, 1)))
         goto err;
 
     /* Given z = pub ^ priv mod p */
@@ -282,6 +284,7 @@ static int dh_computekey_range_test(void)
     ret = 1;
 err:
     OPENSSL_free(buf);
+    BN_free(priv);
     BN_free(pub);
     BN_free(g);
     BN_free(q);
