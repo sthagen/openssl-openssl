@@ -4393,7 +4393,7 @@ EVP_PKEY_get_raw_public_key             4518	3_0_0	EXIST::FUNCTION:
 EVP_PKEY_get_raw_private_key            4519	3_0_0	EXIST::FUNCTION:
 EVP_PKEY_asn1_set_get_priv_key          4520	3_0_0	EXIST::FUNCTION:
 EVP_PKEY_asn1_set_get_pub_key           4521	3_0_0	EXIST::FUNCTION:
-EVP_PKEY_set_alias_type                 4522	3_0_0	EXIST::FUNCTION:DEPRECATEDIN_3_0
+EVP_PKEY_set_alias_type                 4522	3_0_0	NOEXIST::FUNCTION:DEPRECATEDIN_3_0
 RAND_keep_random_devices_open           4523	3_0_0	EXIST::FUNCTION:
 EC_POINT_set_compressed_coordinates     4524	3_0_0	EXIST::FUNCTION:EC
 EC_POINT_set_affine_coordinates         4525	3_0_0	EXIST::FUNCTION:EC
@@ -4956,7 +4956,6 @@ NCONF_new_ex                            ?	3_0_0	EXIST::FUNCTION:
 CONF_modules_load_file_ex               ?	3_0_0	EXIST::FUNCTION:
 OSSL_LIB_CTX_load_config                ?	3_0_0	EXIST::FUNCTION:
 OSSL_PARAM_BLD_to_param                 ?	3_0_0	EXIST::FUNCTION:
-OSSL_PARAM_BLD_free_params              ?	3_0_0	EXIST::FUNCTION:
 OSSL_PARAM_BLD_push_int                 ?	3_0_0	EXIST::FUNCTION:
 OSSL_PARAM_BLD_push_uint                ?	3_0_0	EXIST::FUNCTION:
 OSSL_PARAM_BLD_push_long                ?	3_0_0	EXIST::FUNCTION:
@@ -5348,3 +5347,6 @@ EVP_KEM_description                     ?	3_0_0	EXIST::FUNCTION:
 EVP_KEYEXCH_description                 ?	3_0_0	EXIST::FUNCTION:
 EVP_KDF_description                     ?	3_0_0	EXIST::FUNCTION:
 X509_CRL_new_ex                         ?	3_0_0	EXIST::FUNCTION:
+OSSL_PARAM_dup                          ?	3_0_0	EXIST::FUNCTION:
+OSSL_PARAM_merge                        ?	3_0_0	EXIST::FUNCTION:
+OSSL_PARAM_free                         ?	3_0_0	EXIST::FUNCTION:
