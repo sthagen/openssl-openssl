@@ -34,9 +34,9 @@ plan skip_all => "Tests involving local HTTP server not available on Windows, AI
 plan skip_all => "Tests involving local HTTP server not available in cross-compile builds"
     if defined $ENV{EXE_SHELL};
 plan skip_all => "Tests involving local HTTP server require 'kill' command"
-    if system("which kill");
+    if system("which kill >/dev/null");
 plan skip_all => "Tests involving local HTTP server require 'lsof' command"
-    if system("which lsof"); # this typically excludes Solaris
+    if system("which lsof >/dev/null"); # this typically excludes Solaris
 
 sub chop_dblquot { # chop any leading and trailing '"' (needed for Windows)
     my $str = shift;
@@ -180,6 +180,7 @@ indir data_dir() => sub {
         $server_name = chop_dblquot($server_name);
         load_config($server_name, $server_name);
         {
+          SKIP: {
             my $pid;
             if ($server_name eq "Mock") {
                 indir "Mock" => sub {
@@ -198,6 +199,7 @@ indir data_dir() => sub {
                 };
             };
             stop_mock_server($pid) if $pid;
+          }
         }
     };
 };
@@ -277,7 +279,8 @@ sub start_mock_server {
         print "Mock server already running with pid=$pid\n";
         return $pid;
     }
-    print "Launching mock server: $cmd\n";
+    print "Current directory is ".getcwd()."\n";
+    print "Launching mock server listening on port $server_port: $cmd\n";
     return system("$cmd &") == 0 # start in background, check for success
         ? (sleep 1, mock_server_pid()) : 0;
 }
