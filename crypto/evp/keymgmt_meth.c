@@ -129,9 +129,9 @@ static void *keymgmt_from_algorithm(int name_id,
             if (keymgmt->has == NULL)
                 keymgmt->has = OSSL_FUNC_keymgmt_has(fns);
             break;
-        case OSSL_FUNC_KEYMGMT_COPY:
-            if (keymgmt->copy == NULL)
-                keymgmt->copy = OSSL_FUNC_keymgmt_copy(fns);
+        case OSSL_FUNC_KEYMGMT_DUP:
+            if (keymgmt->dup == NULL)
+                keymgmt->dup = OSSL_FUNC_keymgmt_dup(fns);
             break;
         case OSSL_FUNC_KEYMGMT_VALIDATE:
             if (keymgmt->validate == NULL)
@@ -463,12 +463,11 @@ const OSSL_PARAM *evp_keymgmt_export_types(const EVP_KEYMGMT *keymgmt,
     return keymgmt->export_types(selection);
 }
 
-int evp_keymgmt_copy(const EVP_KEYMGMT *keymgmt,
-                     void *keydata_to, const void *keydata_from,
-                     int selection)
+void *evp_keymgmt_dup(const EVP_KEYMGMT *keymgmt, const void *keydata_from,
+                      int selection)
 {
-    /* We assume no copy if the implementation doesn't have a function */
-    if (keymgmt->copy == NULL)
-        return 0;
-    return keymgmt->copy(keydata_to, keydata_from, selection);
+    /* We assume no dup if the implementation doesn't have a function */
+    if (keymgmt->dup == NULL)
+        return NULL;
+    return keymgmt->dup(keydata_from, selection);
 }
