@@ -1248,9 +1248,9 @@ OSSL_DEPRECATEDIN_3_0 int EVP_PKEY_encrypt_old(unsigned char *enc_key,
                                           int key_len, EVP_PKEY *pub_key);
 #endif
 int EVP_PKEY_is_a(const EVP_PKEY *pkey, const char *name);
-int EVP_PKEY_typenames_do_all(const EVP_PKEY *pkey,
-                              void (*fn)(const char *name, void *data),
-                              void *data);
+int EVP_PKEY_type_names_do_all(const EVP_PKEY *pkey,
+                               void (*fn)(const char *name, void *data),
+                               void *data);
 int EVP_PKEY_type(int type);
 int EVP_PKEY_id(const EVP_PKEY *pkey);
 int EVP_PKEY_base_id(const EVP_PKEY *pkey);
@@ -1595,7 +1595,7 @@ int EVP_PKEY_CTX_get1_id_len(EVP_PKEY_CTX *ctx, size_t *id_len);
 
 int EVP_PKEY_CTX_set_kem_op(EVP_PKEY_CTX *ctx, const char *op);
 
-const char *EVP_PKEY_get0_first_alg_name(const EVP_PKEY *key);
+const char *EVP_PKEY_get0_type_name(const EVP_PKEY *key);
 
 # define EVP_PKEY_OP_UNDEFINED           0
 # define EVP_PKEY_OP_PARAMGEN            (1<<1)
@@ -1855,6 +1855,11 @@ int EVP_PKEY_fromdata_init(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_fromdata(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey, int selection,
                       OSSL_PARAM param[]);
 const OSSL_PARAM *EVP_PKEY_fromdata_settable(EVP_PKEY_CTX *ctx, int selection);
+
+int EVP_PKEY_todata(const EVP_PKEY *pkey, int selection, OSSL_PARAM **params);
+int EVP_PKEY_export(const EVP_PKEY *pkey, int selection,
+                    OSSL_CALLBACK *export_cb, void *export_cbarg);
+
 const OSSL_PARAM *EVP_PKEY_gettable_params(const EVP_PKEY *pkey);
 int EVP_PKEY_get_params(const EVP_PKEY *pkey, OSSL_PARAM params[]);
 int EVP_PKEY_get_int_param(const EVP_PKEY *pkey, const char *key_name,
