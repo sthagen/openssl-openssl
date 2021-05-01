@@ -499,7 +499,7 @@ X509 *load_cert_pass(const char *uri, int maybe_stdin,
     return cert;
 }
 
-X509_CRL *load_crl(const char *uri, const char *desc)
+X509_CRL *load_crl(const char *uri, int maybe_stdin, const char *desc)
 {
     X509_CRL *crl = NULL;
 
@@ -510,7 +510,7 @@ X509_CRL *load_crl(const char *uri, const char *desc)
     else if (IS_HTTP(uri))
         crl = X509_CRL_load_http(uri, NULL, NULL, 0 /* timeout */);
     else
-        (void)load_key_certs_crls(uri, 0, NULL, desc,
+        (void)load_key_certs_crls(uri, maybe_stdin, NULL, desc,
                                   NULL, NULL,  NULL, NULL, NULL, &crl, NULL);
     if (crl == NULL) {
         BIO_printf(bio_err, "Unable to load %s\n", desc);
@@ -924,9 +924,11 @@ int load_key_certs_crls(const char *uri, int maybe_stdin,
         uri = "<stdin>";
         unbuffer(stdin);
         bio = BIO_new_fp(stdin, 0);
-        if (bio != NULL)
+        if (bio != NULL) {
             ctx = OSSL_STORE_attach(bio, "file", libctx, propq,
                                     get_ui_method(), &uidata, NULL, NULL);
+            BIO_free(bio);
+        }
     } else {
         ctx = OSSL_STORE_open_ex(uri, libctx, propq, get_ui_method(), &uidata,
                                  NULL, NULL);
@@ -2150,23 +2152,25 @@ static int do_x509_req_init(X509_REQ *x, STACK_OF(OPENSSL_STRING) *opts)
 }
 
 static int do_sign_init(EVP_MD_CTX *ctx, EVP_PKEY *pkey,
-                        const EVP_MD *md, STACK_OF(OPENSSL_STRING) *sigopts)
+                        const char *md, STACK_OF(OPENSSL_STRING) *sigopts)
 {
     EVP_PKEY_CTX *pkctx = NULL;
-    int def_nid;
+    char def_md[80];
 
     if (ctx == NULL)
         return 0;
     /*
-     * EVP_PKEY_get_default_digest_nid() returns 2 if the digest is mandatory
+     * EVP_PKEY_get_default_digest_name() returns 2 if the digest is mandatory
      * for this algorithm.
      */
-    if (EVP_PKEY_get_default_digest_nid(pkey, &def_nid) == 2
-            && def_nid == NID_undef) {
+    if (EVP_PKEY_get_default_digest_name(pkey, def_md, sizeof(def_md)) == 2
+            && strcmp(def_md, "UNDEF") == 0) {
         /* The signing algorithm requires there to be no digest */
         md = NULL;
     }
-    return EVP_DigestSignInit(ctx, &pkctx, md, NULL, pkey)
+
+    return EVP_DigestSignInit_ex(ctx, &pkctx, md, app_get0_libctx(),
+                                 app_get0_propq(), pkey, NULL)
         && do_pkey_ctx_init(pkctx, sigopts);
 }
 
@@ -2199,7 +2203,7 @@ static int adapt_keyid_ext(X509 *cert, X509V3_CTX *ext_ctx,
 }
 
 /* Ensure RFC 5280 compliance, adapt keyIDs as needed, and sign the cert info */
-int do_X509_sign(X509 *cert, EVP_PKEY *pkey, const EVP_MD *md,
+int do_X509_sign(X509 *cert, EVP_PKEY *pkey, const char *md,
                  STACK_OF(OPENSSL_STRING) *sigopts, X509V3_CTX *ext_ctx)
 {
     const STACK_OF(X509_EXTENSION) *exts = X509_get0_extensions(cert);
@@ -2238,7 +2242,7 @@ int do_X509_sign(X509 *cert, EVP_PKEY *pkey, const EVP_MD *md,
 }
 
 /* Sign the certificate request info */
-int do_X509_REQ_sign(X509_REQ *x, EVP_PKEY *pkey, const EVP_MD *md,
+int do_X509_REQ_sign(X509_REQ *x, EVP_PKEY *pkey, const char *md,
                      STACK_OF(OPENSSL_STRING) *sigopts)
 {
     int rv = 0;
@@ -2251,7 +2255,7 @@ int do_X509_REQ_sign(X509_REQ *x, EVP_PKEY *pkey, const EVP_MD *md,
 }
 
 /* Sign the CRL info */
-int do_X509_CRL_sign(X509_CRL *x, EVP_PKEY *pkey, const EVP_MD *md,
+int do_X509_CRL_sign(X509_CRL *x, EVP_PKEY *pkey, const char *md,
                      STACK_OF(OPENSSL_STRING) *sigopts)
 {
     int rv = 0;
@@ -2318,8 +2322,8 @@ static X509_CRL *load_crl_crldp(STACK_OF(DIST_POINT) *crldp)
     for (i = 0; i < sk_DIST_POINT_num(crldp); i++) {
         DIST_POINT *dp = sk_DIST_POINT_value(crldp, i);
         urlptr = get_dp_url(dp);
-        if (urlptr)
-            return load_crl(urlptr, "CRL via CDP");
+        if (urlptr != NULL)
+            return load_crl(urlptr, 0, "CRL via CDP");
     }
     return NULL;
 }

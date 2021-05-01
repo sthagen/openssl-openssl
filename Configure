@@ -379,7 +379,7 @@ my @dtls = qw(dtls1 dtls1_2);
 # For developers: keep it sorted alphabetically
 
 my @disablables = (
-    "acvp_tests",
+    "acvp-tests",
     "afalgeng",
     "aria",
     "asan",
@@ -414,9 +414,9 @@ my @disablables = (
     "dynamic-engine",
     "ec",
     "ec2m",
+    "ec_nistp_64_gcc_128",
     "ecdh",
     "ecdsa",
-    "ec_nistp_64_gcc_128",
     "egd",
     "engine",
     "err",
@@ -424,8 +424,8 @@ my @disablables = (
     "filenames",
     "fips",
     "fips-securitychecks",
-    "fuzz-libfuzzer",
     "fuzz-afl",
+    "fuzz-libfuzzer",
     "gost",
     "idea",
     "ktls",
@@ -438,11 +438,11 @@ my @disablables = (
     "msan",
     "multiblock",
     "nextprotoneg",
-    "pinshared",
     "ocb",
     "ocsp",
     "padlockeng",
     "pic",
+    "pinshared",
     "poly1305",
     "posix-io",
     "psk",
@@ -479,8 +479,8 @@ my @disablables = (
     "ui-console",
     "unit-test",
     "uplink",
-    "whirlpool",
     "weak-ssl-ciphers",
+    "whirlpool",
     "zlib",
     "zlib-dynamic",
     );
@@ -512,6 +512,7 @@ my %deprecated_disablables = (
 # All of the following are disabled by default:
 
 our %disabled = ( # "what"         => "comment"
+                  "fips"                => "default",
                   "asan"                => "default",
                   "buildtest-c++"       => "default",
                   "crypto-mdebug"       => "default",
@@ -520,8 +521,9 @@ our %disabled = ( # "what"         => "comment"
                   "ec_nistp_64_gcc_128" => "default",
                   "egd"                 => "default",
                   "external-tests"      => "default",
-                  "fuzz-libfuzzer"      => "default",
                   "fuzz-afl"            => "default",
+                  "fuzz-libfuzzer"      => "default",
+                  "ktls"                => "default",
                   "md2"                 => "default",
                   "msan"                => "default",
                   "rc5"                 => "default",
@@ -535,7 +537,6 @@ our %disabled = ( # "what"         => "comment"
                   "weak-ssl-ciphers"    => "default",
                   "zlib"                => "default",
                   "zlib-dynamic"        => "default",
-                  "ktls"                => "default",
                 );
 
 # Note: => pair form used for aesthetics, not to truly make a hash table

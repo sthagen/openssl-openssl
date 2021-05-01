@@ -15,7 +15,7 @@ use OpenSSL::Test qw/:DEFAULT srctop_file/;
 
 setup("test_crl");
 
-plan tests => 7;
+plan tests => 9;
 
 require_ok(srctop_file('test','recipes','tconversion.pl'));
 
@@ -35,6 +35,14 @@ ok(compare1stline([qw{openssl crl -noout -fingerprint -in},
 ok(compare1stline([qw{openssl crl -noout -fingerprint -sha256 -in},
                    srctop_file('test', 'testcrl.pem')],
                   'SHA2-256 Fingerprint=B3:A9:FD:A7:2E:8C:3D:DF:D0:F1:C3:1A:96:60:B5:FD:B0:99:7C:7F:0E:E4:34:F5:DB:87:62:36:BC:F1:BC:1B'));
+ok(compare1stline([qw{openssl crl -noout -hash -in},
+                   srctop_file('test', 'testcrl.pem')],
+                  '106cd822'));
+
+ok(compare1stline_stdin([qw{openssl crl -hash -noout}],
+                        srctop_file("test","testcrl.pem"),
+                        '106cd822'),
+   "crl piped input test");
 
 ok(run(app(["openssl", "crl", "-text", "-in", $pem, "-out", $out,
             "-nameopt", "utf8"])));
@@ -44,6 +52,16 @@ is(cmp_text($out, srctop_file("test/certs", "cyrillic_crl.utf8")),
 sub compare1stline {
     my ($cmdarray, $str) = @_;
     my @lines = run(app($cmdarray), capture => 1);
+
+    return 1 if $lines[0] =~ m|^\Q${str}\E\R$|;
+    note "Got      ", $lines[0];
+    note "Expected ", $str;
+    return 0;
+}
+
+sub compare1stline_stdin {
+    my ($cmdarray, $infile, $str) = @_;
+    my @lines = run(app($cmdarray, stdin => $infile), capture => 1);
 
     return 1 if $lines[0] =~ m|^\Q${str}\E\R$|;
     note "Got      ", $lines[0];
