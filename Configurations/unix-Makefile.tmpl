@@ -1055,6 +1055,9 @@ uninstall_html_docs:
 # It's important that generate_buildinfo comes after ordinals, as ordinals
 # is sensitive to build.info changes.
 update: generate errors ordinals generate_buildinfo
+{- output_off() if $disabled{fips}; "" -}
+update: fips-checksums
+{- output_on() if $disabled{fips}; "" -}
 
 generate: generate_apps generate_crypto_bn generate_crypto_objects \
           generate_crypto_conf generate_crypto_asn1 generate_fuzz_oids
@@ -1136,6 +1139,42 @@ generate_doc_buildinfo:
           else \
                 mv $(SRCDIR)/doc/build.info.new $(SRCDIR)/doc/build.info; \
           fi )
+
+{- output_off() if $disabled{fips}; "" -}
+generate_fips_sources: $(SRCDIR)/providers/fips.module.sources
+$(SRCDIR)/providers/fips.module.sources: \
+                $(SRCDIR)/Configure \
+                {- join(" \\\n" . ' ' x 16,
+                        fill_lines(" ", $COLUMNS - 16,
+                                   @{$config{build_file_templates}},
+                                   @{$config{build_infos}},
+                                   @{$config{conf_files}})) -}
+	rm -rf sources-tmp
+	mkdir sources-tmp
+	( \
+	  srcdir=`cd $(SRCDIR); pwd`; \
+	  cd sources-tmp \
+	  && $$srcdir/Configure enable-fips \
+	  && ./configdata.pm --query 'get_sources("providers/fips")' > sources1 \
+	  && $$srcdir/Configure enable-fips no-asm \
+	  && ./configdata.pm --query 'get_sources("providers/fips")' > sources2 \
+	)
+	( \
+	  srcdir2=`if [ "$(SRCDIR)" = "." ]; then echo ".."; elif echo "$(SRCDIR)" | grep '^/' > /dev/null; then echo "$(SRCDIR)"; else echo "../$(SRCDIR)"; fi`; \
+	  cat sources-tmp/sources1 sources-tmp/sources2 \
+	  | grep -v ' : \\$$' | sed -e 's| \\$$||' -e "s|^  $$srcdir2/||"; \
+	  cd $(SRCDIR); \
+	  for x in crypto/bn/asm/*.pl crypto/bn/asm/*.S \
+		   crypto/aes/asm/*.pl crypto/aes/asm/*.S \
+		   crypto/ec/asm/*.pl \
+		   crypto/md5/asm/*.pl \
+		   crypto/modes/asm/*.pl \
+		   crypto/sha/asm/*.pl; do \
+	    echo "$$x"; \
+	  done \
+	) | sort | uniq > $(SRCDIR)/providers/fips.module.sources
+	rm -rf sources-tmp
+{- output_on() if $disabled{fips}; "" -}
 
 # Set to -force to force a rebuild
 ERROR_REBUILD=
@@ -1230,6 +1269,20 @@ tags TAGS: FORCE
 	rm -f TAGS tags
 	-ctags -R .
 	-etags `find . -name '*.[ch]' -o -name '*.pm'`
+
+{- output_off() if $disabled{fips}; "" -}
+fips-checksums: generate_fips_sources
+	if which unifdef > /dev/null; then \
+	    ( cd $(SRCDIR) \
+	      && cat providers/fips.module.sources \
+	             | xargs ./util/fips-checksums.sh \
+	             > providers/fips-sources.checksums \
+	      && sha256sum providers/fips-sources.checksums \
+	             > providers/fips.checksum ); \
+	else \
+	    echo >&2 "WARNING: unifdef not in your \$$PATH, FIPS checksums not calculated"; \
+	fi
+{- output_on() if $disabled{fips}; "" -}
 
 # Release targets (note: only available on Unix) #####################
 
