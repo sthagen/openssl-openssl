@@ -393,6 +393,7 @@ CONF_R_NUMBER_TOO_LARGE:121:number too large
 CONF_R_OPENSSL_CONF_REFERENCES_MISSING_SECTION:124:\
 	openssl conf references missing section
 CONF_R_RECURSIVE_DIRECTORY_INCLUDE:111:recursive directory include
+CONF_R_RELATIVE_PATH:125:relative path
 CONF_R_SSL_COMMAND_SECTION_EMPTY:117:ssl command section empty
 CONF_R_SSL_COMMAND_SECTION_NOT_FOUND:118:ssl command section not found
 CONF_R_SSL_SECTION_EMPTY:119:ssl section empty
@@ -726,6 +727,7 @@ EVP_R_PKEY_APPLICATION_ASN1_METHOD_ALREADY_REGISTERED:179:\
 EVP_R_PRIVATE_KEY_DECODE_ERROR:145:private key decode error
 EVP_R_PRIVATE_KEY_ENCODE_ERROR:146:private key encode error
 EVP_R_PUBLIC_KEY_NOT_RSA:106:public key not rsa
+EVP_R_SETTING_XOF_FAILED:227:setting xof failed
 EVP_R_SET_DEFAULT_PROPERTY_FAILURE:209:set default property failure
 EVP_R_TOO_MANY_RECORDS:183:too many records
 EVP_R_UNABLE_TO_ENABLE_LOCKING:212:unable to enable locking
@@ -994,6 +996,7 @@ PROV_R_INVALID_KEY_LENGTH:105:invalid key length
 PROV_R_INVALID_MAC:151:invalid mac
 PROV_R_INVALID_MGF1_MD:167:invalid mgf1 md
 PROV_R_INVALID_MODE:125:invalid mode
+PROV_R_INVALID_OUTPUT_LENGTH:217:invalid output length
 PROV_R_INVALID_PADDING_MODE:168:invalid padding mode
 PROV_R_INVALID_PUBINFO:198:invalid pubinfo
 PROV_R_INVALID_SALT_LENGTH:112:invalid salt length
