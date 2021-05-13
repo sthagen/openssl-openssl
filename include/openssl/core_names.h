@@ -94,7 +94,7 @@ extern "C" {
 #define OSSL_CIPHER_PARAM_SPEED                "speed"        /* uint */
 #define OSSL_CIPHER_PARAM_CTS_MODE             "cts_mode"     /* utf8_string */
 /* For passing the AlgorithmIdentifier parameter in DER form */
-#define OSSL_CIPHER_PARAM_ALG_ID               "alg_id_param" /* octet_string */
+#define OSSL_CIPHER_PARAM_ALGORITHM_ID_PARAMS  "alg_id_param" /* octet_string */
 
 #define OSSL_CIPHER_PARAM_TLS1_MULTIBLOCK_MAX_SEND_FRAGMENT                    \
     "tls1multi_maxsndfrag" /* uint */
@@ -294,12 +294,9 @@ extern "C" {
 #define OSSL_PKEY_PARAM_FFC_SEED            "seed"
 #define OSSL_PKEY_PARAM_FFC_COFACTOR        "j"
 #define OSSL_PKEY_PARAM_FFC_H               "hindex"
-#define OSSL_PKEY_PARAM_FFC_VALIDATE_TYPE   "valid-type"
-
-/* Diffie-Hellman/DSA Parameters parameter validation types */
-#define OSSL_FFC_PARAM_VALIDATE_PQ          "validate-pq"
-#define OSSL_FFC_PARAM_VALIDATE_G           "validate-g"
-#define OSSL_FFC_PARAM_VALIDATE_PQG         "validate-pqg"
+#define OSSL_PKEY_PARAM_FFC_VALIDATE_PQ     "validate-pq"
+#define OSSL_PKEY_PARAM_FFC_VALIDATE_G      "validate-g"
+#define OSSL_PKEY_PARAM_FFC_VALIDATE_LEGACY "validate-legacy"
 
 /* Diffie-Hellman params */
 #define OSSL_PKEY_PARAM_DH_GENERATOR        "safeprime-generator"
@@ -545,6 +542,8 @@ extern "C" {
 
 /* You may want to pass properties for the provider implementation to use */
 #define OSSL_STORE_PARAM_PROPERTIES "properties"   /* utf8_string */
+/* OSSL_DECODER input type if a decoder is used by the store */
+#define OSSL_STORE_PARAM_INPUT_TYPE "input-type"   /* UTF8_STRING */
 
 # ifdef __cplusplus
 }

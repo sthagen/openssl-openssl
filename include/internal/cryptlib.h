@@ -120,6 +120,7 @@ size_t OPENSSL_instrument_bus2(unsigned int *, size_t, size_t);
 struct ex_callback_st {
     long argl;                  /* Arbitrary long */
     void *argp;                 /* Arbitrary void * */
+    int priority;               /* Priority ordering for freeing */
     CRYPTO_EX_new *new_func;
     CRYPTO_EX_free *free_func;
     CRYPTO_EX_dup *dup_func;
@@ -164,9 +165,15 @@ typedef struct ossl_ex_data_global_st {
 # define OSSL_LIB_CTX_STORE_LOADER_STORE_INDEX      15
 # define OSSL_LIB_CTX_PROVIDER_CONF_INDEX           16
 # define OSSL_LIB_CTX_BIO_CORE_INDEX                17
-# define OSSL_LIB_CTX_MAX_INDEXES                   18
+# define OSSL_LIB_CTX_CHILD_PROVIDER_INDEX          18
+# define OSSL_LIB_CTX_MAX_INDEXES                   19
+
+# define OSSL_LIB_CTX_METHOD_DEFAULT_PRIORITY       0
+# define OSSL_LIB_CTX_METHOD_PRIORITY_1             1
+# define OSSL_LIB_CTX_METHOD_PRIORITY_2             2
 
 typedef struct ossl_lib_ctx_method {
+    int priority;
     void *(*new_func)(OSSL_LIB_CTX *ctx);
     void (*free_func)(void *);
 } OSSL_LIB_CTX_METHOD;
@@ -196,7 +203,8 @@ int ossl_crypto_get_ex_new_index_ex(OSSL_LIB_CTX *ctx, int class_index,
                                     long argl, void *argp,
                                     CRYPTO_EX_new *new_func,
                                     CRYPTO_EX_dup *dup_func,
-                                    CRYPTO_EX_free *free_func);
+                                    CRYPTO_EX_free *free_func,
+                                    int priority);
 int ossl_crypto_free_ex_index_ex(OSSL_LIB_CTX *ctx, int class_index, int idx);
 
 /* Function for simple binary search */

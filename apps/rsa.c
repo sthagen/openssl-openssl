@@ -37,7 +37,7 @@
 #endif
 
 typedef enum OPTION_choice {
-    OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
+    OPT_COMMON,
     OPT_INFORM, OPT_OUTFORM, OPT_ENGINE, OPT_IN, OPT_OUT,
     OPT_PUBIN, OPT_PUBOUT, OPT_PASSOUT, OPT_PASSIN,
     OPT_RSAPUBKEY_IN, OPT_RSAPUBKEY_OUT,
@@ -96,7 +96,7 @@ int rsa_main(int argc, char **argv)
     char *infile = NULL, *outfile = NULL, *ciphername = NULL, *prog;
     char *passin = NULL, *passout = NULL, *passinarg = NULL, *passoutarg = NULL;
     int private = 0;
-    int informat = FORMAT_PEM, outformat = FORMAT_PEM, text = 0, check = 0;
+    int informat = FORMAT_UNDEF, outformat = FORMAT_PEM, text = 0, check = 0;
     int noout = 0, modulus = 0, pubin = 0, pubout = 0, ret = 1;
     int pvk_encr = DEFAULT_PVK_ENCR_STRENGTH;
     OPTION_CHOICE o;
@@ -204,7 +204,7 @@ int rsa_main(int argc, char **argv)
     }
 
     if (pubin) {
-        int tmpformat = -1;
+        int tmpformat = FORMAT_UNDEF;
 
         if (pubin == 2) {
             if (informat == FORMAT_PEM)

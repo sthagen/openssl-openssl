@@ -629,6 +629,20 @@ int EVP_Digest(const void *data, size_t count,
     return ret;
 }
 
+int EVP_Q_digest(OSSL_LIB_CTX *libctx, const char *name, const char *propq,
+                 const void *data, size_t count,
+                 unsigned char *md, unsigned int *size)
+{
+    EVP_MD *digest = EVP_MD_fetch(libctx, name, propq);
+    int ret = 0;
+
+    if (digest != NULL) {
+        ret = EVP_Digest(data, count, md, size, digest, NULL);
+        EVP_MD_free(digest);
+    }
+    return ret;
+}
+
 int EVP_MD_get_params(const EVP_MD *digest, OSSL_PARAM params[])
 {
     if (digest != NULL && digest->get_params != NULL)
@@ -868,7 +882,7 @@ static int evp_md_cache_constants(EVP_MD *md)
     params[3] = OSSL_PARAM_construct_int(OSSL_DIGEST_PARAM_ALGID_ABSENT,
                                          &algid_absent);
     params[4] = OSSL_PARAM_construct_end();
-    ok = evp_do_md_getparams(md, params);
+    ok = evp_do_md_getparams(md, params) > 0;
     if (mdsize > INT_MAX || blksz > INT_MAX)
         ok = 0;
     if (ok) {

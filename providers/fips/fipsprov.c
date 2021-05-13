@@ -96,6 +96,7 @@ static void fips_prov_ossl_ctx_free(void *fgbl)
 }
 
 static const OSSL_LIB_CTX_METHOD fips_prov_ossl_ctx_method = {
+    OSSL_LIB_CTX_METHOD_DEFAULT_PRIORITY,
     fips_prov_ossl_ctx_new,
     fips_prov_ossl_ctx_free,
 };
@@ -671,14 +672,14 @@ int OSSL_provider_init(const OSSL_CORE_HANDLE *handle,
         return 0;
     }
     /*
-     * Disable the conditional error check if is disabled in the fips config
-     * file
+     * Disable the conditional error check if it's disabled in the fips config
+     * file.
      */
     if (fgbl->selftest_params.conditional_error_check != NULL
         && strcmp(fgbl->selftest_params.conditional_error_check, "0") == 0)
         SELF_TEST_disable_conditional_error_state();
 
-    /* Disable the security check if is disabled in the fips config file */
+    /* Disable the security check if it's disabled in the fips config file. */
     if (fgbl->fips_security_check_option != NULL
         && strcmp(fgbl->fips_security_check_option, "0") == 0)
         fgbl->fips_security_checks = 0;

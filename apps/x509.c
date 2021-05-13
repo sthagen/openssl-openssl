@@ -39,7 +39,7 @@ static int purpose_print(BIO *bio, X509 *cert, X509_PURPOSE *pt);
 static int print_x509v3_exts(BIO *bio, X509 *x, const char *ext_names);
 
 typedef enum OPTION_choice {
-    OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
+    OPT_COMMON,
     OPT_INFORM, OPT_OUTFORM, OPT_KEYFORM, OPT_REQ, OPT_CAFORM,
     OPT_CAKEYFORM, OPT_VFYOPT, OPT_SIGOPT, OPT_DAYS, OPT_PASSIN, OPT_EXTFILE,
     OPT_EXTENSIONS, OPT_IN, OPT_OUT, OPT_KEY, OPT_SIGNKEY, OPT_CA, OPT_CAKEY,
@@ -266,9 +266,9 @@ int x509_main(int argc, char **argv)
     char *prog;
     int days = UNSET_DAYS; /* not explicitly set */
     int x509toreq = 0, modulus = 0, print_pubkey = 0, pprint = 0;
-    int CAformat = FORMAT_PEM, CAkeyformat = FORMAT_PEM;
+    int CAformat = FORMAT_UNDEF, CAkeyformat = FORMAT_UNDEF;
     int fingerprint = 0, reqfile = 0, checkend = 0;
-    int informat = FORMAT_PEM, outformat = FORMAT_PEM, keyformat = FORMAT_PEM;
+    int informat = FORMAT_UNDEF, outformat = FORMAT_PEM, keyformat = FORMAT_UNDEF;
     int next_serial = 0, subject_hash = 0, issuer_hash = 0, ocspid = 0;
     int noout = 0, CA_createserial = 0, email = 0;
     int ocsp_uri = 0, trustout = 0, clrtrust = 0, clrreject = 0, aliasout = 0;
@@ -544,7 +544,7 @@ int x509_main(int argc, char **argv)
             checkend = 1;
             {
                 intmax_t temp = 0;
-                if (!opt_imax(opt_arg(), &temp))
+                if (!opt_intmax(opt_arg(), &temp))
                     goto opthelp;
                 checkoffset = (time_t)temp;
                 if ((intmax_t)checkoffset != temp) {
@@ -719,7 +719,7 @@ int x509_main(int argc, char **argv)
             }
         }
     } else {
-        x = load_cert_pass(infile, 1, passin, "certificate");
+        x = load_cert_pass(infile, informat, 1, passin, "certificate");
         if (x == NULL)
             goto end;
     }
@@ -734,7 +734,7 @@ int x509_main(int argc, char **argv)
         goto end;
 
     if (CAfile != NULL) {
-        xca = load_cert_pass(CAfile, 1, passin, "CA certificate");
+        xca = load_cert_pass(CAfile, CAformat, 1, passin, "CA certificate");
         if (xca == NULL)
             goto end;
     }

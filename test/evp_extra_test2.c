@@ -290,6 +290,40 @@ done:
     return ret;
 }
 
+#ifndef OPENSSL_NO_DES
+static int test_pkcs8key_nid_bio(void)
+{
+    int ret;
+    const int nid = NID_pbe_WithSHA1And3_Key_TripleDES_CBC;
+    static const char pwd[] = "PASSWORD";
+    EVP_PKEY *pkey = NULL, *pkey_dec = NULL;
+    BIO *in = NULL, *enc_bio = NULL;
+    char *enc_data = NULL;
+    long enc_datalen = 0;
+    OSSL_PROVIDER *provider = NULL;
+
+    ret = TEST_ptr(provider = OSSL_PROVIDER_load(NULL, "default"))
+          && TEST_ptr(enc_bio = BIO_new(BIO_s_mem()))
+          && TEST_ptr(in = BIO_new_mem_buf(kExampleRSAKeyPKCS8,
+                                           sizeof(kExampleRSAKeyPKCS8)))
+          && TEST_ptr(pkey = d2i_PrivateKey_ex_bio(in, NULL, NULL, NULL))
+          && TEST_int_eq(i2d_PKCS8PrivateKey_nid_bio(enc_bio, pkey, nid,
+                                                     pwd, sizeof(pwd) - 1,
+                                                     NULL, NULL), 1)
+          && TEST_int_gt(enc_datalen = BIO_get_mem_data(enc_bio, &enc_data), 0)
+          && TEST_ptr(pkey_dec = d2i_PKCS8PrivateKey_bio(enc_bio, NULL, NULL,
+                                                         (void *)pwd))
+          && TEST_true(EVP_PKEY_eq(pkey, pkey_dec));
+
+    EVP_PKEY_free(pkey_dec);
+    EVP_PKEY_free(pkey);
+    BIO_free(in);
+    BIO_free(enc_bio);
+    OSSL_PROVIDER_unload(provider);
+    return ret;
+}
+#endif /* OPENSSL_NO_DES */
+
 static int test_alternative_default(void)
 {
     OSSL_LIB_CTX *oldctx;
@@ -562,20 +596,6 @@ static int do_check_int(OSSL_PARAM params[], const char *key, int expected)
            && TEST_int_eq(val, expected);
 }
 
-static int do_check_utf8_str(OSSL_PARAM params[], const char *key,
-                             const char *expected)
-{
-    OSSL_PARAM *p;
-    char *bufp = NULL;
-    int ret;
-
-    ret = TEST_ptr(p = OSSL_PARAM_locate(params, key))
-          && TEST_true(OSSL_PARAM_get_utf8_string(p, &bufp, 0))
-          && TEST_str_eq(bufp, expected);
-    OPENSSL_free(bufp);
-    return ret;
-}
-
 static int test_dsa_todata(void)
 {
     EVP_PKEY *pkey = NULL;
@@ -614,8 +634,9 @@ static int test_dsa_todata(void)
         || !do_check_int(to_params, OSSL_PKEY_PARAM_FFC_GINDEX, -1)
         || !do_check_int(to_params, OSSL_PKEY_PARAM_FFC_PCOUNTER, -1)
         || !do_check_int(to_params, OSSL_PKEY_PARAM_FFC_H, 0)
-        || !do_check_utf8_str(to_params, OSSL_PKEY_PARAM_FFC_VALIDATE_TYPE,
-                              OSSL_FFC_PARAM_VALIDATE_PQG)
+        || !do_check_int(to_params, OSSL_PKEY_PARAM_FFC_VALIDATE_PQ, 1)
+        || !do_check_int(to_params, OSSL_PKEY_PARAM_FFC_VALIDATE_G, 1)
+        || !do_check_int(to_params, OSSL_PKEY_PARAM_FFC_VALIDATE_LEGACY, 0)
         || !TEST_ptr_null(OSSL_PARAM_locate(to_params, OSSL_PKEY_PARAM_FFC_SEED)))
         goto err;
 
@@ -727,6 +748,9 @@ int setup_tests(void)
     ADD_TEST(test_pkey_todata_null);
     ADD_TEST(test_pkey_export_null);
     ADD_TEST(test_pkey_export);
+#ifndef OPENSSL_NO_DES
+    ADD_TEST(test_pkcs8key_nid_bio);
+#endif
     return 1;
 }
 

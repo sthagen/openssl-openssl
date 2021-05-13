@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -228,6 +228,15 @@ static const int enc_nids_all[] = {
 #ifndef OPENSSL_NO_DES
     NID_des_ede3_cbc,
     NID_des_cbc,
+#endif
+#ifndef OPENSSL_NO_RC5
+    NID_rc5_cbc,
+#endif
+#ifndef OPENSSL_NO_RC4
+    NID_rc4,
+#endif
+#ifndef OPENSSL_NO_RC2
+    NID_rc2_cbc,
 #endif
 
 #ifndef OPENSSL_NO_MD2
@@ -602,6 +611,55 @@ static int test_single_secret_encrypted_content(void)
     return end_pkcs12_builder(pb);
 }
 
+static int test_single_secret(PKCS12_ENC *enc)
+{
+    int custom_nid;
+    char fname[80];
+    PKCS12_BUILDER *pb;
+
+    sprintf(fname, "1secret_ciph-%s_iter-%d.p12", OBJ_nid2sn(enc->nid), enc->iter);
+    pb = new_pkcs12_builder(fname);
+    custom_nid = get_custom_oid();
+
+    /* Generate/encode */
+    start_pkcs12(pb);
+
+        start_contentinfo(pb);
+
+            add_secretbag(pb, custom_nid, "VerySecretMessage", ATTRS1);
+
+        end_contentinfo_encrypted(pb, enc);
+
+    end_pkcs12_with_mac(pb, &mac_default);
+
+    /* Read/decode */
+    start_check_pkcs12_with_mac(pb, &mac_default);
+
+        start_check_contentinfo_encrypted(pb, enc);
+
+            check_secretbag(pb, custom_nid, "VerySecretMessage", ATTRS1);
+
+        end_check_contentinfo(pb);
+
+    end_check_pkcs12(pb);
+
+    return end_pkcs12_builder(pb);
+}
+
+static int test_single_secret_enc_alg(int z)
+{
+    PKCS12_ENC enc;
+
+    if (lgcyprov == NULL)
+        enc.nid = enc_nids_no_legacy[z];
+    else
+        enc.nid = enc_nids_all[z];
+    enc.pass = enc_default.pass;
+    enc.iter = enc_default.iter;
+
+    return test_single_secret(&enc);
+}
+
 static int test_multiple_contents(void)
 {
     PKCS12_BUILDER *pb = new_pkcs12_builder("multi_contents.p12");
@@ -720,10 +778,13 @@ int setup_tests(void)
     }
 
     ADD_TEST(test_single_cert_no_attrs);
-    if (lgcyprov == NULL)
+    if (lgcyprov == NULL) {
         ADD_ALL_TESTS(test_single_key_enc_alg, OSSL_NELEM(enc_nids_no_legacy));
-    else
+        ADD_ALL_TESTS(test_single_secret_enc_alg, OSSL_NELEM(enc_nids_no_legacy));
+    } else {
         ADD_ALL_TESTS(test_single_key_enc_alg, OSSL_NELEM(enc_nids_all));
+        ADD_ALL_TESTS(test_single_secret_enc_alg, OSSL_NELEM(enc_nids_all));
+    }
     ADD_ALL_TESTS(test_single_key_enc_pass, OSSL_NELEM(passwords));
     ADD_ALL_TESTS(test_single_key_enc_iter, OSSL_NELEM(iters));
     ADD_TEST(test_single_key_with_attrs);

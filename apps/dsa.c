@@ -33,7 +33,7 @@
 #endif
 
 typedef enum OPTION_choice {
-    OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
+    OPT_COMMON,
     OPT_INFORM, OPT_OUTFORM, OPT_IN, OPT_OUT, OPT_ENGINE,
     /* Do not change the order here; see case statements below */
     OPT_PVK_NONE, OPT_PVK_WEAK, OPT_PVK_STRONG,
@@ -83,7 +83,7 @@ int dsa_main(int argc, char **argv)
     char *infile = NULL, *outfile = NULL, *prog;
     char *passin = NULL, *passout = NULL, *passinarg = NULL, *passoutarg = NULL;
     OPTION_CHOICE o;
-    int informat = FORMAT_PEM, outformat = FORMAT_PEM, text = 0, noout = 0;
+    int informat = FORMAT_UNDEF, outformat = FORMAT_PEM, text = 0, noout = 0;
     int modulus = 0, pubin = 0, pubout = 0, ret = 1;
     int pvk_encr = DEFAULT_PVK_ENCR_STRENGTH;
     int private = 0;
