@@ -12,8 +12,10 @@
 #include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/provider.h>
+#include <openssl/evp.h>
 #include "internal/provider.h"
 #include "internal/cryptlib.h"
+#include "crypto/evp.h"
 
 DEFINE_STACK_OF(OSSL_PROVIDER)
 
@@ -47,7 +49,7 @@ static void child_prov_ossl_ctx_free(void *vgbl)
 }
 
 static const OSSL_LIB_CTX_METHOD child_prov_ossl_ctx_method = {
-    OSSL_LIB_CTX_METHOD_DEFAULT_PRIORITY,
+    OSSL_LIB_CTX_METHOD_LOW_PRIORITY,
     child_prov_ossl_ctx_new,
     child_prov_ossl_ctx_free,
 };
@@ -198,42 +200,11 @@ static int provider_remove_child_cb(const OSSL_CORE_HANDLE *prov, void *cbdata)
     return 1;
 }
 
-int ossl_provider_init_child_providers(OSSL_LIB_CTX *ctx)
+static int provider_global_props_cb(const char *props, void *cbdata)
 {
-    struct child_prov_globals *gbl;
+    OSSL_LIB_CTX *ctx = cbdata;
 
-    /* Should never happen */
-    if (ctx == NULL)
-        return 0;
-
-    gbl = ossl_lib_ctx_get_data(ctx, OSSL_LIB_CTX_CHILD_PROVIDER_INDEX,
-                                &child_prov_ossl_ctx_method);
-    if (gbl == NULL)
-        return 0;
-
-    if (!CRYPTO_THREAD_read_lock(gbl->lock))
-        return 0;
-    if (gbl->isinited) {
-        CRYPTO_THREAD_unlock(gbl->lock);
-        return 1;
-    }
-    CRYPTO_THREAD_unlock(gbl->lock);
-
-    if (!CRYPTO_THREAD_write_lock(gbl->lock))
-        return 0;
-    if (!gbl->isinited) {
-        if (!gbl->c_provider_register_child_cb(gbl->handle,
-                                               provider_create_child_cb,
-                                               provider_remove_child_cb,
-                                               ctx)) {
-            CRYPTO_THREAD_unlock(gbl->lock);
-            return 0;
-        }
-        gbl->isinited = 1;
-    }
-    CRYPTO_THREAD_unlock(gbl->lock);
-
-    return 1;
+    return evp_set_default_properties_int(ctx, props, 0, 1);
 }
 
 int ossl_provider_init_as_child(OSSL_LIB_CTX *ctx,
@@ -299,6 +270,15 @@ int ossl_provider_init_as_child(OSSL_LIB_CTX *ctx,
     gbl->lock = CRYPTO_THREAD_lock_new();
     if (gbl->lock == NULL)
         return 0;
+
+    if (!gbl->c_provider_register_child_cb(gbl->handle,
+                                           provider_create_child_cb,
+                                           provider_remove_child_cb,
+                                           provider_global_props_cb,
+                                           ctx))
+        return 0;
+
+    gbl->isinited = 1;
 
     return 1;
 }

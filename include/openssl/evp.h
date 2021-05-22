@@ -1398,7 +1398,8 @@ int EVP_PKEY_print_params_fp(FILE *fp, const EVP_PKEY *pkey,
 int EVP_PKEY_get_default_digest_nid(EVP_PKEY *pkey, int *pnid);
 int EVP_PKEY_get_default_digest_name(EVP_PKEY *pkey,
                                      char *mdname, size_t mdname_sz);
-int EVP_PKEY_supports_digest_nid(EVP_PKEY *pkey, int nid);
+int EVP_PKEY_digestsign_supports_digest(EVP_PKEY *pkey, OSSL_LIB_CTX *libctx,
+                                        const char *name, const char *propq);
 
 # ifndef OPENSSL_NO_DEPRECATED_3_0
 /*
@@ -1513,8 +1514,7 @@ int EVP_PBE_get(int *ptype, int *ppbe_nid, size_t num);
 
 # define ASN1_PKEY_CTRL_SET1_TLS_ENCPT   0x9
 # define ASN1_PKEY_CTRL_GET1_TLS_ENCPT   0xa
-# define ASN1_PKEY_CTRL_SUPPORTS_MD_NID  0xb
-# define ASN1_PKEY_CTRL_CMS_IS_RI_TYPE_SUPPORTED 0xc
+# define ASN1_PKEY_CTRL_CMS_IS_RI_TYPE_SUPPORTED 0xb
 
 int EVP_PKEY_asn1_get_count(void);
 const EVP_PKEY_ASN1_METHOD *EVP_PKEY_asn1_get0(int idx);

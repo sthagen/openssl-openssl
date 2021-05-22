@@ -46,7 +46,8 @@ DEFINE_STACK_OF(INFOPAIR)
 typedef struct {
     OSSL_PROVIDER *prov;
     int (*create_cb)(const OSSL_CORE_HANDLE *provider, void *cbdata);
-    void (*remove_cb)(const OSSL_CORE_HANDLE *provider, void *cbdata);
+    int (*remove_cb)(const OSSL_CORE_HANDLE *provider, void *cbdata);
+    int (*global_props_cb)(const char *props, void *cbdata);
     void *cbdata;
 } OSSL_PROVIDER_CHILD_CB;
 DEFINE_STACK_OF(OSSL_PROVIDER_CHILD_CB)
@@ -276,9 +277,6 @@ OSSL_PROVIDER *ossl_provider_find(OSSL_LIB_CTX *libctx, const char *name,
         if (!noconfig) {
             if (ossl_lib_ctx_is_default(libctx))
                 OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL);
-            if (ossl_lib_ctx_is_child(libctx)
-                    && !ossl_provider_init_child_providers(libctx))
-                return NULL;
         }
 #endif
 
@@ -309,7 +307,6 @@ static OSSL_PROVIDER *provider_new(const char *name,
 #ifndef HAVE_ATOMICS
         || (prov->refcnt_lock = CRYPTO_THREAD_lock_new()) == NULL
 #endif
-        || !ossl_provider_up_ref(prov) /* +1 One reference to be returned */
         || (prov->opbits_lock = CRYPTO_THREAD_lock_new()) == NULL
         || (prov->flag_lock = CRYPTO_THREAD_lock_new()) == NULL
         || (prov->name = OPENSSL_strdup(name)) == NULL) {
@@ -318,6 +315,7 @@ static OSSL_PROVIDER *provider_new(const char *name,
         return NULL;
     }
 
+    prov->refcnt = 1; /* 1 One reference to be returned */
     prov->init_function = init_function;
 #ifndef FIPS_MODULE
     prov->flag_couldbechild = 1;
@@ -1007,9 +1005,6 @@ int ossl_provider_doall_activated(OSSL_LIB_CTX *ctx,
      */
     if (ossl_lib_ctx_is_default(ctx))
         OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL);
-    if (ossl_lib_ctx_is_child(ctx)
-            && !ossl_provider_init_child_providers(ctx))
-        return 0;
 #endif
 
     if (store == NULL)
@@ -1369,12 +1364,39 @@ int ossl_provider_convert_to_child(OSSL_PROVIDER *prov,
     return 1;
 }
 
+int ossl_provider_default_props_update(OSSL_LIB_CTX *libctx, const char *props)
+{
+#ifndef FIPS_MODULE
+    struct provider_store_st *store = NULL;
+    int i, max;
+    OSSL_PROVIDER_CHILD_CB *child_cb;
+
+    if ((store = get_provider_store(libctx)) == NULL)
+        return 0;
+
+    if (!CRYPTO_THREAD_read_lock(store->lock))
+        return 0;
+
+    max = sk_OSSL_PROVIDER_CHILD_CB_num(store->child_cbs);
+    for (i = 0; i < max; i++) {
+        child_cb = sk_OSSL_PROVIDER_CHILD_CB_value(store->child_cbs, i);
+        child_cb->global_props_cb(props, child_cb->cbdata);
+    }
+
+    CRYPTO_THREAD_unlock(store->lock);
+#endif
+    return 1;
+}
+
 static int ossl_provider_register_child_cb(const OSSL_CORE_HANDLE *handle,
                                            int (*create_cb)(
                                                const OSSL_CORE_HANDLE *provider,
                                                void *cbdata),
-                                           void (*remove_cb)(
+                                           int (*remove_cb)(
                                                const OSSL_CORE_HANDLE *provider,
+                                               void *cbdata),
+                                           int (*global_props_cb)(
+                                               const char *props,
                                                void *cbdata),
                                            void *cbdata)
 {
@@ -1388,6 +1410,7 @@ static int ossl_provider_register_child_cb(const OSSL_CORE_HANDLE *handle,
     struct provider_store_st *store = NULL;
     int ret = 0, i, max;
     OSSL_PROVIDER_CHILD_CB *child_cb;
+    char *propsstr = NULL;
 
     if ((store = get_provider_store(libctx)) == NULL)
         return 0;
@@ -1398,11 +1421,18 @@ static int ossl_provider_register_child_cb(const OSSL_CORE_HANDLE *handle,
     child_cb->prov = thisprov;
     child_cb->create_cb = create_cb;
     child_cb->remove_cb = remove_cb;
+    child_cb->global_props_cb = global_props_cb;
     child_cb->cbdata = cbdata;
 
     if (!CRYPTO_THREAD_write_lock(store->lock)) {
         OPENSSL_free(child_cb);
         return 0;
+    }
+    propsstr = evp_get_global_properties_str(libctx, 0);
+
+    if (propsstr != NULL) {
+        global_props_cb(propsstr, cbdata);
+        OPENSSL_free(propsstr);
     }
     max = sk_OSSL_PROVIDER_num(store->providers);
     for (i = 0; i < max; i++) {

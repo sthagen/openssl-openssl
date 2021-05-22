@@ -346,6 +346,7 @@ DEPEND[html/man1/tsget.html]=man1/tsget.pod
 GENERATE[html/man1/tsget.html]=man1/tsget.pod
 DEPEND[man/man1/tsget.1]=man1/tsget.pod
 GENERATE[man/man1/tsget.1]=man1/tsget.pod
+IMAGEDOCS[man1]=
 HTMLDOCS[man1]=html/man1/CA.pl.html \
 html/man1/openssl-asn1parse.html \
 html/man1/openssl-ca.html \
@@ -1198,6 +1199,10 @@ DEPEND[html/man3/EVP_PKEY_derive.html]=man3/EVP_PKEY_derive.pod
 GENERATE[html/man3/EVP_PKEY_derive.html]=man3/EVP_PKEY_derive.pod
 DEPEND[man/man3/EVP_PKEY_derive.3]=man3/EVP_PKEY_derive.pod
 GENERATE[man/man3/EVP_PKEY_derive.3]=man3/EVP_PKEY_derive.pod
+DEPEND[html/man3/EVP_PKEY_digestsign_supports_digest.html]=man3/EVP_PKEY_digestsign_supports_digest.pod
+GENERATE[html/man3/EVP_PKEY_digestsign_supports_digest.html]=man3/EVP_PKEY_digestsign_supports_digest.pod
+DEPEND[man/man3/EVP_PKEY_digestsign_supports_digest.3]=man3/EVP_PKEY_digestsign_supports_digest.pod
+GENERATE[man/man3/EVP_PKEY_digestsign_supports_digest.3]=man3/EVP_PKEY_digestsign_supports_digest.pod
 DEPEND[html/man3/EVP_PKEY_encapsulate.html]=man3/EVP_PKEY_encapsulate.pod
 GENERATE[html/man3/EVP_PKEY_encapsulate.html]=man3/EVP_PKEY_encapsulate.pod
 DEPEND[man/man3/EVP_PKEY_encapsulate.3]=man3/EVP_PKEY_encapsulate.pod
@@ -1274,10 +1279,6 @@ DEPEND[html/man3/EVP_PKEY_size.html]=man3/EVP_PKEY_size.pod
 GENERATE[html/man3/EVP_PKEY_size.html]=man3/EVP_PKEY_size.pod
 DEPEND[man/man3/EVP_PKEY_size.3]=man3/EVP_PKEY_size.pod
 GENERATE[man/man3/EVP_PKEY_size.3]=man3/EVP_PKEY_size.pod
-DEPEND[html/man3/EVP_PKEY_supports_digest_nid.html]=man3/EVP_PKEY_supports_digest_nid.pod
-GENERATE[html/man3/EVP_PKEY_supports_digest_nid.html]=man3/EVP_PKEY_supports_digest_nid.pod
-DEPEND[man/man3/EVP_PKEY_supports_digest_nid.3]=man3/EVP_PKEY_supports_digest_nid.pod
-GENERATE[man/man3/EVP_PKEY_supports_digest_nid.3]=man3/EVP_PKEY_supports_digest_nid.pod
 DEPEND[html/man3/EVP_PKEY_todata.html]=man3/EVP_PKEY_todata.pod
 GENERATE[html/man3/EVP_PKEY_todata.html]=man3/EVP_PKEY_todata.pod
 DEPEND[man/man3/EVP_PKEY_todata.3]=man3/EVP_PKEY_todata.pod
@@ -2818,6 +2819,7 @@ DEPEND[html/man3/s2i_ASN1_IA5STRING.html]=man3/s2i_ASN1_IA5STRING.pod
 GENERATE[html/man3/s2i_ASN1_IA5STRING.html]=man3/s2i_ASN1_IA5STRING.pod
 DEPEND[man/man3/s2i_ASN1_IA5STRING.3]=man3/s2i_ASN1_IA5STRING.pod
 GENERATE[man/man3/s2i_ASN1_IA5STRING.3]=man3/s2i_ASN1_IA5STRING.pod
+IMAGEDOCS[man3]=
 HTMLDOCS[man3]=html/man3/ADMISSIONS.html \
 html/man3/ASN1_INTEGER_get_int64.html \
 html/man3/ASN1_INTEGER_new.html \
@@ -3001,6 +3003,7 @@ html/man3/EVP_PKEY_copy_parameters.html \
 html/man3/EVP_PKEY_decapsulate.html \
 html/man3/EVP_PKEY_decrypt.html \
 html/man3/EVP_PKEY_derive.html \
+html/man3/EVP_PKEY_digestsign_supports_digest.html \
 html/man3/EVP_PKEY_encapsulate.html \
 html/man3/EVP_PKEY_encrypt.html \
 html/man3/EVP_PKEY_fromdata.html \
@@ -3020,7 +3023,6 @@ html/man3/EVP_PKEY_set_type.html \
 html/man3/EVP_PKEY_settable_params.html \
 html/man3/EVP_PKEY_sign.html \
 html/man3/EVP_PKEY_size.html \
-html/man3/EVP_PKEY_supports_digest_nid.html \
 html/man3/EVP_PKEY_todata.html \
 html/man3/EVP_PKEY_verify.html \
 html/man3/EVP_PKEY_verify_recover.html \
@@ -3589,6 +3591,7 @@ man/man3/EVP_PKEY_copy_parameters.3 \
 man/man3/EVP_PKEY_decapsulate.3 \
 man/man3/EVP_PKEY_decrypt.3 \
 man/man3/EVP_PKEY_derive.3 \
+man/man3/EVP_PKEY_digestsign_supports_digest.3 \
 man/man3/EVP_PKEY_encapsulate.3 \
 man/man3/EVP_PKEY_encrypt.3 \
 man/man3/EVP_PKEY_fromdata.3 \
@@ -3608,7 +3611,6 @@ man/man3/EVP_PKEY_set_type.3 \
 man/man3/EVP_PKEY_settable_params.3 \
 man/man3/EVP_PKEY_sign.3 \
 man/man3/EVP_PKEY_size.3 \
-man/man3/EVP_PKEY_supports_digest_nid.3 \
 man/man3/EVP_PKEY_todata.3 \
 man/man3/EVP_PKEY_verify.3 \
 man/man3/EVP_PKEY_verify_recover.3 \
@@ -4006,6 +4008,7 @@ DEPEND[html/man5/x509v3_config.html]=man5/x509v3_config.pod
 GENERATE[html/man5/x509v3_config.html]=man5/x509v3_config.pod
 DEPEND[man/man5/x509v3_config.5]=man5/x509v3_config.pod
 GENERATE[man/man5/x509v3_config.5]=man5/x509v3_config.pod
+IMAGEDOCS[man5]=
 HTMLDOCS[man5]=html/man5/config.html \
 html/man5/fips_config.html \
 html/man5/x509v3_config.html
@@ -4292,6 +4295,10 @@ DEPEND[html/man7/evp.html]=man7/evp.pod
 GENERATE[html/man7/evp.html]=man7/evp.pod
 DEPEND[man/man7/evp.7]=man7/evp.pod
 GENERATE[man/man7/evp.7]=man7/evp.pod
+DEPEND[html/man7/fips_module.html]=man7/fips_module.pod
+GENERATE[html/man7/fips_module.html]=man7/fips_module.pod
+DEPEND[man/man7/fips_module.7]=man7/fips_module.pod
+GENERATE[man/man7/fips_module.7]=man7/fips_module.pod
 DEPEND[html/man7/life_cycle-kdf.html]=man7/life_cycle-kdf.pod
 GENERATE[html/man7/life_cycle-kdf.html]=man7/life_cycle-kdf.pod
 DEPEND[man/man7/life_cycle-kdf.7]=man7/life_cycle-kdf.pod
@@ -4304,6 +4311,10 @@ DEPEND[html/man7/life_cycle-rand.html]=man7/life_cycle-rand.pod
 GENERATE[html/man7/life_cycle-rand.html]=man7/life_cycle-rand.pod
 DEPEND[man/man7/life_cycle-rand.7]=man7/life_cycle-rand.pod
 GENERATE[man/man7/life_cycle-rand.7]=man7/life_cycle-rand.pod
+DEPEND[html/man7/migration_guide.html]=man7/migration_guide.pod
+GENERATE[html/man7/migration_guide.html]=man7/migration_guide.pod
+DEPEND[man/man7/migration_guide.7]=man7/migration_guide.pod
+GENERATE[man/man7/migration_guide.7]=man7/migration_guide.pod
 DEPEND[html/man7/openssl-core.h.html]=man7/openssl-core.h.pod
 GENERATE[html/man7/openssl-core.h.html]=man7/openssl-core.h.pod
 DEPEND[man/man7/openssl-core.h.7]=man7/openssl-core.h.pod
@@ -4426,6 +4437,9 @@ DEPEND[html/man7/x509.html]=man7/x509.pod
 GENERATE[html/man7/x509.html]=man7/x509.pod
 DEPEND[man/man7/x509.7]=man7/x509.pod
 GENERATE[man/man7/x509.7]=man7/x509.pod
+IMAGEDOCS[man7]=man7/img/kdf.png \
+man7/img/mac.png \
+man7/img/rand.png
 HTMLDOCS[man7]=html/man7/EVP_ASYM_CIPHER-SM2.html \
 html/man7/EVP_KDF-HKDF.html \
 html/man7/EVP_KDF-KB.html \
@@ -4496,9 +4510,11 @@ html/man7/crypto.html \
 html/man7/ct.html \
 html/man7/des_modes.html \
 html/man7/evp.html \
+html/man7/fips_module.html \
 html/man7/life_cycle-kdf.html \
 html/man7/life_cycle-mac.html \
 html/man7/life_cycle-rand.html \
+html/man7/migration_guide.html \
 html/man7/openssl-core.h.html \
 html/man7/openssl-core_dispatch.h.html \
 html/man7/openssl-core_names.h.html \
@@ -4599,9 +4615,11 @@ man/man7/crypto.7 \
 man/man7/ct.7 \
 man/man7/des_modes.7 \
 man/man7/evp.7 \
+man/man7/fips_module.7 \
 man/man7/life_cycle-kdf.7 \
 man/man7/life_cycle-mac.7 \
 man/man7/life_cycle-rand.7 \
+man/man7/migration_guide.7 \
 man/man7/openssl-core.h.7 \
 man/man7/openssl-core_dispatch.h.7 \
 man/man7/openssl-core_names.h.7 \

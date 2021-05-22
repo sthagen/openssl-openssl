@@ -2504,7 +2504,7 @@ ASN1_VALUE *app_http_get_asn1(const char *url, const char *proxy,
     mem = OSSL_HTTP_get(url, proxy, no_proxy, NULL /* bio */, NULL /* rbio */,
                         app_http_tls_cb, &info, 0 /* buf_size */, headers,
                         expected_content_type, 1 /* expect_asn1 */,
-                        HTTP_DEFAULT_MAX_RESP_LEN, timeout);
+                        OSSL_HTTP_DEFAULT_MAX_RESP_LEN, timeout);
     resp = ASN1_item_d2i_bio(it, mem, NULL);
     BIO_free(mem);
 
@@ -2521,6 +2521,7 @@ ASN1_VALUE *app_http_post_asn1(const char *host, const char *port,
                                const STACK_OF(CONF_VALUE) *headers,
                                const char *content_type,
                                ASN1_VALUE *req, const ASN1_ITEM *req_it,
+                               const char *expected_content_type,
                                long timeout, const ASN1_ITEM *rsp_it)
 {
     APP_HTTP_TLS_INFO info;
@@ -2538,8 +2539,8 @@ ASN1_VALUE *app_http_post_asn1(const char *host, const char *port,
                              proxy, no_proxy, NULL /* bio */, NULL /* rbio */,
                              app_http_tls_cb, &info,
                              0 /* buf_size */, headers, content_type, req_mem,
-                             NULL /* expected_ct */, 1 /* expect_asn1 */,
-                             HTTP_DEFAULT_MAX_RESP_LEN, timeout,
+                             expected_content_type, 1 /* expect_asn1 */,
+                             OSSL_HTTP_DEFAULT_MAX_RESP_LEN, timeout,
                              0 /* keep_alive */);
     BIO_free(req_mem);
     res = ASN1_item_d2i_bio(rsp_it, rsp, NULL);

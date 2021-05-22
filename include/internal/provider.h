@@ -50,6 +50,7 @@ int ossl_provider_convert_to_child(OSSL_PROVIDER *prov,
 const OSSL_CORE_HANDLE *ossl_provider_get_parent(OSSL_PROVIDER *prov);
 int ossl_provider_up_ref_parent(OSSL_PROVIDER *prov, int activate);
 int ossl_provider_free_parent(OSSL_PROVIDER *prov, int deactivate);
+int ossl_provider_default_props_update(OSSL_LIB_CTX *libctx, const char *props);
 
 /* Disable fallback loading */
 int ossl_provider_disable_fallback_loading(OSSL_LIB_CTX *libctx);
@@ -108,7 +109,6 @@ int ossl_provider_clear_all_operation_bits(OSSL_LIB_CTX *libctx);
 void ossl_provider_add_conf_module(void);
 
 /* Child providers */
-int ossl_provider_init_child_providers(OSSL_LIB_CTX *ctx);
 int ossl_provider_init_as_child(OSSL_LIB_CTX *ctx,
                                 const OSSL_CORE_HANDLE *handle,
                                 const OSSL_DISPATCH *in);

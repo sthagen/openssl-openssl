@@ -18,6 +18,7 @@
 #include <openssl/kdf.h>
 #include <openssl/encoder.h>
 #include <openssl/decoder.h>
+#include <openssl/store.h>
 #include <openssl/core_names.h>
 #include <openssl/rand.h>
 #include "apps.h"
@@ -964,25 +965,6 @@ static void list_keyexchanges(void)
         BIO_printf(bio_out, " -\n");
 }
 
-static void list_missing_help(void)
-{
-    const FUNCTION *fp;
-    const OPTIONS *o;
-
-    for (fp = functions; fp->name != NULL; fp++) {
-        if ((o = fp->help) != NULL) {
-            /* If there is help, list what flags are not documented. */
-            for ( ; o->name != NULL; o++) {
-                if (o->helpstr == NULL)
-                    BIO_printf(bio_out, "%s %s\n", fp->name, o->name);
-            }
-        } else if (fp->func != dgst_main) {
-            /* If not aliased to the dgst command, */
-            BIO_printf(bio_out, "%s *\n", fp->name);
-        }
-    }
-}
-
 static void list_objects(void)
 {
     int max_nid = OBJ_new_nid(0);
@@ -1203,6 +1185,60 @@ static void list_pkey_meth(void)
     list_signatures();
     BIO_printf(bio_out, " Key encapsulation:\n");
     list_kems();
+}
+
+DEFINE_STACK_OF(OSSL_STORE_LOADER)
+static int store_cmp(const OSSL_STORE_LOADER * const *a,
+                     const OSSL_STORE_LOADER * const *b)
+{
+    int ret = OSSL_STORE_LOADER_number(*a) - OSSL_STORE_LOADER_number(*b);
+
+    if (ret == 0)
+        ret = strcmp(OSSL_PROVIDER_name(OSSL_STORE_LOADER_provider(*a)),
+                     OSSL_PROVIDER_name(OSSL_STORE_LOADER_provider(*b)));
+
+    return ret;
+}
+
+static void collect_store_loaders(OSSL_STORE_LOADER *store, void *stack)
+{
+    STACK_OF(OSSL_STORE_LOADER) *store_stack = stack;
+
+    if (sk_OSSL_STORE_LOADER_push(store_stack, store) > 0)
+        OSSL_STORE_LOADER_up_ref(store);
+}
+
+static void list_store_loaders(void)
+{
+    STACK_OF(OSSL_STORE_LOADER) *stores = sk_OSSL_STORE_LOADER_new(store_cmp);
+    int i;
+
+    if (stores == NULL) {
+        BIO_printf(bio_err, "ERROR: Memory allocation\n");
+        return;
+    }
+    BIO_printf(bio_out, "Provided STORE LOADERs:\n");
+    OSSL_STORE_LOADER_do_all_provided(NULL, collect_store_loaders, stores);
+    sk_OSSL_STORE_LOADER_sort(stores);
+    for (i = 0; i < sk_OSSL_STORE_LOADER_num(stores); i++) {
+        const OSSL_STORE_LOADER *m = sk_OSSL_STORE_LOADER_value(stores, i);
+        STACK_OF(OPENSSL_CSTRING) *names = NULL;
+
+        if (select_name != NULL && !OSSL_STORE_LOADER_is_a(m, select_name))
+            continue;
+
+        names = sk_OPENSSL_CSTRING_new(name_cmp);
+        if (names != NULL && OSSL_STORE_LOADER_names_do_all(m, collect_names,
+                                                            names)) {
+            BIO_printf(bio_out, "  ");
+            print_names(bio_out, names);
+
+            BIO_printf(bio_out, " @ %s\n",
+                       OSSL_PROVIDER_name(OSSL_STORE_LOADER_provider(m)));
+        }
+        sk_OPENSSL_CSTRING_free(names);
+    }
+    sk_OSSL_STORE_LOADER_pop_free(stores, OSSL_STORE_LOADER_free);
 }
 
 DEFINE_STACK_OF(OSSL_PROVIDER)
@@ -1442,8 +1478,8 @@ typedef enum HELPLIST_CHOICE {
     OPT_KDF_ALGORITHMS, OPT_RANDOM_INSTANCES, OPT_RANDOM_GENERATORS,
     OPT_ENCODERS, OPT_DECODERS, OPT_KEYMANAGERS, OPT_KEYEXCHANGE_ALGORITHMS,
     OPT_KEM_ALGORITHMS, OPT_SIGNATURE_ALGORITHMS, OPT_ASYM_CIPHER_ALGORITHMS,
-    OPT_PROVIDER_INFO,
-    OPT_MISSING_HELP, OPT_OBJECTS, OPT_SELECT_NAME,
+    OPT_STORE_LOADERS, OPT_PROVIDER_INFO,
+    OPT_OBJECTS, OPT_SELECT_NAME,
 #ifndef OPENSSL_NO_DEPRECATED_3_0
     OPT_ENGINES, 
 #endif
@@ -1470,7 +1506,7 @@ const OPTIONS list_options[] = {
     {"kdf-algorithms", OPT_KDF_ALGORITHMS, '-',
      "List of key derivation and pseudo random function algorithms"},
     {"random-instances", OPT_RANDOM_INSTANCES, '-',
-     "List the primary, pubic and private random number generator details"},
+     "List the primary, public and private random number generator details"},
     {"random-generators", OPT_RANDOM_GENERATORS, '-',
      "List of random number generators"},
     {"mac-algorithms", OPT_MAC_ALGORITHMS, '-',
@@ -1490,12 +1526,14 @@ const OPTIONS list_options[] = {
      "List of key encapsulation mechanism algorithms" },
     {"signature-algorithms", OPT_SIGNATURE_ALGORITHMS, '-',
      "List of signature algorithms" },
-    { "asymcipher-algorithms", OPT_ASYM_CIPHER_ALGORITHMS, '-',
+    {"asymcipher-algorithms", OPT_ASYM_CIPHER_ALGORITHMS, '-',
       "List of asymmetric cipher algorithms" },
     {"public-key-algorithms", OPT_PK_ALGORITHMS, '-',
      "List of public key algorithms"},
     {"public-key-methods", OPT_PK_METHOD, '-',
      "List of public key methods"},
+    {"store-loaders", OPT_STORE_LOADERS, '-',
+     "List of store loaders"},
     {"providers", OPT_PROVIDER_INFO, '-',
      "List of provider information"},
 #ifndef OPENSSL_NO_DEPRECATED_3_0
@@ -1503,8 +1541,6 @@ const OPTIONS list_options[] = {
      "List of loaded engines"},
 #endif
     {"disabled", OPT_DISABLED, '-', "List of disabled features"},
-    {"missing-help", OPT_MISSING_HELP, '-',
-     "List missing detailed help strings"},
     {"options", OPT_OPTIONS, 's',
      "List options for specified command"},
     {"objects", OPT_OBJECTS, '-',
@@ -1538,12 +1574,12 @@ int list_main(int argc, char **argv)
         unsigned int asym_cipher_algorithms:1;
         unsigned int pk_algorithms:1;
         unsigned int pk_method:1;
+        unsigned int store_loaders:1;
         unsigned int provider_info:1;
 #ifndef OPENSSL_NO_DEPRECATED_3_0
         unsigned int engines:1;
 #endif
         unsigned int disabled:1;
-        unsigned int missing_help:1;
         unsigned int objects:1;
         unsigned int options:1;
     } todo = { 0, };
@@ -1618,6 +1654,9 @@ opthelp:
         case OPT_PK_METHOD:
             todo.pk_method = 1;
             break;
+        case OPT_STORE_LOADERS:
+            todo.store_loaders = 1;
+            break;
         case OPT_PROVIDER_INFO:
             todo.provider_info = 1;
             break;
@@ -1628,9 +1667,6 @@ opthelp:
 #endif
         case OPT_DISABLED:
             todo.disabled = 1;
-            break;
-        case OPT_MISSING_HELP:
-            todo.missing_help = 1;
             break;
         case OPT_OBJECTS:
             todo.objects = 1;
@@ -1692,6 +1728,8 @@ opthelp:
         list_pkey();
     if (todo.pk_method)
         list_pkey_meth();
+    if (todo.store_loaders)
+        list_store_loaders();
     if (todo.provider_info)
         list_provider_info();
 #ifndef OPENSSL_NO_DEPRECATED_3_0
@@ -1700,8 +1738,6 @@ opthelp:
 #endif
     if (todo.disabled)
         list_disabled();
-    if (todo.missing_help)
-        list_missing_help();
     if (todo.objects)
         list_objects();
 
