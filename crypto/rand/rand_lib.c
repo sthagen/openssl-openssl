@@ -298,7 +298,7 @@ int RAND_status(void)
 
     if ((rand = RAND_get0_primary(NULL)) == NULL)
         return 0;
-    return EVP_RAND_state(rand) == EVP_RAND_STATE_READY;
+    return EVP_RAND_get_state(rand) == EVP_RAND_STATE_READY;
 }
 # else  /* !FIPS_MODULE */
 
@@ -315,7 +315,8 @@ const RAND_METHOD *RAND_get_rand_method(void)
  * the default method, then just call RAND_bytes().  Otherwise make
  * sure we're instantiated and use the private DRBG.
  */
-int RAND_priv_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, int num)
+int RAND_priv_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, size_t num,
+                       unsigned int strength)
 {
     EVP_RAND_CTX *rand;
 #ifndef OPENSSL_NO_DEPRECATED_3_0
@@ -331,17 +332,20 @@ int RAND_priv_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, int num)
 
     rand = RAND_get0_private(ctx);
     if (rand != NULL)
-        return EVP_RAND_generate(rand, buf, num, 0, 0, NULL, 0);
+        return EVP_RAND_generate(rand, buf, num, strength, 0, NULL, 0);
 
     return 0;
 }
 
 int RAND_priv_bytes(unsigned char *buf, int num)
 {
-    return RAND_priv_bytes_ex(NULL, buf, num);
+    if (num < 0)
+        return 0;
+    return RAND_priv_bytes_ex(NULL, buf, (size_t)num, 0);
 }
 
-int RAND_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, int num)
+int RAND_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, size_t num,
+                  unsigned int strength)
 {
     EVP_RAND_CTX *rand;
 #ifndef OPENSSL_NO_DEPRECATED_3_0
@@ -357,14 +361,16 @@ int RAND_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, int num)
 
     rand = RAND_get0_public(ctx);
     if (rand != NULL)
-        return EVP_RAND_generate(rand, buf, num, 0, 0, NULL, 0);
+        return EVP_RAND_generate(rand, buf, num, strength, 0, NULL, 0);
 
     return 0;
 }
 
 int RAND_bytes(unsigned char *buf, int num)
 {
-    return RAND_bytes_ex(NULL, buf, num);
+    if (num < 0)
+        return 0;
+    return RAND_bytes_ex(NULL, buf, (size_t)num, 0);
 }
 
 typedef struct rand_global_st {
@@ -740,7 +746,7 @@ static int random_conf_init(CONF_IMODULE *md, const CONF *cnf)
 {
     STACK_OF(CONF_VALUE) *elist;
     CONF_VALUE *cval;
-    RAND_GLOBAL *dgbl = rand_get_global(cnf->libctx);
+    RAND_GLOBAL *dgbl = rand_get_global(NCONF_get0_libctx((CONF *)cnf));
     int i, r = 1;
 
     OSSL_TRACE1(CONF, "Loading random module: section %s\n",

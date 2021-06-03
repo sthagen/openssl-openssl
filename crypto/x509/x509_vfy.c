@@ -23,6 +23,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/objects.h>
+#include <openssl/core_names.h>
 #include "internal/dane.h"
 #include "crypto/x509.h"
 #include "x509_local.h"
@@ -552,7 +553,6 @@ static int check_extensions(X509_STORE_CTX *ctx)
             CB_FAIL_IF(x->altname != NULL
                            && sk_GENERAL_NAME_num(x->altname) <= 0,
                        ctx, x, i, X509_V_ERR_EMPTY_SUBJECT_ALT_NAME);
-            /* TODO add more checks on SAN entries */
             /* Check sig alg consistency acc. to RFC 5280 section 4.1.1.2 */
             CB_FAIL_IF(X509_ALGOR_cmp(&x->sig_alg, &x->cert_info.signature) != 0,
                        ctx, x, i, X509_V_ERR_SIGNATURE_ALGORITHM_INCONSISTENCY);
@@ -2087,8 +2087,9 @@ X509_CRL *X509_CRL_diff(X509_CRL *base, X509_CRL *newer,
 
         rvn = sk_X509_REVOKED_value(revs, i);
         /*
-         * Add only if not also in base. TODO: need something cleverer here
-         * for some more complex CRLs covering multiple CAs.
+         * Add only if not also in base.
+         * Need something cleverer here for some more complex CRLs covering
+         * multiple CAs.
          */
         if (!X509_CRL_get0_by_serial(base, &rvtmp, &rvn->serialNumber)) {
             rvtmp = X509_REVOKED_dup(rvn);
@@ -2100,7 +2101,6 @@ X509_CRL *X509_CRL_diff(X509_CRL *base, X509_CRL *newer,
             }
         }
     }
-    /* TODO: optionally prune deleted entries */
 
     if (skey != NULL && md != NULL && !X509_CRL_sign(crl, skey, md))
         goto memerr;
@@ -3388,7 +3388,7 @@ static int check_key_level(X509_STORE_CTX *ctx, X509 *cert)
     if (level > NUM_AUTH_LEVELS)
         level = NUM_AUTH_LEVELS;
 
-    return EVP_PKEY_security_bits(pkey) >= minbits_table[level - 1];
+    return EVP_PKEY_get_security_bits(pkey) >= minbits_table[level - 1];
 }
 
 /*-
@@ -3399,20 +3399,20 @@ static int check_key_level(X509_STORE_CTX *ctx, X509 *cert)
  */
 static int check_curve(X509 *cert)
 {
-#ifndef OPENSSL_NO_EC
     EVP_PKEY *pkey = X509_get0_pubkey(cert);
 
     /* Unsupported or malformed key */
     if (pkey == NULL)
         return -1;
 
-    if (EVP_PKEY_id(pkey) == EVP_PKEY_EC) {
-        int ret;
+    if (EVP_PKEY_get_id(pkey) == EVP_PKEY_EC) {
+        int ret, val;
 
-        ret = EC_KEY_decoded_from_explicit_params(EVP_PKEY_get0_EC_KEY(pkey));
-        return ret < 0 ? ret : !ret;
+        ret = EVP_PKEY_get_int_param(pkey,
+                                     OSSL_PKEY_PARAM_EC_DECODED_FROM_EXPLICIT_PARAMS,
+                                     &val);
+        return ret < 0 ? ret : !val;
     }
-#endif
 
     return 1;
 }

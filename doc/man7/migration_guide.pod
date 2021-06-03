@@ -423,6 +423,12 @@ Previously (in 1.1.1) these conflicting parameters were allowed, but will now
 result in errors. See L<EVP_PKEY-DH(7)> for further details. This affects the
 behaviour of L<openssl-genpkey(1)> for DH parameter generation.
 
+=head4 EVP_CIPHER_CTX_set_flags() ordering change
+
+If using a cipher from a provider the B<EVP_CIPH_FLAG_LENGTH_BITS> flag can only
+be set B<after> the cipher has been assigned to the cipher context.
+See L<EVP_EncryptInit(3)/FLAGS> for more information.
+
 =head2 Installation and Compilation
 
 Please refer to the INSTALL.md file in the top of the distribution for
@@ -869,6 +875,19 @@ See also L<crypto(7)/OPENSSL PROVIDERS>.
 Implicit and Explicit Fetching is described in detail here
 L<crypto(7)/ALGORITHM FETCHING>.
 
+=head3 Mapping EVP controls and flags to provider B<OSSL_PARAM> parameters
+
+The existing functions for controls (such as L<EVP_CIPHER_CTX_ctrl(3)>) and
+manipulating flags (such as L<EVP_MD_CTX_set_flags(3)>)internally use
+B<OSSL_PARAMS> to pass information to/from provider objects.
+See L<OSSL_PARAM(3)> for additional information related to parameters.
+
+For ciphers see L<EVP_EncryptInit(3)/CONTROLS>, L<EVP_EncryptInit(3)/FLAGS> and
+L<EVP_EncryptInit(3)/PARAMETERS>.
+
+For digests see L<EVP_DigestInit(3)/CONTROLS>, L<EVP_DigestInit(3)/FLAGS> and
+L<EVP_DigestInit(3)/PARAMETERS>.
+
 =head3 Deprecation of Low Level Functions
 
 A significant number of APIs have been deprecated in OpenSSL 3.0.
@@ -1085,6 +1104,12 @@ There is no replacement. This option returned a constant string.
 
 =item -
 
+BIO_get_callback(), BIO_set_callback(), BIO_debug_callback()
+
+Use the respective non-deprecated _ex() functions.
+
+=item -
+
 BN_is_prime_ex(), BN_is_prime_fasttest_ex()
 
 Use L<BN_check_prime(3)> which that avoids possible misuse and always uses at least
@@ -1178,7 +1203,8 @@ Algorithms for "DESX-CBC", "DES-ECB", "DES-CBC", "DES-OFB", "DES-CFB",
 
 DH_bits(), DH_security_bits(), DH_size()
 
-Use L<EVP_PKEY_bits(3)>, L<EVP_PKEY_security_bits(3)> and L<EVP_PKEY_size(3)>.
+Use L<EVP_PKEY_get_bits(3)>, L<EVP_PKEY_get_security_bits(3)> and
+L<EVP_PKEY_get_size(3)>.
 
 =item -
 
@@ -1259,7 +1285,8 @@ See L</Deprecated low-level key parameter setters>
 
 DSA_bits(), DSA_security_bits(), DSA_size()
 
-Use L<EVP_PKEY_bits(3)>, L<EVP_PKEY_security_bits(3)> and L<EVP_PKEY_size(3)>.
+Use L<EVP_PKEY_get_bits(3)>, L<EVP_PKEY_get_security_bits(3)> and
+L<EVP_PKEY_get_size(3)>.
 
 =item -
 
@@ -1351,7 +1378,7 @@ See L</Deprecated low-level signing functions>.
 
 ECDSA_size()
 
-Applications should use L<EVP_PKEY_size(3)>.
+Applications should use L<EVP_PKEY_get_size(3)>.
 
 =item -
 
@@ -1875,7 +1902,8 @@ The RIPE algorithm has been moved to the L<Legacy Provider|/Legacy Algorithms>.
 
 RSA_bits(), RSA_security_bits(), RSA_size()
 
-Use L<EVP_PKEY_bits(3)>, L<EVP_PKEY_security_bits(3)> and L<EVP_PKEY_size(3)>.
+Use L<EVP_PKEY_get_bits(3)>, L<EVP_PKEY_get_security_bits(3)> and
+L<EVP_PKEY_get_size(3)>.
 
 =item -
 

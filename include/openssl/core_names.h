@@ -65,6 +65,7 @@ extern "C" {
 
 /* cipher parameters */
 #define OSSL_CIPHER_PARAM_PADDING              "padding"      /* uint */
+#define OSSL_CIPHER_PARAM_USE_BITS             "use-bits"     /* uint */
 #define OSSL_CIPHER_PARAM_TLS_VERSION          "tls-version"  /* uint */
 #define OSSL_CIPHER_PARAM_TLS_MAC              "tls-mac"      /* octet_ptr */
 #define OSSL_CIPHER_PARAM_TLS_MAC_SIZE         "tls-mac-size" /* size_t */
@@ -169,6 +170,7 @@ extern "C" {
 #define OSSL_MAC_PARAM_DIGEST           OSSL_ALG_PARAM_DIGEST     /* utf8 string */
 #define OSSL_MAC_PARAM_PROPERTIES       OSSL_ALG_PARAM_PROPERTIES /* utf8 string */
 #define OSSL_MAC_PARAM_SIZE             "size"                    /* size_t */
+#define OSSL_MAC_PARAM_BLOCK_SIZE       "block-size"              /* size_t */
 #define OSSL_MAC_PARAM_TLS_DATA_SIZE    "tls-data-size"           /* size_t */
 
 /* Known MAC names */
@@ -220,6 +222,7 @@ extern "C" {
 
 /* Known KDF names */
 #define OSSL_KDF_NAME_HKDF           "HKDF"
+#define OSSL_KDF_NAME_PBKDF1         "PBKDF1"
 #define OSSL_KDF_NAME_PBKDF2         "PBKDF2"
 #define OSSL_KDF_NAME_SCRYPT         "SCRYPT"
 #define OSSL_KDF_NAME_SSHKDF         "SSHKDF"
@@ -307,20 +310,21 @@ extern "C" {
 #define OSSL_PKEY_PARAM_EC_PUB_Y     "qy"
 
 /* Elliptic Curve Explicit Domain Parameters */
-#define OSSL_PKEY_PARAM_EC_FIELD_TYPE     "field-type"
-#define OSSL_PKEY_PARAM_EC_P              "p"
-#define OSSL_PKEY_PARAM_EC_A              "a"
-#define OSSL_PKEY_PARAM_EC_B              "b"
-#define OSSL_PKEY_PARAM_EC_GENERATOR      "generator"
-#define OSSL_PKEY_PARAM_EC_ORDER          "order"
-#define OSSL_PKEY_PARAM_EC_COFACTOR       "cofactor"
-#define OSSL_PKEY_PARAM_EC_SEED           "seed"
-#define OSSL_PKEY_PARAM_EC_CHAR2_M        "m"
-#define OSSL_PKEY_PARAM_EC_CHAR2_TYPE     "basis-type"
-#define OSSL_PKEY_PARAM_EC_CHAR2_TP_BASIS "tp"
-#define OSSL_PKEY_PARAM_EC_CHAR2_PP_K1    "k1"
-#define OSSL_PKEY_PARAM_EC_CHAR2_PP_K2    "k2"
-#define OSSL_PKEY_PARAM_EC_CHAR2_PP_K3    "k3"
+#define OSSL_PKEY_PARAM_EC_FIELD_TYPE                   "field-type"
+#define OSSL_PKEY_PARAM_EC_P                            "p"
+#define OSSL_PKEY_PARAM_EC_A                            "a"
+#define OSSL_PKEY_PARAM_EC_B                            "b"
+#define OSSL_PKEY_PARAM_EC_GENERATOR                    "generator"
+#define OSSL_PKEY_PARAM_EC_ORDER                        "order"
+#define OSSL_PKEY_PARAM_EC_COFACTOR                     "cofactor"
+#define OSSL_PKEY_PARAM_EC_SEED                         "seed"
+#define OSSL_PKEY_PARAM_EC_CHAR2_M                      "m"
+#define OSSL_PKEY_PARAM_EC_CHAR2_TYPE                   "basis-type"
+#define OSSL_PKEY_PARAM_EC_CHAR2_TP_BASIS               "tp"
+#define OSSL_PKEY_PARAM_EC_CHAR2_PP_K1                  "k1"
+#define OSSL_PKEY_PARAM_EC_CHAR2_PP_K2                  "k2"
+#define OSSL_PKEY_PARAM_EC_CHAR2_PP_K3                  "k3"
+#define OSSL_PKEY_PARAM_EC_DECODED_FROM_EXPLICIT_PARAMS "decoded-from-explicit"
 
 /* Elliptic Curve Key Parameters */
 #define OSSL_PKEY_PARAM_USE_COFACTOR_FLAG "use-cofactor-flag"

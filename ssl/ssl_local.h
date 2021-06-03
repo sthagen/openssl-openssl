@@ -1379,7 +1379,7 @@ struct ssl_st {
         size_t previous_client_finished_len;
         unsigned char previous_server_finished[EVP_MAX_MD_SIZE];
         size_t previous_server_finished_len;
-        int send_connection_binding; /* TODOEKR */
+        int send_connection_binding;
 
 # ifndef OPENSSL_NO_NEXTPROTONEG
         /*
@@ -2770,7 +2770,7 @@ __owur char ssl3_cbc_record_digest_supported(const EVP_MD_CTX *ctx);
 __owur int ssl3_cbc_digest_record(const EVP_MD *md,
                                   unsigned char *md_out,
                                   size_t *md_out_size,
-                                  const unsigned char header[13],
+                                  const unsigned char *header,
                                   const unsigned char *data,
                                   size_t data_size,
                                   size_t data_plus_mac_plus_padding_size,

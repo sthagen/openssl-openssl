@@ -1,4 +1,6 @@
 /*
+ * {- join("\n * ", @autowarntext) -}
+ *
  * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -8,11 +10,16 @@
  */
 
 #include "internal/der.h"
+#include "crypto/ecx.h"
 
 /* Well known OIDs precompiled */
 {-
-    $OUT = oids_to_c::process_leaves('providers/common/der/NIST.asn1',
-                                     'providers/common/der/DIGESTS.asn1',
+    $OUT = oids_to_c::process_leaves('providers/common/der/ECX.asn1',
                                      { dir => $config{sourcedir},
                                        filter => \&oids_to_c::filter_to_H });
 -}
+
+int ossl_DER_w_algorithmIdentifier_ED25519(WPACKET *pkt, int cont, ECX_KEY *ec);
+int ossl_DER_w_algorithmIdentifier_ED448(WPACKET *pkt, int cont, ECX_KEY *ec);
+int ossl_DER_w_algorithmIdentifier_X25519(WPACKET *pkt, int cont, ECX_KEY *ec);
+int ossl_DER_w_algorithmIdentifier_X448(WPACKET *pkt, int cont, ECX_KEY *ec);

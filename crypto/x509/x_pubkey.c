@@ -225,7 +225,6 @@ X509_PUBKEY *X509_PUBKEY_dup(const X509_PUBKEY *a)
     return pubkey;
 }
 
-/* TODO should better be called X509_PUBKEY_set1 */
 int X509_PUBKEY_set(X509_PUBKEY **x, EVP_PKEY *pkey)
 {
     X509_PUBKEY *pk = NULL;
@@ -557,7 +556,7 @@ DH *ossl_d2i_DH_PUBKEY(DH **a, const unsigned char **pp, long length)
     pkey = d2i_PUBKEY_legacy(NULL, &q, length);
     if (pkey == NULL)
         return NULL;
-    if (EVP_PKEY_id(pkey) == EVP_PKEY_DH)
+    if (EVP_PKEY_get_id(pkey) == EVP_PKEY_DH)
         key = EVP_PKEY_get1_DH(pkey);
     EVP_PKEY_free(pkey);
     if (key == NULL)
@@ -598,7 +597,7 @@ DH *ossl_d2i_DHx_PUBKEY(DH **a, const unsigned char **pp, long length)
     pkey = d2i_PUBKEY_legacy(NULL, &q, length);
     if (pkey == NULL)
         return NULL;
-    if (EVP_PKEY_id(pkey) == EVP_PKEY_DHX)
+    if (EVP_PKEY_get_id(pkey) == EVP_PKEY_DHX)
         key = EVP_PKEY_get1_DH(pkey);
     EVP_PKEY_free(pkey);
     if (key == NULL)
@@ -684,7 +683,7 @@ EC_KEY *d2i_EC_PUBKEY(EC_KEY **a, const unsigned char **pp, long length)
     pkey = d2i_PUBKEY_legacy(NULL, &q, length);
     if (pkey == NULL)
         return NULL;
-    type = EVP_PKEY_id(pkey);
+    type = EVP_PKEY_get_id(pkey);
     if (type == EVP_PKEY_EC || type == EVP_PKEY_SM2)
         key = EVP_PKEY_get1_EC_KEY(pkey);
     EVP_PKEY_free(pkey);
@@ -768,7 +767,7 @@ ECX_KEY *ossl_d2i_ED448_PUBKEY(ECX_KEY **a,
     pkey = d2i_PUBKEY_legacy(NULL, &q, length);
     if (pkey == NULL)
         return NULL;
-    if (EVP_PKEY_id(pkey) == EVP_PKEY_ED448)
+    if (EVP_PKEY_get_id(pkey) == EVP_PKEY_ED448)
         key = ossl_evp_pkey_get1_ED448(pkey);
     EVP_PKEY_free(pkey);
     if (key == NULL)
@@ -810,7 +809,7 @@ ECX_KEY *ossl_d2i_X25519_PUBKEY(ECX_KEY **a,
     pkey = d2i_PUBKEY_legacy(NULL, &q, length);
     if (pkey == NULL)
         return NULL;
-    if (EVP_PKEY_id(pkey) == EVP_PKEY_X25519)
+    if (EVP_PKEY_get_id(pkey) == EVP_PKEY_X25519)
         key = ossl_evp_pkey_get1_X25519(pkey);
     EVP_PKEY_free(pkey);
     if (key == NULL)
@@ -852,7 +851,7 @@ ECX_KEY *ossl_d2i_X448_PUBKEY(ECX_KEY **a,
     pkey = d2i_PUBKEY_legacy(NULL, &q, length);
     if (pkey == NULL)
         return NULL;
-    if (EVP_PKEY_id(pkey) == EVP_PKEY_X448)
+    if (EVP_PKEY_get_id(pkey) == EVP_PKEY_X448)
         key = ossl_evp_pkey_get1_X448(pkey);
     EVP_PKEY_free(pkey);
     if (key == NULL)

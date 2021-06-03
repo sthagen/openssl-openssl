@@ -87,9 +87,10 @@ int OSSL_DECODER_from_bio(OSSL_DECODER_CTX *ctx, BIO *in)
         const char *input_structure
             = ctx->input_structure != NULL ? ctx->input_structure : "";
 
-        if (BIO_eof(in) == 0 /* Prevent spurious decoding error */)
+        if (BIO_eof(in) == 0 || ERR_peek_error() == 0)
+            /* Prevent spurious decoding error */
             ERR_raise_data(ERR_LIB_OSSL_DECODER, ERR_R_UNSUPPORTED,
-                           "Not supported for the data to decode.%s%s%s%s%s%s",
+                           "No supported data to decode. %s%s%s%s%s%s",
                            spaces, input_type_label, input_type, comma,
                            input_structure_label, input_structure);
         ok = 0;
@@ -299,7 +300,7 @@ int OSSL_DECODER_CTX_add_decoder(OSSL_DECODER_CTX *ctx, OSSL_DECODER *decoder)
         return 0;
     }
 
-    prov = OSSL_DECODER_provider(decoder);
+    prov = OSSL_DECODER_get0_provider(decoder);
     provctx = OSSL_PROVIDER_get0_provider_ctx(prov);
 
     if ((decoderctx = decoder->newctx(provctx)) == NULL
