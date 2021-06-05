@@ -242,6 +242,7 @@ int req_main(int argc, char **argv)
     X509 *new_x509 = NULL, *CAcert = NULL;
     X509_REQ *req = NULL;
     EVP_CIPHER *cipher = NULL;
+    EVP_MD *md = NULL;
     int ext_copy = EXT_COPY_UNSET;
     BIO *addext_bio = NULL;
     char *extensions = NULL;
@@ -527,7 +528,15 @@ int req_main(int argc, char **argv)
     if (!add_oid_section(req_conf))
         goto end;
 
-    if (digest == NULL) {
+    /* Check that any specified digest is fetchable */
+    if (digest != NULL) {
+        if (!opt_md(digest, &md)) {
+            ERR_clear_error();
+            goto opthelp;
+        }
+        EVP_MD_free(md);
+    } else {
+        /* No digest specified, default to configuration */
         p = NCONF_get_string(req_conf, section, "default_md");
         if (p == NULL)
             ERR_clear_error();
@@ -1587,7 +1596,8 @@ static EVP_PKEY_CTX *set_keygen_ctx(const char *gstr,
         *pkeytype = OPENSSL_strndup(keytype, keytypelen);
     else
         *pkeytype = OPENSSL_strdup(keytype);
-    *pkeylen = keylen;
+    if (keylen >= 0)
+        *pkeylen = keylen;
 
     if (param != NULL) {
         if (!EVP_PKEY_is_a(param, *pkeytype)) {
@@ -1626,6 +1636,10 @@ static EVP_PKEY_CTX *set_keygen_ctx(const char *gstr,
         EVP_PKEY_CTX_free(gctx);
         return NULL;
     }
+    if (keylen == -1 && (EVP_PKEY_CTX_is_a(gctx, "RSA")
+        || EVP_PKEY_CTX_is_a(gctx, "RSA-PSS")))
+        keylen = *pkeylen;
+
     if (keylen != -1) {
         OSSL_PARAM params[] = { OSSL_PARAM_END, OSSL_PARAM_END };
         size_t bits = keylen;

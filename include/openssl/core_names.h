@@ -468,16 +468,11 @@ extern "C" {
  */
 #define OSSL_ENCODER_PARAM_CIPHER           OSSL_ALG_PARAM_CIPHER
 #define OSSL_ENCODER_PARAM_PROPERTIES       OSSL_ALG_PARAM_PROPERTIES
-#define OSSL_ENCODER_PARAM_INPUT_TYPE       "input-type"
-#define OSSL_ENCODER_PARAM_OUTPUT_TYPE      "output-type"
-#define OSSL_ENCODER_PARAM_OUTPUT_STRUCTURE "output-structure"
 /* Currently PVK only, but reusable for others as needed */
 #define OSSL_ENCODER_PARAM_ENCRYPT_LEVEL    "encrypt-level"
 #define OSSL_ENCODER_PARAM_SAVE_PARAMETERS  "save-parameters" /* integer */
 
 #define OSSL_DECODER_PARAM_PROPERTIES       OSSL_ALG_PARAM_PROPERTIES
-#define OSSL_DECODER_PARAM_INPUT_TYPE       "input-type"
-#define OSSL_DECODER_PARAM_INPUT_STRUCTURE  "input-structure"
 
 /* Passphrase callback parameters */
 #define OSSL_PASSPHRASE_PARAM_INFO      "info"

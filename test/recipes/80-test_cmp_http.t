@@ -31,8 +31,8 @@ plan skip_all => "These tests are not supported in a no-ec build"
 plan skip_all => "These tests are not supported in a no-sock build"
     if disabled("sock");
 
-plan skip_all => "Tests involving local HTTP server not available on Windows, AIX or VMS"
-    if $^O =~ /^(VMS|MSWin32|AIX)$/;
+plan skip_all => "Tests involving local HTTP server not available on Windows or VMS"
+    if $^O =~ /^(VMS|MSWin32)$/;
 plan skip_all => "Tests involving local HTTP server not available in cross-compile builds"
     if defined $ENV{EXE_SHELL};
 
@@ -277,7 +277,7 @@ sub start_mock_server {
     die "Invalid port: $server_port" unless $server_port =~ m/^\d+$/;
     my $pid = open($server_fh, "$cmd|") or die "Trying to $cmd";
     print "Pid is: $pid\n";
-    if ($server_port eq "0") {
+    if ($server_port == 0) {
         # Find out the actual server port
         while (<$server_fh>) {
             print;
