@@ -12,7 +12,7 @@ use strict;
 use warnings;
 
 use POSIX;
-use OpenSSL::Test qw/:DEFAULT with data_file data_dir srctop_dir bldtop_dir result_dir/;
+use OpenSSL::Test qw/:DEFAULT data_file data_dir srctop_dir bldtop_dir result_dir/;
 use OpenSSL::Test::Utils;
 
 BEGIN {
@@ -133,19 +133,17 @@ sub test_cmp_http {
     $params = [ '-server', "127.0.0.1:$server_port", @$params ]
         unless grep { $_ eq '-server' } @$params;
 
-    with({ exit_checker => sub {
-        my $actual_result = shift == 0;
-        my $OK = $actual_result == $expected_result;
-        if ($faillog && !$OK) {
+    unless (is(my $actual_result = run(cmd([$path_app, @$params,])),
+               $expected_result,
+               $title)) {
+        if ($faillog) {
             my $quote_spc_empty = sub { $_ eq "" ? '""' : $_ =~ m/ / ? '"'.$_.'"' : $_ };
             my $invocation = "$path_app ".join(' ', map $quote_spc_empty->($_), @$params);
             print $faillog "$server_name $aspect \"$title\" ($i/$n)".
                 " expected=$expected_result actual=$actual_result\n";
             print $faillog "$invocation\n\n";
         }
-        return $OK; } },
-         sub { ok(run(cmd([$path_app, @$params,])),
-                  $title); });
+    }
 }
 
 sub test_cmp_http_aspect {
@@ -278,19 +276,30 @@ sub start_mock_server {
     my $pid = open($server_fh, "$cmd|") or die "Trying to $cmd";
     print "Pid is: $pid\n";
     if ($server_port == 0) {
+        # Clear it first
+        $server_port = undef;
+
         # Find out the actual server port
         while (<$server_fh>) {
             print;
             s/\R$//;                # Better chomp
             next unless (/^ACCEPT/);
-            $server_port = $server_tls = $kur_port = $pbm_port = $1
-                if m/^ACCEPT\s.*?:(\d+)$/;
+
+            # $1 may be undefined, which is OK to assign to $server_port,
+            # as that gets detected further down.
+            /^ACCEPT\s.*:(\d+)$/;
+            $server_port = $1;
+
             last;
         }
+
+        unless (defined $server_port) {
+            stop_mock_server($pid);
+            return 0;
+        }
     }
-    return $pid if $server_port =~ m/^(\d+)$/;
-    stop_mock_server($pid);
-    return 0;
+    $server_tls = $kur_port = $pbm_port = $server_port;
+    return $pid;
 }
 
 sub stop_mock_server {
