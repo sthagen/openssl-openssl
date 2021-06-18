@@ -1,5 +1,5 @@
 /*
- * Copyright 2004-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2004-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -457,7 +457,12 @@ padlock_ctr_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out_arg,
                    const unsigned char *in_arg, size_t nbytes)
 {
     struct padlock_cipher_data *cdata = ALIGNED_CIPHER_DATA(ctx);
-    unsigned int num = EVP_CIPHER_CTX_get_num(ctx);
+    int n = EVP_CIPHER_CTX_get_num(ctx);
+    unsigned int num;
+
+    if (n < 0)
+        return 0;
+    num = (unsigned int)n;
 
     CRYPTO_ctr128_encrypt_ctr32(in_arg, out_arg, nbytes,
                                 cdata, EVP_CIPHER_CTX_iv_noconst(ctx),

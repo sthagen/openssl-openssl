@@ -4375,6 +4375,14 @@ DEPEND[html/man7/fips_module.html]=man7/fips_module.pod
 GENERATE[html/man7/fips_module.html]=man7/fips_module.pod
 DEPEND[man/man7/fips_module.7]=man7/fips_module.pod
 GENERATE[man/man7/fips_module.7]=man7/fips_module.pod
+DEPEND[html/man7/life_cycle-cipher.html]=man7/life_cycle-cipher.pod
+GENERATE[html/man7/life_cycle-cipher.html]=man7/life_cycle-cipher.pod
+DEPEND[man/man7/life_cycle-cipher.7]=man7/life_cycle-cipher.pod
+GENERATE[man/man7/life_cycle-cipher.7]=man7/life_cycle-cipher.pod
+DEPEND[html/man7/life_cycle-digest.html]=man7/life_cycle-digest.pod
+GENERATE[html/man7/life_cycle-digest.html]=man7/life_cycle-digest.pod
+DEPEND[man/man7/life_cycle-digest.7]=man7/life_cycle-digest.pod
+GENERATE[man/man7/life_cycle-digest.7]=man7/life_cycle-digest.pod
 DEPEND[html/man7/life_cycle-kdf.html]=man7/life_cycle-kdf.pod
 GENERATE[html/man7/life_cycle-kdf.html]=man7/life_cycle-kdf.pod
 DEPEND[man/man7/life_cycle-kdf.7]=man7/life_cycle-kdf.pod
@@ -4383,6 +4391,10 @@ DEPEND[html/man7/life_cycle-mac.html]=man7/life_cycle-mac.pod
 GENERATE[html/man7/life_cycle-mac.html]=man7/life_cycle-mac.pod
 DEPEND[man/man7/life_cycle-mac.7]=man7/life_cycle-mac.pod
 GENERATE[man/man7/life_cycle-mac.7]=man7/life_cycle-mac.pod
+DEPEND[html/man7/life_cycle-pkey.html]=man7/life_cycle-pkey.pod
+GENERATE[html/man7/life_cycle-pkey.html]=man7/life_cycle-pkey.pod
+DEPEND[man/man7/life_cycle-pkey.7]=man7/life_cycle-pkey.pod
+GENERATE[man/man7/life_cycle-pkey.7]=man7/life_cycle-pkey.pod
 DEPEND[html/man7/life_cycle-rand.html]=man7/life_cycle-rand.pod
 GENERATE[html/man7/life_cycle-rand.html]=man7/life_cycle-rand.pod
 DEPEND[man/man7/life_cycle-rand.7]=man7/life_cycle-rand.pod
@@ -4513,8 +4525,11 @@ DEPEND[html/man7/x509.html]=man7/x509.pod
 GENERATE[html/man7/x509.html]=man7/x509.pod
 DEPEND[man/man7/x509.7]=man7/x509.pod
 GENERATE[man/man7/x509.7]=man7/x509.pod
-IMAGEDOCS[man7]=man7/img/kdf.png \
+IMAGEDOCS[man7]=man7/img/cipher.png \
+man7/img/digest.png \
+man7/img/kdf.png \
 man7/img/mac.png \
+man7/img/pkey.png \
 man7/img/rand.png
 HTMLDOCS[man7]=html/man7/EVP_ASYM_CIPHER-SM2.html \
 html/man7/EVP_CIPHER-AES.html \
@@ -4600,8 +4615,11 @@ html/man7/ct.html \
 html/man7/des_modes.html \
 html/man7/evp.html \
 html/man7/fips_module.html \
+html/man7/life_cycle-cipher.html \
+html/man7/life_cycle-digest.html \
 html/man7/life_cycle-kdf.html \
 html/man7/life_cycle-mac.html \
+html/man7/life_cycle-pkey.html \
 html/man7/life_cycle-rand.html \
 html/man7/migration_guide.html \
 html/man7/openssl-core.h.html \
@@ -4718,8 +4736,11 @@ man/man7/ct.7 \
 man/man7/des_modes.7 \
 man/man7/evp.7 \
 man/man7/fips_module.7 \
+man/man7/life_cycle-cipher.7 \
+man/man7/life_cycle-digest.7 \
 man/man7/life_cycle-kdf.7 \
 man/man7/life_cycle-mac.7 \
+man/man7/life_cycle-pkey.7 \
 man/man7/life_cycle-rand.7 \
 man/man7/migration_guide.7 \
 man/man7/openssl-core.h.7 \

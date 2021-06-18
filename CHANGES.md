@@ -30,6 +30,17 @@ breaking changes, and mappings for the large list of deprecated functions.
 
 ### Changes between 1.1.1 and 3.0 [xx XXX xxxx]
 
+ * Add a configurable flag to output date formats as ISO 8601. Does not
+   change the default date format.
+
+   *William Edmisten*
+
+ * Version of MSVC earlier than 1300 could get link warnings, which could
+   be suppressed if the undocumented -DI_CAN_LIVE_WITH_LNK4049 was set.
+   Support for this flag has been removed.
+
+   *Rich Salz*
+
  * Rework and make DEBUG macros consistent. Remove unused -DCONF_DEBUG,
    -DBN_CTX_DEBUG, and REF_PRINT. Add a new tracing category and use it for
    printing reference counts. Rename -DDEBUG_UNUSED to -DUNUSED_RESULT_DEBUG
@@ -684,8 +695,8 @@ breaking changes, and mappings for the large list of deprecated functions.
 
    *Paul Dale*
 
- * The low-level MD2, MD4, MD5, MDC2, RIPEMD160, SHA1, SHA224, SHA256,
-   SHA384, SHA512 and Whirlpool digest functions have been deprecated.
+ * The low-level MD2, MD4, MD5, MDC2, RIPEMD160 and Whirlpool digest
+   functions have been deprecated.
 
    *Paul Dale and David von Oheimb*
 
