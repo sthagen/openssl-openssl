@@ -130,7 +130,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: config
-      run: ./config --banner=Configured --debug enable-asan enable-ubsan enable-rc5 enable-md2 enable-ec_nistp_64_gcc_128 enable-fips && perl configdata.pm --dump
+      run: ./config --banner=Configured --debug enable-asan enable-ubsan enable-rc5 enable-md2 enable-ec_nistp_64_gcc_128 enable-fips -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION && perl configdata.pm --dump
     - name: make
       run: make -s -j4
     - name: make test
@@ -157,7 +157,7 @@ jobs:
     - name: make
       run: make -s -j4
     - name: make test
-      run: make TESTS=test_threads test HARNESS_JOBS=${HARNESS_JOBS:-4}
+      run: make V=1 TESTS="test_threads test_internal_provider test_provfetch test_provider test_pbe test_evp_kdf test_pkcs12 test_store test_evp" test HARNESS_JOBS=${HARNESS_JOBS:-4}
 
   enable_non-default_options:
     runs-on: ubuntu-latest
