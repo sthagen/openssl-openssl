@@ -10,15 +10,13 @@ OSSL_METHOD_CONSTRUCT_METHOD, ossl_method_construct
  #include "internal/core.h"
 
  struct ossl_method_construct_method_st {
-     /* Create store */
-     void *(*alloc_tmp_store)(OSSL_LIB_CTX *ctx);
-     /* Remove a store */
-     void (*dealloc_tmp_store)(void *store);
+     /* Get a temporary store */
+     void *(*get_tmp_store)(void *data);
      /* Get an already existing method from a store */
-     void *(*get)(OSSL_LIB_CTX *libctx, void *store, void *data);
+     void *(*get)(void *store, void *data);
      /* Store a method in a store */
-     int (*put)(OSSL_LIB_CTX *libctx, void *store, void *method,
-                const OSSL_PROVIDER *prov, int operation_id, const char *name,
+     int (*put)(void *store, void *method,
+                const OSSL_PROVIDER *prov, const char *name,
                 const char *propdef, void *data);
      /* Construct a new method */
      void *(*construct)(const char *name, const OSSL_DISPATCH *fns,
@@ -149,7 +147,7 @@ This functionality was added to OpenSSL 3.0.
 
 =head1 COPYRIGHT
 
-Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use this
 file except in compliance with the License.  You can obtain a copy in the file

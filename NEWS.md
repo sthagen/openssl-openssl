@@ -28,9 +28,10 @@ OpenSSL 3.0
 
 ### Major changes between OpenSSL 1.1.1 and OpenSSL 3.0 [under development]
 
-  * Added migration guide to man7
-  * Implemented support for fully "pluggable" TLSv1.3 groups
-  * Added suport for Kernel TLS (KTLS)
+  * Enhanced 'openssl list' with many new options.
+  * Added migration guide to man7.
+  * Implemented support for fully "pluggable" TLSv1.3 groups.
+  * Added suport for Kernel TLS (KTLS).
   * Changed the license to the Apache License v2.0.
   * Moved all variations of the EVP ciphers CAST5, BF, IDEA, SEED, RC2,
     RC4, RC5, and DES to the legacy provider.
@@ -46,6 +47,8 @@ OpenSSL 3.0
   * Remove the `RAND_DRBG` API.
   * Deprecated the `ENGINE` API.
   * Added `OSSL_LIB_CTX`, a libcrypto library context.
+  * Added various `_ex` functions to the OpenSSL API that support using
+    a non-default `OSSL_LIB_CTX`.
   * Interactive mode is removed from the 'openssl' program.
   * The X25519, X448, Ed25519, Ed448, SHAKE128 and SHAKE256 algorithms are
     included in the FIPS provider.
@@ -65,6 +68,7 @@ OpenSSL 3.0
     BIOs (allowing implicit connections), and timeout checks.
   * Added util/check-format.pl for checking adherence to the coding guidelines.
   * Added OSSL_ENCODER, a generic encoder API.
+  * Added OSSL_DECODER, a generic decoder API.
   * Added OSSL_PARAM_BLD, an easier to use API to OSSL_PARAM.
   * Added error raising macros, ERR_raise() and ERR_raise_data().
   * Deprecated ERR_put_error(), ERR_get_error_line(), ERR_get_error_line_data(),
@@ -93,6 +97,8 @@ OpenSSL 3.0
   * All of the low-level DH, DSA, ECDH, ECDSA and RSA public key functions
     have been deprecated.
   * SSL 3, TLS 1.0, TLS 1.1, and DTLS 1.0 only work at security level 0.
+  * Added providers, a new pluggability concept that will replace the
+    ENGINE API and ENGINE implementations.
 
 OpenSSL 1.1.1
 -------------
