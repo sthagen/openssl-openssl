@@ -110,9 +110,9 @@
                 @cnf_defines,
                 'OPENSSLDIR="""$(OPENSSLDIR_C)"""',
                 'ENGINESDIR="""$(ENGINESDIR_C)"""',
-                'MODULESDIR="""$(MODULESDIR_C)"""',
-                #'$(DEFINES)'
+                'MODULESDIR="""$(MODULESDIR_C)"""'
                 )
+      . '$(DEFINES)'
       . "'extradefines'";
   our $lib_asflags =
       join(' ', $target{lib_asflags} || (), @{$config{lib_asflags}},
@@ -144,8 +144,8 @@
       join(',', @{$target{dso_defines}}, @{$target{module_defines}},
                 @{$config{dso_defines}}, @{$config{module_defines}},
                 @cnf_defines,
-                #'$(DEFINES)'
                 )
+      . '$(DEFINES)'
       . "'extradefines'";
   our $dso_asflags =
       join(' ', $target{dso_asflags} || (), $target{module_asflags} || (),
@@ -180,8 +180,8 @@
       join(',', @{$target{bin_defines}},
                 @{$config{bin_defines}},
                 @cnf_defines,
-                #'$(DEFINES)'
                 )
+      . '$(DEFINES)'
       . "'extradefines'";
   our $bin_asflags =
       join(' ', $target{bin_asflags} || (),
@@ -267,6 +267,7 @@ VERBOSE=$(V)
 VERBOSE_FAILURE=$(VF)
 
 VERSION={- "$config{full_version}" -}
+VERSION_NUMBER={- "$config{version}" -}
 MAJOR={- $config{major} -}
 MINOR={- $config{minor} -}
 SHLIB_VERSION_NUMBER={- $config{shlib_version} -}
@@ -569,6 +570,8 @@ uninstall_docs : uninstall_html_docs
 {- output_off() if $disabled{fips}; "" -}
 install_fips : build_sw $(INSTALL_FIPSMODULECONF)
 	@ WRITE SYS$OUTPUT "*** Installing FIPS module"
+	- CREATE/DIR ossl_installroot:[MODULES{- $sover_dirname.$target{pointer_size} -}.'arch']
+	- CREATE/DIR/PROT=(S:RWED,O:RWE,G:RE,W:RE) OSSL_DATAROOT:[000000]
 	COPY/PROT=W:RE $(INSTALL_FIPSMODULES) -
                 ossl_installroot:[MODULES{- $sover_dirname.$target{pointer_size} -}.'arch']$(FIPSMODULENAME)
 	@ WRITE SYS$OUTPUT "*** Installing FIPS module configuration"
@@ -904,7 +907,7 @@ EOF
           #
           my $target = platform->def($args{src});
           my $mkdef = sourcefile('util', 'mkdef.pl');
-          my $ord_ver = $args{intent} eq 'lib' ? ' --version $(VERSION)' : '';
+          my $ord_ver = $args{intent} eq 'lib' ? ' --version $(VERSION_NUMBER)' : '';
           my $ord_name =
               $args{generator}->[1] || basename($args{product}, '.EXE');
           my $case_insensitive =
