@@ -2,20 +2,19 @@
 
 =head1 NAME
 
-EVP_KDF-PBKDF1 - The PBKDF1 EVP_KDF implementation
+EVP_KDF-PVKKDF - The PVK EVP_KDF implementation
 
 =head1 DESCRIPTION
 
-Support for computing the B<PBKDF1> password-based KDF through the B<EVP_KDF>
+Support for computing the B<PVK KDF> PIN-based KDF through the B<EVP_KDF>
 API.
 
-The EVP_KDF-PBKDF1 algorithm implements the PBKDF1 password-based key
-derivation function, as described in RFC 8018; it derives a key from a password
-using a salt and iteration count.
+The EVP_KDF-PVKKDF algorithm implements a PVK PIN-based key
+derivation function; it derives a key from a password using a salt.
 
 =head2 Identity
 
-"PBKDF1" is the name for this implementation; it
+"PVKKDF" is the name for this implementation; it
 can be used with the EVP_KDF_fetch() function.
 
 =head2 Supported parameters
@@ -28,10 +27,6 @@ The supported parameters are:
 
 =item "salt" (B<OSSL_KDF_PARAM_SALT>) <octet string>
 
-=item "iter" (B<OSSL_KDF_PARAM_ITER>) <unsigned integer>
-
-This parameter has a default value of 0 and should be set.
-
 =item "properties" (B<OSSL_KDF_PARAM_PROPERTIES>) <UTF8 string>
 
 =item "digest" (B<OSSL_KDF_PARAM_DIGEST>) <UTF8 string>
@@ -43,21 +38,12 @@ These parameters work as described in L<EVP_KDF(3)/PARAMETERS>.
 =head1 NOTES
 
 A typical application of this algorithm is to derive keying material for an
-encryption algorithm from a password in the "pass", a salt in "salt",
-and an iteration count.
-
-Increasing the "iter" parameter slows down the algorithm which makes it
-harder for an attacker to perform a brute force attack using a large number
-of candidate passwords.
+encryption algorithm from a password in the "pass" and a salt in "salt".
 
 No assumption is made regarding the given password; it is simply treated as a
 byte sequence.
 
 The legacy provider needs to be available in order to access this algorithm.
-
-=head1 CONFORMING TO
-
-RFC 8018
 
 =head1 SEE ALSO
 
