@@ -131,12 +131,12 @@ static unsigned int psk_server_cb(SSL *ssl, const char *identity,
     if (s_debug)
         BIO_printf(bio_s_out, "psk_server_cb\n");
 
-    if (SSL_version(ssl) >= TLS1_3_VERSION) {
+    if (!SSL_is_dtls(ssl) && SSL_version(ssl) >= TLS1_3_VERSION) {
         /*
-         * This callback is designed for use in TLSv1.2. It is possible to use
-         * a single callback for all protocol versions - but it is preferred to
-         * use a dedicated callback for TLSv1.3. For TLSv1.3 we have
-         * psk_find_session_cb.
+         * This callback is designed for use in (D)TLSv1.2 (or below). It is
+         * possible to use a single callback for all protocol versions - but it
+         * is preferred to use a dedicated callback for TLSv1.3. For TLSv1.3 we
+         * have psk_find_session_cb.
          */
         return 0;
     }
@@ -2948,8 +2948,9 @@ static void print_connection_info(SSL *con)
 #endif
     if (SSL_session_reused(con))
         BIO_printf(bio_s_out, "Reused session-id\n");
-    BIO_printf(bio_s_out, "Secure Renegotiation IS%s supported\n",
-               SSL_get_secure_renegotiation_support(con) ? "" : " NOT");
+
+    ssl_print_secure_renegotiation_notes(bio_s_out, con);
+
     if ((SSL_get_options(con) & SSL_OP_NO_RENEGOTIATION))
         BIO_printf(bio_s_out, "Renegotiation is DISABLED\n");
 
@@ -2958,11 +2959,11 @@ static void print_connection_info(SSL *con)
         BIO_printf(bio_s_out, "    Label: '%s'\n", keymatexportlabel);
         BIO_printf(bio_s_out, "    Length: %i bytes\n", keymatexportlen);
         exportedkeymat = app_malloc(keymatexportlen, "export key");
-        if (!SSL_export_keying_material(con, exportedkeymat,
+        if (SSL_export_keying_material(con, exportedkeymat,
                                         keymatexportlen,
                                         keymatexportlabel,
                                         strlen(keymatexportlabel),
-                                        NULL, 0, 0)) {
+                                        NULL, 0, 0) <= 0) {
             BIO_printf(bio_s_out, "    Error\n");
         } else {
             BIO_printf(bio_s_out, "    Keying material: ");
@@ -2984,7 +2985,7 @@ static void print_connection_info(SSL *con)
 
 static int www_body(int s, int stype, int prot, unsigned char *context)
 {
-    char *buf = NULL;
+    char *buf = NULL, *p;
     int ret = 1;
     int i, j, k, dot;
     SSL *con;
@@ -3000,7 +3001,7 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
     /* Set width for a select call if needed */
     width = s + 1;
 
-    buf = app_malloc(bufsize, "server www buffer");
+    p = buf = app_malloc(bufsize, "server www buffer");
     io = BIO_new(BIO_f_buffer());
     ssl_bio = BIO_new(BIO_f_ssl());
     if ((io == NULL) || (ssl_bio == NULL))
@@ -3092,15 +3093,14 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
         }
 
         /* else we have data */
-        if (((www == 1) && (strncmp("GET ", buf, 4) == 0)) ||
-            ((www == 2) && (strncmp("GET /stats ", buf, 11) == 0))) {
-            char *p;
+        if ((www == 1 && HAS_PREFIX(buf, "GET "))
+             || (www == 2 && HAS_PREFIX(buf, "GET /stats "))) {
             X509 *peer = NULL;
             STACK_OF(SSL_CIPHER) *sk;
             static const char *space = "                          ";
 
-            if (www == 1 && strncmp("GET /reneg", buf, 10) == 0) {
-                if (strncmp("GET /renegcert", buf, 14) == 0)
+            if (www == 1 && HAS_PREFIX(buf, "GET /reneg")) {
+                if (HAS_PREFIX(buf, "GET /renegcert"))
                     SSL_set_verify(con,
                                    SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE,
                                    NULL);
@@ -3141,6 +3141,7 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
             BIO_puts(io, "\n");
             for (i = 0; i < local_argc; i++) {
                 const char *myp;
+
                 for (myp = local_argv[i]; *myp; myp++)
                     switch (*myp) {
                     case '<':
@@ -3160,10 +3161,7 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
             }
             BIO_puts(io, "\n");
 
-            BIO_printf(io,
-                       "Secure Renegotiation IS%s supported\n",
-                       SSL_get_secure_renegotiation_support(con) ?
-                       "" : " NOT");
+            ssl_print_secure_renegotiation_notes(io, con);
 
             /*
              * The following is evil and should not really be done
@@ -3223,15 +3221,11 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
             }
             BIO_puts(io, "</pre></BODY></HTML>\r\n\r\n");
             break;
-        } else if ((www == 2 || www == 3)
-                   && (strncmp("GET /", buf, 5) == 0)) {
+        } else if ((www == 2 || www == 3) && HAS_PREFIX(p, "GET /")) {
             BIO *file;
-            char *p, *e;
+            char *e;
             static const char *text =
                 "HTTP/1.0 200 ok\r\nContent-type: text/plain\r\n\r\n";
-
-            /* skip the '/' */
-            p = &(buf[5]);
 
             dot = 1;
             for (e = p; *e != '\0'; e++) {
@@ -3525,7 +3519,7 @@ static int rev_body(int s, int stype, int prot, unsigned char *context)
                 p--;
                 i--;
             }
-            if (!s_ign_eof && (i == 5) && (strncmp(buf, "CLOSE", 5) == 0)) {
+            if (!s_ign_eof && i == 5 && HAS_PREFIX(buf, "CLOSE")) {
                 ret = 1;
                 BIO_printf(bio_err, "CONNECTION CLOSED\n");
                 goto end;

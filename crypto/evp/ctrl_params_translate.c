@@ -465,8 +465,8 @@ static int default_fixup_args(enum state state,
                         ERR_raise(ERR_LIB_EVP, ERR_R_MALLOC_FAILURE);
                         return 0;
                     }
-                    if (!BN_bn2nativepad(ctx->p2,
-                                         ctx->allocated_buf, ctx->buflen)) {
+                    if (BN_bn2nativepad(ctx->p2,
+                                         ctx->allocated_buf, ctx->buflen) < 0) {
                         OPENSSL_free(ctx->allocated_buf);
                         ctx->allocated_buf = NULL;
                         return 0;
@@ -1026,10 +1026,23 @@ static int fix_dh_nid5114(enum state state,
     if (ctx->action_type != SET)
         return 0;
 
-    if (state == PRE_CTRL_STR_TO_PARAMS) {
+    switch (state) {
+    case PRE_CTRL_TO_PARAMS:
+        ctx->p2 = (char *)ossl_ffc_named_group_get_name
+            (ossl_ffc_uid_to_dh_named_group(ctx->p1));
+        ctx->p1 = 0;
+        break;
+
+    case PRE_CTRL_STR_TO_PARAMS:
+        if (ctx->p2 == NULL)
+            return 0;
         ctx->p2 = (char *)ossl_ffc_named_group_get_name
             (ossl_ffc_uid_to_dh_named_group(atoi(ctx->p2)));
         ctx->p1 = 0;
+        break;
+
+    default:
+        break;
     }
 
     return default_fixup_args(state, translation, ctx);
@@ -1379,21 +1392,23 @@ static int fix_rsa_pss_saltlen(enum state state,
     if ((ctx->action_type == SET && state == PRE_PARAMS_TO_CTRL)
         || (ctx->action_type == GET && state == POST_CTRL_TO_PARAMS)) {
         size_t i;
+        int val;
 
         for (i = 0; i < OSSL_NELEM(str_value_map); i++) {
             if (strcmp(ctx->p2, str_value_map[i].ptr) == 0)
                 break;
         }
-        if (i == OSSL_NELEM(str_value_map)) {
-            ctx->p1 = atoi(ctx->p2);
-        } else if (state == POST_CTRL_TO_PARAMS) {
+
+        val = i == OSSL_NELEM(str_value_map) ? atoi(ctx->p2)
+                                             : (int)str_value_map[i].id;
+        if (state == POST_CTRL_TO_PARAMS) {
             /*
              * EVP_PKEY_CTRL_GET_RSA_PSS_SALTLEN weirdness explained further
              * up
              */
-            *(int *)ctx->orig_p2 = str_value_map[i].id;
+            *(int *)ctx->orig_p2 = val;
         } else {
-            ctx->p1 = (int)str_value_map[i].id;
+            ctx->p1 = val;
         }
         ctx->p2 = NULL;
     }
@@ -2741,4 +2756,3 @@ int evp_pkey_get_params_to_ctrl(const EVP_PKEY *pkey, OSSL_PARAM *params)
 {
     return evp_pkey_setget_params_to_ctrl(pkey, GET, params);
 }
-

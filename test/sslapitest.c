@@ -1337,7 +1337,7 @@ static int execute_test_ktls_sendfile(int tls_version, const char *cipher)
         goto end;
     }
 
-    if (!TEST_true(RAND_bytes_ex(libctx, buf, SENDFILE_SZ, 0)))
+    if (!TEST_int_gt(RAND_bytes_ex(libctx, buf, SENDFILE_SZ, 0), 0))
         goto end;
 
     out = BIO_new_file(tmpfilename, "wb");
@@ -6564,7 +6564,7 @@ static int get_MFL_from_client_hello(BIO *bio, int *mfl_codemfl_code)
     PACKET pkt, pkt2, pkt3;
     unsigned int MFL_code = 0, type = 0;
 
-    if (!TEST_uint_gt( len = BIO_get_mem_data( bio, (char **) &data ), 0 ) )
+    if (!TEST_uint_gt(len = BIO_get_mem_data(bio, (char **) &data), 0))
         goto end;
 
     memset(&pkt, 0, sizeof(pkt));
@@ -6572,7 +6572,7 @@ static int get_MFL_from_client_hello(BIO *bio, int *mfl_codemfl_code)
     memset(&pkt3, 0, sizeof(pkt3));
 
     if (!TEST_long_gt(len, 0)
-            || !TEST_true( PACKET_buf_init( &pkt, data, len ) )
+            || !TEST_true(PACKET_buf_init(&pkt, data, len))
                /* Skip the record header */
             || !PACKET_forward(&pkt, SSL3_RT_HEADER_LENGTH)
                /* Skip the handshake message header */
@@ -6802,7 +6802,7 @@ static int create_new_vfile(char *userid, char *password, const char *filename)
 
     row = NULL;
 
-    if (!TXT_DB_write(out, db))
+    if (TXT_DB_write(out, db) <= 0)
         goto end;
 
     ret = 1;
@@ -7994,7 +7994,7 @@ static int cert_cb(SSL *s, void *arg)
         if (!TEST_ptr(chain))
             goto out;
         if (!TEST_ptr(in = BIO_new(BIO_s_file()))
-                || !TEST_int_ge(BIO_read_filename(in, rootfile), 0)
+                || !TEST_int_gt(BIO_read_filename(in, rootfile), 0)
                 || !TEST_ptr(rootx = X509_new_ex(libctx, NULL))
                 || !TEST_ptr(PEM_read_bio_X509(in, &rootx, NULL, NULL))
                 || !TEST_true(sk_X509_push(chain, rootx)))
@@ -8002,13 +8002,13 @@ static int cert_cb(SSL *s, void *arg)
         rootx = NULL;
         BIO_free(in);
         if (!TEST_ptr(in = BIO_new(BIO_s_file()))
-                || !TEST_int_ge(BIO_read_filename(in, ecdsacert), 0)
+                || !TEST_int_gt(BIO_read_filename(in, ecdsacert), 0)
                 || !TEST_ptr(x509 = X509_new_ex(libctx, NULL))
                 || !TEST_ptr(PEM_read_bio_X509(in, &x509, NULL, NULL)))
             goto out;
         BIO_free(in);
         if (!TEST_ptr(in = BIO_new(BIO_s_file()))
-                || !TEST_int_ge(BIO_read_filename(in, ecdsakey), 0)
+                || !TEST_int_gt(BIO_read_filename(in, ecdsakey), 0)
                 || !TEST_ptr(pkey = PEM_read_bio_PrivateKey_ex(in, NULL,
                                                                NULL, NULL,
                                                                libctx, NULL)))
@@ -9030,7 +9030,7 @@ static EVP_PKEY *get_tmp_dh_params(void)
 
         pctx = EVP_PKEY_CTX_new_from_name(libctx, "DH", NULL);
         if (!TEST_ptr(pctx)
-                || !TEST_true(EVP_PKEY_fromdata_init(pctx)))
+                || !TEST_int_eq(EVP_PKEY_fromdata_init(pctx), 1))
             goto end;
 
         tmpl = OSSL_PARAM_BLD_new();
@@ -9045,8 +9045,9 @@ static EVP_PKEY *get_tmp_dh_params(void)
 
         params = OSSL_PARAM_BLD_to_param(tmpl);
         if (!TEST_ptr(params)
-                || !TEST_true(EVP_PKEY_fromdata(pctx, &dhpkey,
-                                                EVP_PKEY_KEY_PARAMETERS, params)))
+                || !TEST_int_eq(EVP_PKEY_fromdata(pctx, &dhpkey,
+                                                  EVP_PKEY_KEY_PARAMETERS,
+                                                  params), 1))
             goto end;
 
         tmp_dh_params = dhpkey;

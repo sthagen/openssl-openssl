@@ -134,13 +134,15 @@ static int kdf_pbkdf1_set_membuf(unsigned char **buffer, size_t *buflen,
                              const OSSL_PARAM *p)
 {
     OPENSSL_clear_free(*buffer, *buflen);
+    *buffer = NULL;
+    *buflen = 0;
+
     if (p->data_size == 0) {
         if ((*buffer = OPENSSL_malloc(1)) == NULL) {
             ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
             return 0;
         }
     } else if (p->data != NULL) {
-        *buffer = NULL;
         if (!OSSL_PARAM_get_octet_string(p, (void **)buffer, 0, buflen))
             return 0;
     }
@@ -185,7 +187,7 @@ static int kdf_pbkdf1_set_ctx_params(void *vctx, const OSSL_PARAM params[])
             return 0;
 
     if ((p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_SALT)) != NULL)
-        if (!kdf_pbkdf1_set_membuf(&ctx->salt, &ctx->salt_len,p))
+        if (!kdf_pbkdf1_set_membuf(&ctx->salt, &ctx->salt_len, p))
             return 0;
 
     if ((p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_ITER)) != NULL)

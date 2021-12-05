@@ -1971,7 +1971,7 @@ int s_client_main(int argc, char **argv)
 
     if (!noservername && (servername != NULL || dane_tlsa_domain == NULL)) {
         if (servername == NULL) {
-            if(host == NULL || is_dNS_name(host))
+            if (host == NULL || is_dNS_name(host))
                 servername = (host == NULL) ? "localhost" : host;
         }
         if (servername != NULL && !SSL_set_tlsext_host_name(con, servername)) {
@@ -2530,7 +2530,7 @@ int s_client_main(int argc, char **argv)
                  */
                 if (mbuf_len > 1 && mbuf[0] == '"') {
                     make_uppercase(mbuf);
-                    if (strncmp(mbuf, "\"STARTTLS\"", 10) == 0)
+                    if (HAS_PREFIX(mbuf, "\"STARTTLS\""))
                         foundit = 1;
                 }
             } while (mbuf_len > 1 && mbuf[0] == '"');
@@ -2558,7 +2558,7 @@ int s_client_main(int argc, char **argv)
              */
             strncpy(sbuf, mbuf, 2);
             make_uppercase(sbuf);
-            if (strncmp(sbuf, "OK", 2) != 0) {
+            if (!HAS_PREFIX(sbuf, "OK")) {
                 BIO_printf(bio_err, "STARTTLS not supported: %s", mbuf);
                 goto shut;
             }
@@ -2984,7 +2984,7 @@ int s_client_main(int argc, char **argv)
                 BIO_printf(bio_err, "RENEGOTIATING\n");
                 SSL_renegotiate(con);
                 cbuf_len = 0;
-            } else if (!c_ign_eof && (cbuf[0] == 'K' || cbuf[0] == 'k' )
+            } else if (!c_ign_eof && (cbuf[0] == 'K' || cbuf[0] == 'k')
                     && cmdletters) {
                 BIO_printf(bio_err, "KEYUPDATE\n");
                 SSL_key_update(con,
@@ -3196,8 +3196,9 @@ static void print_stuff(BIO *bio, SSL *s, int full)
         BIO_printf(bio, "Server public key is %d bit\n",
                    EVP_PKEY_get_bits(pktmp));
     }
-    BIO_printf(bio, "Secure Renegotiation IS%s supported\n",
-               SSL_get_secure_renegotiation_support(s) ? "" : " NOT");
+
+    ssl_print_secure_renegotiation_notes(bio, s);
+
 #ifndef OPENSSL_NO_COMP
     comp = SSL_get_current_compression(s);
     expansion = SSL_get_current_expansion(s);
@@ -3294,11 +3295,11 @@ static void print_stuff(BIO *bio, SSL *s, int full)
         BIO_printf(bio, "    Label: '%s'\n", keymatexportlabel);
         BIO_printf(bio, "    Length: %i bytes\n", keymatexportlen);
         exportedkeymat = app_malloc(keymatexportlen, "export key");
-        if (!SSL_export_keying_material(s, exportedkeymat,
+        if (SSL_export_keying_material(s, exportedkeymat,
                                         keymatexportlen,
                                         keymatexportlabel,
                                         strlen(keymatexportlabel),
-                                        NULL, 0, 0)) {
+                                        NULL, 0, 0) <= 0) {
             BIO_printf(bio, "    Error\n");
         } else {
             BIO_printf(bio, "    Keying material: ");

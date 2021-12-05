@@ -1770,6 +1770,8 @@ static int ssl_start_async_job(SSL *s, struct ssl_async_args *args,
                  (s->waitctx, ssl_async_wait_ctx_cb, s))
             return -1;
     }
+
+    s->rwstate = SSL_NOTHING;
     switch (ASYNC_start_job(&s->job, s->waitctx, &ret, func, args,
                             sizeof(struct ssl_async_args))) {
     case ASYNC_ERR:
@@ -3939,7 +3941,7 @@ const SSL_METHOD *ssl_bad_method(int ver)
 
 const char *ssl_protocol_to_string(int version)
 {
-    switch(version)
+    switch (version)
     {
     case TLS1_3_VERSION:
         return "TLSv1.3";
