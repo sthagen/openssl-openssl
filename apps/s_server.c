@@ -1648,8 +1648,7 @@ int s_server_main(int argc, char *argv[])
     }
 
     /* No extra arguments. */
-    argc = opt_num_rest();
-    if (argc != 0)
+    if (!opt_check_rest_arg(NULL))
         goto opthelp;
 
     if (!app_RAND_load())
@@ -2241,8 +2240,8 @@ int s_server_main(int argc, char *argv[])
     X509_free(s_dcert);
     EVP_PKEY_free(s_key);
     EVP_PKEY_free(s_dkey);
-    sk_X509_pop_free(s_chain, X509_free);
-    sk_X509_pop_free(s_dchain, X509_free);
+    OSSL_STACK_OF_X509_free(s_chain);
+    OSSL_STACK_OF_X509_free(s_dchain);
     OPENSSL_free(pass);
     OPENSSL_free(dpass);
     OPENSSL_free(host);
@@ -3221,7 +3220,7 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
             }
             BIO_puts(io, "</pre></BODY></HTML>\r\n\r\n");
             break;
-        } else if ((www == 2 || www == 3) && HAS_PREFIX(p, "GET /")) {
+        } else if ((www == 2 || www == 3) && CHECK_AND_SKIP_PREFIX(p, "GET /")) {
             BIO *file;
             char *e;
             static const char *text =

@@ -1841,7 +1841,7 @@ MSG_PROCESS_RETURN tls_process_server_certificate(SSL *s, PACKET *pkt)
 
  err:
     X509_free(x);
-    sk_X509_pop_free(s->session->peer_chain, X509_free);
+    OSSL_STACK_OF_X509_free(s->session->peer_chain);
     s->session->peer_chain = NULL;
     return MSG_PROCESS_ERROR;
 }
@@ -1878,7 +1878,7 @@ WORK_STATE tls_post_process_server_certificate(SSL *s, WORK_STATE wst)
      * (less clean) historic behaviour of performing validation if any flag is
      * set. The *documented* interface remains the same.
      */
-    if (s->verify_mode != SSL_VERIFY_NONE && i <= 0) {
+    if (s->verify_mode != SSL_VERIFY_NONE && i == 0) {
         SSLfatal(s, ssl_x509err2alert(s->verify_result),
                  SSL_R_CERTIFICATE_VERIFY_FAILED);
         return WORK_ERROR;

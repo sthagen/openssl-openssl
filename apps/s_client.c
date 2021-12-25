@@ -1473,8 +1473,7 @@ int s_client_main(int argc, char **argv)
     }
 
     /* Optional argument is connect string if -connect not used. */
-    argc = opt_num_rest();
-    if (argc == 1) {
+    if (opt_num_rest() == 1) {
         /* Don't allow -connect and a separate argument. */
         if (connectstr != NULL) {
             BIO_printf(bio_err,
@@ -1484,7 +1483,7 @@ int s_client_main(int argc, char **argv)
         }
         connect_type = use_inet;
         freeandcopy(&connectstr, *opt_rest());
-    } else if (argc != 0) {
+    } else if (!opt_check_rest_arg(NULL)) {
         goto opthelp;
     }
     if (!app_RAND_load())
@@ -3049,7 +3048,7 @@ int s_client_main(int argc, char **argv)
     X509_free(cert);
     sk_X509_CRL_pop_free(crls, X509_CRL_free);
     EVP_PKEY_free(key);
-    sk_X509_pop_free(chain, X509_free);
+    OSSL_STACK_OF_X509_free(chain);
     OPENSSL_free(pass);
 #ifndef OPENSSL_NO_SRP
     OPENSSL_free(srp_arg.srppassin);

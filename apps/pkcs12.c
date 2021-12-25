@@ -356,17 +356,14 @@ int pkcs12_main(int argc, char **argv)
     }
 
     /* No extra arguments. */
-    argc = opt_num_rest();
-    if (argc != 0)
+    if (!opt_check_rest_arg(NULL))
         goto opthelp;
 
     if (!app_RAND_load())
         goto end;
 
-    if (ciphername != NULL) {
-        if (!opt_cipher_any(ciphername, &enc))
-            goto opthelp;
-    }
+    if (!opt_cipher_any(ciphername, &enc))
+        goto opthelp;
     if (export_pkcs12) {
         if ((options & INFO) != 0)
             WARN_EXPORT("info");
@@ -613,7 +610,7 @@ int pkcs12_main(int argc, char **argv)
                 /* Add the remaining certs (except for duplicates) */
                 add_certs = X509_add_certs(certs, chain2, X509_ADD_FLAG_UP_REF
                                            | X509_ADD_FLAG_NO_DUP);
-                sk_X509_pop_free(chain2, X509_free);
+                OSSL_STACK_OF_X509_free(chain2);
                 if (!add_certs)
                     goto export_end;
             } else {
@@ -700,8 +697,8 @@ int pkcs12_main(int argc, char **argv)
 
         EVP_PKEY_free(key);
         EVP_MD_free(macmd);
-        sk_X509_pop_free(certs, X509_free);
-        sk_X509_pop_free(untrusted_certs, X509_free);
+        OSSL_STACK_OF_X509_free(certs);
+        OSSL_STACK_OF_X509_free(untrusted_certs);
         X509_free(ee_cert);
 
         ERR_print_errors(bio_err);

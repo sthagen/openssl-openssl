@@ -696,7 +696,7 @@ int load_cert_certs(const char *uri,
             warn_cert(uri, *pcert, 0, vpm);
         warn_certs(uri, *pcerts, 1, vpm);
     } else {
-        sk_X509_pop_free(*pcerts, X509_free);
+        OSSL_STACK_OF_X509_free(*pcerts);
         *pcerts = NULL;
     }
     return ret;
@@ -721,7 +721,7 @@ STACK_OF(X509) *load_certs_multifile(char *files, const char *pass,
         if (!X509_add_certs(result, certs,
                             X509_ADD_FLAG_UP_REF | X509_ADD_FLAG_NO_DUP))
             goto oom;
-        sk_X509_pop_free(certs, X509_free);
+        OSSL_STACK_OF_X509_free(certs);
         certs = NULL;
         files = next;
     }
@@ -730,8 +730,8 @@ STACK_OF(X509) *load_certs_multifile(char *files, const char *pass,
  oom:
     BIO_printf(bio_err, "out of memory\n");
  err:
-    sk_X509_pop_free(certs, X509_free);
-    sk_X509_pop_free(result, X509_free);
+    OSSL_STACK_OF_X509_free(certs);
+    OSSL_STACK_OF_X509_free(result);
     return NULL;
 }
 
@@ -772,7 +772,7 @@ X509_STORE *load_certstore(char *input, const char *pass, const char *desc,
             return NULL;
         }
         ok = (store = sk_X509_to_store(store, certs)) != NULL;
-        sk_X509_pop_free(certs, X509_free);
+        OSSL_STACK_OF_X509_free(certs);
         certs = NULL;
         if (!ok)
             return NULL;
@@ -794,7 +794,7 @@ int load_certs(const char *uri, int maybe_stdin, STACK_OF(X509) **certs,
                                   NULL, NULL, certs, NULL, NULL);
 
     if (!ret && was_NULL) {
-        sk_X509_pop_free(*certs, X509_free);
+        OSSL_STACK_OF_X509_free(*certs);
         *certs = NULL;
     }
     return ret;
@@ -2462,7 +2462,7 @@ static const char *tls_error_hint(void)
 }
 
 /* HTTP callback function that supports TLS connection also via HTTPS proxy */
-BIO *app_http_tls_cb(BIO *hbio, void *arg, int connect, int detail)
+BIO *app_http_tls_cb(BIO *bio, void *arg, int connect, int detail)
 {
     if (connect && detail) { /* connecting with TLS */
         APP_HTTP_TLS_INFO *info = (APP_HTTP_TLS_INFO *)arg;
@@ -2471,7 +2471,7 @@ BIO *app_http_tls_cb(BIO *hbio, void *arg, int connect, int detail)
         BIO *sbio = NULL;
 
         if ((info->use_proxy
-             && !OSSL_HTTP_proxy_connect(hbio, info->server, info->port,
+             && !OSSL_HTTP_proxy_connect(bio, info->server, info->port,
                                          NULL, NULL, /* no proxy credentials */
                                          info->timeout, bio_err, opt_getprog()))
                 || (sbio = BIO_new(BIO_f_ssl())) == NULL) {
@@ -2487,18 +2487,25 @@ BIO *app_http_tls_cb(BIO *hbio, void *arg, int connect, int detail)
         SSL_set_connect_state(ssl);
         BIO_set_ssl(sbio, ssl, BIO_CLOSE);
 
-        hbio = BIO_push(sbio, hbio);
-    } else if (!connect && !detail) { /* disconnecting after error */
-        const char *hint = tls_error_hint();
-
-        if (hint != NULL)
-            ERR_add_error_data(2, " : ", hint);
-        /*
-         * If we pop sbio and BIO_free() it this may lead to libssl double free.
-         * Rely on BIO_free_all() done by OSSL_HTTP_transfer() in http_client.c
-         */
+        bio = BIO_push(sbio, bio);
     }
-    return hbio;
+    if (!connect) {
+        const char *hint;
+        BIO *cbio;
+
+        if (!detail) { /* disconnecting after error */
+            hint = tls_error_hint();
+            if (hint != NULL)
+                ERR_add_error_data(2, " : ", hint);
+        }
+        (void)ERR_set_mark();
+        BIO_ssl_shutdown(bio);
+        cbio = BIO_pop(bio); /* connect+HTTP BIO */
+        BIO_free(bio); /* SSL BIO */
+        (void)ERR_pop_to_mark(); /* hide SSL_R_READ_BIO_NOT_SET etc. */
+        bio = cbio;
+    }
+    return bio;
 }
 
 void APP_HTTP_TLS_INFO_free(APP_HTTP_TLS_INFO *info)

@@ -366,10 +366,8 @@ int smime_main(int argc, char **argv)
         if (!opt_md(digestname, &sign_md))
             goto opthelp;
     }
-    if (ciphername != NULL) {
-        if (!opt_cipher_any(ciphername, &cipher))
+    if (!opt_cipher_any(ciphername, &cipher))
             goto opthelp;
-    }
     if (!(operation & SMIME_SIGNERS) && (skkeys != NULL || sksigners != NULL)) {
         BIO_puts(bio_err, "Multiple signers or keys not allowed\n");
         goto opthelp;
@@ -653,8 +651,8 @@ int smime_main(int argc, char **argv)
  end:
     if (ret)
         ERR_print_errors(bio_err);
-    sk_X509_pop_free(encerts, X509_free);
-    sk_X509_pop_free(other, X509_free);
+    OSSL_STACK_OF_X509_free(encerts);
+    OSSL_STACK_OF_X509_free(other);
     X509_VERIFY_PARAM_free(vpm);
     sk_OPENSSL_STRING_free(sksigners);
     sk_OPENSSL_STRING_free(skkeys);
