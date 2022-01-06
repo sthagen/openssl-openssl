@@ -174,6 +174,7 @@ static char *opt_srv_keypass = NULL;
 
 static char *opt_srv_trusted = NULL;
 static char *opt_srv_untrusted = NULL;
+static char *opt_ref_cert = NULL;
 static char *opt_rsp_cert = NULL;
 static char *opt_rsp_extracerts = NULL;
 static char *opt_rsp_capubs = NULL;
@@ -249,7 +250,7 @@ typedef enum OPTION_choice {
     OPT_SRV_REF, OPT_SRV_SECRET,
     OPT_SRV_CERT, OPT_SRV_KEY, OPT_SRV_KEYPASS,
     OPT_SRV_TRUSTED, OPT_SRV_UNTRUSTED,
-    OPT_RSP_CERT, OPT_RSP_EXTRACERTS, OPT_RSP_CAPUBS,
+    OPT_REF_CERT, OPT_RSP_CERT, OPT_RSP_EXTRACERTS, OPT_RSP_CAPUBS,
     OPT_POLL_COUNT, OPT_CHECK_AFTER,
     OPT_GRANT_IMPLICITCONF,
     OPT_PKISTATUS, OPT_FAILURE,
@@ -498,6 +499,8 @@ const OPTIONS cmp_options[] = {
      "Trusted certificates for client authentication"},
     {"srv_untrusted", OPT_SRV_UNTRUSTED, 's',
      "Intermediate certs that may be useful for verifying CMP protection"},
+    {"ref_cert", OPT_RSP_CERT, 's',
+     "Certificate to be expected for rr and any oldCertID in kur messages"},
     {"rsp_cert", OPT_RSP_CERT, 's',
      "Certificate to be returned as mock enrollment result"},
     {"rsp_extracerts", OPT_RSP_EXTRACERTS, 's',
@@ -600,7 +603,7 @@ static varref cmp_vars[] = { /* must be in same order as enumerated above! */
     {&opt_srv_ref}, {&opt_srv_secret},
     {&opt_srv_cert}, {&opt_srv_key}, {&opt_srv_keypass},
     {&opt_srv_trusted}, {&opt_srv_untrusted},
-    {&opt_rsp_cert}, {&opt_rsp_extracerts}, {&opt_rsp_capubs},
+    {&opt_ref_cert}, {&opt_rsp_cert}, {&opt_rsp_extracerts}, {&opt_rsp_capubs},
     {(char **)&opt_poll_count}, {(char **)&opt_check_after},
     {(char **)&opt_grant_implicitconf},
     {(char **)&opt_pkistatus}, {(char **)&opt_failure},
@@ -1074,6 +1077,18 @@ static OSSL_CMP_SRV_CTX *setup_srv_ctx(ENGINE *engine)
                      (add_X509_stack_fn_t)OSSL_CMP_CTX_set1_untrusted))
         goto err;
 
+    if (opt_ref_cert != NULL) {
+        X509 *cert = load_cert_pwd(opt_ref_cert, opt_keypass,
+                                   "reference cert to be expected by the mock server");
+
+        if (cert == NULL)
+            goto err;
+        if (!ossl_cmp_mock_srv_set1_refCert(srv_ctx, cert)) {
+            X509_free(cert);
+            goto err;
+        }
+        X509_free(cert);
+    }
     if (opt_rsp_cert == NULL) {
         CMP_warn("no -rsp_cert given for mock server");
     } else {
@@ -1082,7 +1097,6 @@ static OSSL_CMP_SRV_CTX *setup_srv_ctx(ENGINE *engine)
 
         if (cert == NULL)
             goto err;
-        /* from server perspective the server is the client */
         if (!ossl_cmp_mock_srv_set1_certOut(srv_ctx, cert)) {
             X509_free(cert);
             goto err;
@@ -1101,7 +1115,7 @@ static OSSL_CMP_SRV_CTX *setup_srv_ctx(ENGINE *engine)
     if (opt_grant_implicitconf)
         (void)OSSL_CMP_SRV_CTX_set_grant_implicit_confirm(srv_ctx, 1);
 
-    if (opt_failure != INT_MIN) { /* option has been set explicity */
+    if (opt_failure != INT_MIN) { /* option has been set explicitly */
         if (opt_failure < 0 || OSSL_CMP_PKIFAILUREINFO_MAX < opt_failure) {
             CMP_err1("-failure out of range, should be >= 0 and <= %d",
                      OSSL_CMP_PKIFAILUREINFO_MAX);
@@ -1926,15 +1940,18 @@ static int setup_client_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
                 goto err;
             }
         }
+
         if ((info = OPENSSL_zalloc(sizeof(*info))) == NULL)
             goto err;
         (void)OSSL_CMP_CTX_set_http_cb_arg(ctx, info);
         /* info will be freed along with CMP ctx */
         info->server = opt_server;
         info->port = server_port;
-        info->use_proxy = opt_proxy != NULL;
+        /* workaround for callback design flaw, see #17088: */
+        info->use_proxy = proxy_host != NULL;
         info->timeout = OSSL_CMP_CTX_get_option(ctx, OSSL_CMP_OPT_MSG_TIMEOUT);
         info->ssl_ctx = setup_ssl_ctx(ctx, host, engine);
+
         if (info->ssl_ctx == NULL)
             goto err;
         (void)OSSL_CMP_CTX_set_http_cb(ctx, app_http_tls_cb);
@@ -2569,6 +2586,9 @@ static int get_opts(int argc, char **argv)
             break;
         case OPT_SRV_UNTRUSTED:
             opt_srv_untrusted = opt_str();
+            break;
+        case OPT_REF_CERT:
+            opt_ref_cert = opt_str();
             break;
         case OPT_RSP_CERT:
             opt_rsp_cert = opt_str();
