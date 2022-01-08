@@ -2926,7 +2926,7 @@ static int tls_construct_cke_dhe(SSL *s, WPACKET *pkt)
     encoded_pub_len = EVP_PKEY_get1_encoded_public_key(ckey, &encoded_pub);
     if (encoded_pub_len == 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        EVP_PKEY_free(skey);
+        EVP_PKEY_free(ckey);
         return EXT_RETURN_FAIL;
     }
 
@@ -3074,7 +3074,7 @@ static int tls_construct_cke_gost(SSL *s, WPACKET *pkt)
     EVP_MD_CTX_free(ukm_hash);
     ukm_hash = NULL;
     if (EVP_PKEY_CTX_ctrl(pkey_ctx, -1, EVP_PKEY_OP_ENCRYPT,
-                          EVP_PKEY_CTRL_SET_IV, 8, shared_ukm) < 0) {
+                          EVP_PKEY_CTRL_SET_IV, 8, shared_ukm) <= 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_LIBRARY_BUG);
         goto err;
     }
@@ -3205,13 +3205,13 @@ static int tls_construct_cke_gost18(SSL *s, WPACKET *pkt)
 
     /* Reuse EVP_PKEY_CTRL_SET_IV, make choice in engine code */
     if (EVP_PKEY_CTX_ctrl(pkey_ctx, -1, EVP_PKEY_OP_ENCRYPT,
-                          EVP_PKEY_CTRL_SET_IV, 32, rnd_dgst) < 0) {
+                          EVP_PKEY_CTRL_SET_IV, 32, rnd_dgst) <= 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_LIBRARY_BUG);
         goto err;
     }
 
     if (EVP_PKEY_CTX_ctrl(pkey_ctx, -1, EVP_PKEY_OP_ENCRYPT,
-                          EVP_PKEY_CTRL_CIPHER, cipher_nid, NULL) < 0) {
+                          EVP_PKEY_CTRL_CIPHER, cipher_nid, NULL) <= 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_LIBRARY_BUG);
         goto err;
     }
