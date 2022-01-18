@@ -391,7 +391,7 @@ static int dh_validate_private(const DH *dh)
     DH_get0_key(dh, NULL, &priv_key);
     if (priv_key == NULL)
         return 0;
-    return ossl_dh_check_priv_key(dh, priv_key, &status);;
+    return ossl_dh_check_priv_key(dh, priv_key, &status);
 }
 
 static int dh_validate(const void *keydata, int selection, int checktype)
@@ -532,6 +532,7 @@ static int dh_gen_common_set_params(void *genctx, const OSSL_PARAM params[])
         const DH_NAMED_GROUP *group = NULL;
 
         if (p->data_type != OSSL_PARAM_UTF8_STRING
+            || p->data == NULL
             || (group = ossl_ffc_name_to_dh_named_group(p->data)) == NULL
             || ((gctx->group_nid =
                  ossl_ffc_named_group_get_uid(group)) == NID_undef)) {
