@@ -396,6 +396,26 @@ static int digest_update_fn(void *ctx, const unsigned char *buf, size_t buflen)
     return EVP_DigestUpdate(ctx, buf, buflen);
 }
 
+static int test_duplicate_md_ctx(EVP_TEST *t, EVP_MD_CTX *mctx)
+{
+    char dont[] = "touch";
+
+    if (!TEST_ptr(mctx))
+        return 0;
+    if (!EVP_DigestFinalXOF(mctx, (unsigned char *)dont, 0)) {
+        EVP_MD_CTX_free(mctx);
+        t->err = "DIGESTFINALXOF_ERROR";
+        return 0;
+    }
+    if (!TEST_str_eq(dont, "touch")) {
+        EVP_MD_CTX_free(mctx);
+        t->err = "DIGESTFINALXOF_ERROR";
+        return 0;
+    }
+    EVP_MD_CTX_free(mctx);
+    return 1;
+}
+
 static int digest_test_run(EVP_TEST *t)
 {
     DIGEST_DATA *expected = t->data;
@@ -407,6 +427,7 @@ static int digest_test_run(EVP_TEST *t)
     int xof = 0;
     OSSL_PARAM params[2];
 
+    printf("test %s (%d %d)\n", t->name, t->s.start, t->s.curr);
     t->err = "TEST_FAILURE";
     if (!TEST_ptr(mctx = EVP_MD_CTX_new()))
         goto err;
@@ -437,26 +458,19 @@ static int digest_test_run(EVP_TEST *t)
     xof = (EVP_MD_get_flags(expected->digest) & EVP_MD_FLAG_XOF) != 0;
     if (xof) {
         EVP_MD_CTX *mctx_cpy;
-        char dont[] = "touch";
 
         if (!TEST_ptr(mctx_cpy = EVP_MD_CTX_new())) {
             goto err;
         }
-        if (!EVP_MD_CTX_copy(mctx_cpy, mctx)) {
+        if (!TEST_true(EVP_MD_CTX_copy(mctx_cpy, mctx))) {
             EVP_MD_CTX_free(mctx_cpy);
             goto err;
-        }
-        if (!EVP_DigestFinalXOF(mctx_cpy, (unsigned char *)dont, 0)) {
-            EVP_MD_CTX_free(mctx_cpy);
-            t->err = "DIGESTFINALXOF_ERROR";
+        } else if (!test_duplicate_md_ctx(t, mctx_cpy)) {
             goto err;
         }
-        if (!TEST_str_eq(dont, "touch")) {
-            EVP_MD_CTX_free(mctx_cpy);
-            t->err = "DIGESTFINALXOF_ERROR";
+
+        if (!test_duplicate_md_ctx(t, EVP_MD_CTX_dup(mctx)))
             goto err;
-        }
-        EVP_MD_CTX_free(mctx_cpy);
 
         got_len = expected->output_len;
         if (!EVP_DigestFinalXOF(mctx, got, got_len)) {
@@ -694,7 +708,7 @@ static int cipher_test_enc(EVP_TEST *t, int enc,
     size_t in_len, out_len, donelen = 0;
     int ok = 0, tmplen, chunklen, tmpflen, i;
     EVP_CIPHER_CTX *ctx_base = NULL;
-    EVP_CIPHER_CTX *ctx = NULL;
+    EVP_CIPHER_CTX *ctx = NULL, *duped;
 
     t->err = "TEST_FAILURE";
     if (!TEST_ptr(ctx_base = EVP_CIPHER_CTX_new()))
@@ -831,6 +845,12 @@ static int cipher_test_enc(EVP_TEST *t, int enc,
     } else {
         EVP_CIPHER_CTX_free(ctx);
         ctx = ctx_base;
+    }
+    /* Likewise for dup */
+    duped = EVP_CIPHER_CTX_dup(ctx);
+    if (duped != NULL) {
+        EVP_CIPHER_CTX_free(ctx);
+        ctx = duped;
     }
     ERR_pop_to_mark();
 
