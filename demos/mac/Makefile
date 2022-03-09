@@ -5,20 +5,19 @@
 #
 # To run the demos when linked with a shared library (default):
 #
-#    LD_LIBRARY_PATH=../.. ./aesccm
-#    LD_LIBRARY_PATH=../.. ./aesgcm
+#    LD_LIBRARY_PATH=../.. ./gmac
+#    LD_LIBRARY_PATH=../.. ./poly1305
 
-CFLAGS = $(OPENSSL_INCS_LOCATION)
+CFLAGS = $(OPENSSL_INCS_LOCATION) -Wall
 LDFLAGS = $(OPENSSL_LIBS_LOCATION) -lssl -lcrypto
 
-all: aesccm aesgcm ariacbc
+all: gmac poly1305
 
-aesccm: aesccm.o
-aesgcm: aesgcm.o
-ariacbc: ariacbc.o
+gmac: gmac.o
+poly1305: poly1305.o
 
-aesccm aesgcm ariacbc:
+gmac poly1305:
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 clean:
-	$(RM) aesccm aesgcm ariacbc *.o
+	$(RM) gmac poly1305 *.o

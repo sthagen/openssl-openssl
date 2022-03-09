@@ -10,6 +10,7 @@ certs:                 Demonstration of creating certs, using OCSP
 cipher:
 aesgcm.c               Demonstration of symmetric cipher GCM mode encrypt/decrypt
 aesccm.c               Demonstration of symmetric cipher CCM mode encrypt/decrypt
+ariacbc.c              Demonstration of symmetric cipher CBC mode encrypt/decrypt
 
 cms:
 
@@ -29,6 +30,7 @@ scrypt.c               Demonstration of SCRYPT password based key derivation
 
 mac:
 gmac.c                 Demonstration of GMAC message authentication
+poly1305.c             Demonstration of Poly1305-AES message authentication
 
 pkey:
 EVP_PKEY_EC_keygen.c   Generate an EC key.
@@ -41,3 +43,5 @@ pkwrite.c              Add a password to an existing PKCS12 file.
 
 signature:
 EVP_Signature_demo.c   Compute and verify a signature from multiple buffers
+rsa_pss_direct.c       Compute and verify an RSA-PSS signature from a hash
+rsa_pss_hash.c         Compute and verify an RSA-PSS signature over a buffer
