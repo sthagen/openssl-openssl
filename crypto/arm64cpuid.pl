@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2022 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -103,6 +103,22 @@ _armv8_eor3_probe:
 	.inst	0xce010800	// eor3	v0.16b, v0.16b, v1.16b, v2.16b
 	ret
 .size	_armv8_eor3_probe,.-_armv8_eor3_probe
+
+.globl	_armv8_sve_probe
+.type	_armv8_sve_probe,%function
+_armv8_sve_probe:
+	AARCH64_VALID_CALL_TARGET
+	.inst	0x04a03000	// eor z0.d,z0.d,z0.d
+	ret
+.size	_armv8_sve_probe,.-_armv8_sve_probe
+
+.globl	_armv8_sve2_probe
+.type	_armv8_sve2_probe,%function
+_armv8_sve2_probe:
+	AARCH64_VALID_CALL_TARGET
+	.inst	0x04e03400	// xar z0.d,z0.d,z0.d
+	ret
+.size	_armv8_sve2_probe,.-_armv8_sve2_probe
 
 .globl	_armv8_cpuid_probe
 .type	_armv8_cpuid_probe,%function
