@@ -310,6 +310,11 @@ static int cb_server_alpn(SSL *s, const unsigned char **out,
      * verify_alpn.
      */
     alpn_selected = OPENSSL_malloc(*outlen);
+    if (alpn_selected == NULL) {
+        fprintf(stderr, "failed to allocate memory\n");
+        OPENSSL_free(protos);
+        abort();
+    }
     memcpy(alpn_selected, *out, *outlen);
     *out = alpn_selected;
 
@@ -1741,6 +1746,8 @@ int main(int argc, char *argv[])
         /* Use a fixed key so that we can decrypt the ticket. */
         size = SSL_CTX_set_tlsext_ticket_keys(s_ctx, NULL, 0);
         keys = OPENSSL_zalloc(size);
+        if (keys == NULL)
+            goto end;
         SSL_CTX_set_tlsext_ticket_keys(s_ctx, keys, size);
         OPENSSL_free(keys);
     }
