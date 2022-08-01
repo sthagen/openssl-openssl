@@ -119,10 +119,22 @@ size_t ssl3_pending(const SSL *s)
     if (sc->rlayer.rstate == SSL_ST_READ_BODY)
         return 0;
 
+    /* Take into account DTLS buffered app data */
+    if (SSL_CONNECTION_IS_DTLS(sc)) {
+        DTLS1_RECORD_DATA *rdata;
+        pitem *item, *iter;
+
+        iter = pqueue_iterator(sc->rlayer.d->buffered_app_data.q);
+        while ((item = pqueue_next(&iter)) != NULL) {
+            rdata = item->data;
+            num += rdata->rrec.length;
+        }
+    }
+
     for (i = 0; i < RECORD_LAYER_get_numrpipes(&sc->rlayer); i++) {
         if (SSL3_RECORD_get_type(&sc->rlayer.rrec[i])
             != SSL3_RT_APPLICATION_DATA)
-            return 0;
+            return num;
         num += SSL3_RECORD_get_length(&sc->rlayer.rrec[i]);
     }
 
@@ -862,6 +874,10 @@ int do_ssl3_write(SSL_CONNECTION *s, int type, const unsigned char *buf,
         int mode = EVP_CIPHER_CTX_get_mode(s->enc_write_ctx);
         if (mode == EVP_CIPH_CBC_MODE) {
             eivlen = EVP_CIPHER_CTX_get_iv_length(s->enc_write_ctx);
+            if (eivlen < 0) {
+                SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_LIBRARY_BUG);
+                return -1;
+	    }
             if (eivlen <= 1)
                 eivlen = 0;
         } else if (mode == EVP_CIPH_GCM_MODE) {
