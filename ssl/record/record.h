@@ -8,6 +8,10 @@
  */
 
 typedef struct ssl_connection_st SSL_CONNECTION;
+typedef struct ssl3_buffer_st SSL3_BUFFER;
+
+#include <openssl/core_dispatch.h>
+#include "recordmethod.h"
 
 /*****************************************************************************
  *                                                                           *
@@ -16,7 +20,7 @@ typedef struct ssl_connection_st SSL_CONNECTION;
  *                                                                           *
  *****************************************************************************/
 
-typedef struct ssl3_buffer_st {
+struct ssl3_buffer_st {
     /* at least SSL3_RT_MAX_PACKET_SIZE bytes, see ssl3_setup_buffers() */
     unsigned char *buf;
     /* default buffer size (or 0 if no default set) */
@@ -29,7 +33,7 @@ typedef struct ssl3_buffer_st {
     size_t left;
     /* 'buf' is from application for KTLS */
     int app_buffer;
-} SSL3_BUFFER;
+};
 
 #define SEQ_NUM_SIZE                            8
 
@@ -61,38 +65,37 @@ typedef struct ssl3_record_st {
     /* only used with decompression - malloc()ed */
     /* r */
     unsigned char *comp;
-    /* Whether the data from this record has already been read or not */
-    /* r */
-    unsigned int read;
     /* epoch number, needed by DTLS1 */
     /* r */
-    unsigned long epoch;
+    uint16_t epoch;
     /* sequence number, needed by DTLS1 */
     /* r */
     unsigned char seq_num[SEQ_NUM_SIZE];
 } SSL3_RECORD;
 
-typedef struct dtls1_bitmap_st {
-    /* Track 32 packets on 32-bit systems and 64 - on 64-bit systems */
-    unsigned long map;
-    /* Max record number seen so far, 64-bit value in big-endian encoding */
-    unsigned char max_seq_num[SEQ_NUM_SIZE];
-} DTLS1_BITMAP;
-
-typedef struct record_pqueue_st {
-    unsigned short epoch;
-    struct pqueue_st *q;
-} record_pqueue;
-
-typedef struct dtls1_record_data_st {
-    unsigned char *packet;
-    size_t packet_length;
-    SSL3_BUFFER rbuf;
-    SSL3_RECORD rrec;
+typedef struct tls_record_st {
+    void *rechandle;
+    int version;
+    int type;
+    /* The data buffer containing bytes from the record */
+    unsigned char *data;
+    /* Number of remaining to be read in the data buffer */
+    size_t length;
+    /* Offset into the data buffer where to start reading */
+    size_t off;
+    /* epoch number. DTLS only */
+    uint16_t epoch;
+    /* sequence number. DTLS only */
+    unsigned char seq_num[SEQ_NUM_SIZE];
 #ifndef OPENSSL_NO_SCTP
     struct bio_dgram_sctp_rcvinfo recordinfo;
 #endif
-} DTLS1_RECORD_DATA;
+} TLS_RECORD;
+
+typedef struct record_pqueue_st {
+    uint16_t epoch;
+    struct pqueue_st *q;
+} record_pqueue;
 
 typedef struct dtls_record_layer_st {
     /*
@@ -100,15 +103,9 @@ typedef struct dtls_record_layer_st {
      * undefined, and starts at zero once the initial handshake is
      * completed
      */
-    unsigned short r_epoch;
-    unsigned short w_epoch;
-    /* records being received in the current epoch */
-    DTLS1_BITMAP bitmap;
-    /* renegotiation starts a new set of sequence numbers */
-    DTLS1_BITMAP next_bitmap;
-    /* Received handshake records (processed and unprocessed) */
-    record_pqueue unprocessed_rcds;
-    record_pqueue processed_rcds;
+    uint16_t r_epoch;
+    uint16_t w_epoch;
+
     /*
      * Buffered application records. Only for records between CCS and
      * Finished to prevent either protocol violation or unnecessary message
@@ -131,32 +128,29 @@ typedef struct dtls_record_layer_st {
 typedef struct record_layer_st {
     /* The parent SSL_CONNECTION structure */
     SSL_CONNECTION *s;
+
+    /* Method to use for the read record layer*/
+    const OSSL_RECORD_METHOD *rrlmethod;
+    /* The read record layer object itself */
+    OSSL_RECORD_LAYER *rrl;
+    /* BIO to store data destined for the next read record layer epoch */
+    BIO *rrlnext;
+    /* Default read buffer length to be passed to the record layer */
+    size_t default_read_buf_len;
+
     /*
      * Read as many input bytes as possible (for
      * non-blocking reads)
      */
     int read_ahead;
-    /* where we are when reading */
-    int rstate;
-    /* How many pipelines can be used to read data */
-    size_t numrpipes;
     /* How many pipelines can be used to write data */
     size_t numwpipes;
-    /* read IO goes into here */
-    SSL3_BUFFER rbuf;
     /* write IO goes into here */
     SSL3_BUFFER wbuf[SSL_MAX_PIPELINES];
-    /* each decoded record goes in here */
-    SSL3_RECORD rrec[SSL_MAX_PIPELINES];
-    /* used internally to point at a raw packet */
-    unsigned char *packet;
-    size_t packet_length;
     /* number of bytes sent so far */
     size_t wnum;
     unsigned char handshake_fragment[4];
     size_t handshake_fragment_len;
-    /* The number of consecutive empty records we have received */
-    size_t empty_record_count;
     /* partial write - check the numbers match */
     /* number bytes written */
     size_t wpend_tot;
@@ -164,13 +158,19 @@ typedef struct record_layer_st {
     /* number of bytes submitted */
     size_t wpend_ret;
     const unsigned char *wpend_buf;
-    unsigned char read_sequence[SEQ_NUM_SIZE];
+
     unsigned char write_sequence[SEQ_NUM_SIZE];
-    /* Set to true if this is the first record in a connection */
-    unsigned int is_first_record;
     /* Count of the number of consecutive warning alerts received */
     unsigned int alert_count;
     DTLS_RECORD_LAYER *d;
+
+    /* How many records we have read from the record layer */
+    size_t num_recs;
+    /* The next record from the record layer that we need to process */
+    size_t curr_rec;
+    /* Record layer data to be processed */
+    TLS_RECORD tlsrecs[SSL_MAX_PIPELINES];
+
 } RECORD_LAYER;
 
 /*****************************************************************************
@@ -191,13 +191,8 @@ typedef struct ssl_mac_buf_st SSL_MAC_BUF;
 #define RECORD_LAYER_set_read_ahead(rl, ra)     ((rl)->read_ahead = (ra))
 #define RECORD_LAYER_get_read_ahead(rl)         ((rl)->read_ahead)
 #define RECORD_LAYER_get_packet(rl)             ((rl)->packet)
-#define RECORD_LAYER_get_packet_length(rl)      ((rl)->packet_length)
 #define RECORD_LAYER_add_packet_length(rl, inc) ((rl)->packet_length += (inc))
 #define DTLS_RECORD_LAYER_get_w_epoch(rl)       ((rl)->d->w_epoch)
-#define DTLS_RECORD_LAYER_get_processed_rcds(rl) \
-                                                ((rl)->d->processed_rcds)
-#define DTLS_RECORD_LAYER_get_unprocessed_rcds(rl) \
-                                                ((rl)->d->unprocessed_rcds)
 #define RECORD_LAYER_get_rbuf(rl)               (&(rl)->rbuf)
 #define RECORD_LAYER_get_wbuf(rl)               ((rl)->wbuf)
 
@@ -207,10 +202,8 @@ void RECORD_LAYER_release(RECORD_LAYER *rl);
 int RECORD_LAYER_read_pending(const RECORD_LAYER *rl);
 int RECORD_LAYER_processed_read_pending(const RECORD_LAYER *rl);
 int RECORD_LAYER_write_pending(const RECORD_LAYER *rl);
-void RECORD_LAYER_reset_read_sequence(RECORD_LAYER *rl);
 void RECORD_LAYER_reset_write_sequence(RECORD_LAYER *rl);
 int RECORD_LAYER_is_sslv2_record(RECORD_LAYER *rl);
-size_t RECORD_LAYER_get_rrec_length(RECORD_LAYER *rl);
 __owur size_t ssl3_pending(const SSL *s);
 __owur int ssl3_write_bytes(SSL *s, int type, const void *buf, size_t len,
                             size_t *written);
@@ -230,8 +223,8 @@ __owur int ssl3_write_pending(SSL_CONNECTION *s, int type,
                               size_t *written);
 __owur int tls1_enc(SSL_CONNECTION *s, SSL3_RECORD *recs, size_t n_recs,
                     int sending, SSL_MAC_BUF *mac, size_t macsize);
-__owur int tls1_mac(SSL_CONNECTION *s, SSL3_RECORD *rec, unsigned char *md,
-                    int send);
+__owur int tls1_mac_old(SSL_CONNECTION *s, SSL3_RECORD *rec, unsigned char *md,
+                        int send);
 __owur int tls13_enc(SSL_CONNECTION *s, SSL3_RECORD *recs, size_t n_recs,
                      int send, SSL_MAC_BUF *mac, size_t macsize);
 int DTLS_RECORD_LAYER_new(RECORD_LAYER *rl);
@@ -248,5 +241,29 @@ __owur int dtls1_write_bytes(SSL_CONNECTION *s, int type, const void *buf,
 int do_dtls1_write(SSL_CONNECTION *s, int type, const unsigned char *buf,
                    size_t len, int create_empty_fragment, size_t *written);
 void dtls1_reset_seq_numbers(SSL_CONNECTION *s, int rw);
-int dtls_buffer_listen_record(SSL_CONNECTION *s, size_t len, unsigned char *seq,
-                              size_t off);
+void ssl_release_record(SSL_CONNECTION *s, TLS_RECORD *rr);
+
+# define HANDLE_RLAYER_RETURN(s, ret) \
+    ossl_tls_handle_rlayer_return(s, ret, OPENSSL_FILE, OPENSSL_LINE)
+
+int ossl_tls_handle_rlayer_return(SSL_CONNECTION *s, int ret, char *file,
+                                  int line);
+
+int ssl_set_new_record_layer(SSL_CONNECTION *s, int version, int direction,
+                             int level, unsigned char *key, size_t keylen,
+                             unsigned char *iv,  size_t ivlen,
+                             unsigned char *mackey, size_t mackeylen,
+                             const EVP_CIPHER *ciph, size_t taglen,
+                             int mactype, const EVP_MD *md,
+                             const SSL_COMP *comp);
+
+# define OSSL_FUNC_RLAYER_SKIP_EARLY_DATA        1
+OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, rlayer_skip_early_data, (void *cbarg))
+# define OSSL_FUNC_RLAYER_MSG_CALLBACK           2
+OSSL_CORE_MAKE_FUNC(void, rlayer_msg_callback, (int write_p, int version,
+                                                int content_type,
+                                                const void *buf, size_t len,
+                                                void *cbarg))
+# define OSSL_FUNC_RLAYER_SECURITY               3
+OSSL_CORE_MAKE_FUNC(int, rlayer_security, (void *cbarg, int op, int bits,
+                                           int nid, void *other))

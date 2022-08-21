@@ -14,6 +14,7 @@
 #include <openssl/evp.h>
 #include <openssl/buffer.h>
 #include <openssl/rand.h>
+#include <openssl/core_names.h>
 #include "record_local.h"
 #include "internal/packet.h"
 
@@ -29,22 +30,10 @@
 void RECORD_LAYER_init(RECORD_LAYER *rl, SSL_CONNECTION *s)
 {
     rl->s = s;
-    RECORD_LAYER_set_first_record(&s->rlayer);
-    SSL3_RECORD_clear(rl->rrec, SSL_MAX_PIPELINES);
 }
 
 void RECORD_LAYER_clear(RECORD_LAYER *rl)
 {
-    rl->rstate = SSL_ST_READ_HEADER;
-
-    /*
-     * Do I need to clear read_ahead? As far as I can tell read_ahead did not
-     * previously get reset by SSL_clear...so I'll keep it that way..but is
-     * that right?
-     */
-
-    rl->packet = NULL;
-    rl->packet_length = 0;
     rl->wnum = 0;
     memset(rl->handshake_fragment, 0, sizeof(rl->handshake_fragment));
     rl->handshake_fragment_len = 0;
@@ -53,13 +42,15 @@ void RECORD_LAYER_clear(RECORD_LAYER *rl)
     rl->wpend_ret = 0;
     rl->wpend_buf = NULL;
 
-    SSL3_BUFFER_clear(&rl->rbuf);
     ssl3_release_write_buffer(rl->s);
-    rl->numrpipes = 0;
-    SSL3_RECORD_clear(rl->rrec, SSL_MAX_PIPELINES);
 
-    RECORD_LAYER_reset_read_sequence(rl);
     RECORD_LAYER_reset_write_sequence(rl);
+
+    if (rl->rrlmethod != NULL)
+        rl->rrlmethod->free(rl->rrl); /* Ignore return value */
+    BIO_free(rl->rrlnext);
+    rl->rrlmethod = NULL;
+    rl->rrlnext = NULL;
 
     if (rl->d)
         DTLS_RECORD_LAYER_clear(rl);
@@ -67,40 +58,27 @@ void RECORD_LAYER_clear(RECORD_LAYER *rl)
 
 void RECORD_LAYER_release(RECORD_LAYER *rl)
 {
-    if (SSL3_BUFFER_is_initialised(&rl->rbuf))
-        ssl3_release_read_buffer(rl->s);
     if (rl->numwpipes > 0)
         ssl3_release_write_buffer(rl->s);
-    SSL3_RECORD_release(rl->rrec, SSL_MAX_PIPELINES);
 }
 
 /* Checks if we have unprocessed read ahead data pending */
 int RECORD_LAYER_read_pending(const RECORD_LAYER *rl)
 {
-    return SSL3_BUFFER_get_left(&rl->rbuf) != 0;
+    return rl->rrlmethod->unprocessed_read_pending(rl->rrl);
 }
 
 /* Checks if we have decrypted unread record data pending */
 int RECORD_LAYER_processed_read_pending(const RECORD_LAYER *rl)
 {
-    size_t curr_rec = 0, num_recs = RECORD_LAYER_get_numrpipes(rl);
-    const SSL3_RECORD *rr = rl->rrec;
-
-    while (curr_rec < num_recs && SSL3_RECORD_is_read(&rr[curr_rec]))
-        curr_rec++;
-
-    return curr_rec < num_recs;
+    return (rl->curr_rec < rl->num_recs)
+           || rl->rrlmethod->processed_read_pending(rl->rrl);
 }
 
 int RECORD_LAYER_write_pending(const RECORD_LAYER *rl)
 {
     return (rl->numwpipes > 0)
         && SSL3_BUFFER_get_left(&rl->wbuf[rl->numwpipes - 1]) != 0;
-}
-
-void RECORD_LAYER_reset_read_sequence(RECORD_LAYER *rl)
-{
-    memset(rl->read_sequence, 0, sizeof(rl->read_sequence));
 }
 
 void RECORD_LAYER_reset_write_sequence(RECORD_LAYER *rl)
@@ -116,27 +94,24 @@ size_t ssl3_pending(const SSL *s)
     if (sc == NULL)
         return 0;
 
-    if (sc->rlayer.rstate == SSL_ST_READ_BODY)
-        return 0;
-
-    /* Take into account DTLS buffered app data */
     if (SSL_CONNECTION_IS_DTLS(sc)) {
-        DTLS1_RECORD_DATA *rdata;
+        TLS_RECORD *rdata;
         pitem *item, *iter;
 
         iter = pqueue_iterator(sc->rlayer.d->buffered_app_data.q);
         while ((item = pqueue_next(&iter)) != NULL) {
             rdata = item->data;
-            num += rdata->rrec.length;
+            num += rdata->length;
         }
     }
 
-    for (i = 0; i < RECORD_LAYER_get_numrpipes(&sc->rlayer); i++) {
-        if (SSL3_RECORD_get_type(&sc->rlayer.rrec[i])
-            != SSL3_RT_APPLICATION_DATA)
+    for (i = 0; i < sc->rlayer.num_recs; i++) {
+        if (sc->rlayer.tlsrecs[i].type != SSL3_RT_APPLICATION_DATA)
             return num;
-        num += SSL3_RECORD_get_length(&sc->rlayer.rrec[i]);
+        num += sc->rlayer.tlsrecs[i].length;
     }
+
+    num += sc->rlayer.rrlmethod->app_data_pending(sc->rlayer.rrl);
 
     return num;
 }
@@ -152,227 +127,39 @@ void SSL_set_default_read_buffer_len(SSL *s, size_t len)
 
     if (sc == NULL)
         return;
-
-    SSL3_BUFFER_set_default_len(RECORD_LAYER_get_rbuf(&sc->rlayer), len);
+    sc->rlayer.default_read_buf_len = len;
 }
 
 const char *SSL_rstate_string_long(const SSL *s)
 {
     const SSL_CONNECTION *sc = SSL_CONNECTION_FROM_CONST_SSL(s);
+    const char *lng;
 
     if (sc == NULL)
         return NULL;
 
-    switch (sc->rlayer.rstate) {
-    case SSL_ST_READ_HEADER:
-        return "read header";
-    case SSL_ST_READ_BODY:
-        return "read body";
-    case SSL_ST_READ_DONE:
-        return "read done";
-    default:
+    if (sc->rlayer.rrlmethod == NULL || sc->rlayer.rrl == NULL)
         return "unknown";
-    }
+
+    sc->rlayer.rrlmethod->get_state(sc->rlayer.rrl, NULL, &lng);
+
+    return lng;
 }
 
 const char *SSL_rstate_string(const SSL *s)
 {
     const SSL_CONNECTION *sc = SSL_CONNECTION_FROM_CONST_SSL(s);
+    const char *shrt;
 
     if (sc == NULL)
         return NULL;
 
-    switch (sc->rlayer.rstate) {
-    case SSL_ST_READ_HEADER:
-        return "RH";
-    case SSL_ST_READ_BODY:
-        return "RB";
-    case SSL_ST_READ_DONE:
-        return "RD";
-    default:
+    if (sc->rlayer.rrlmethod == NULL || sc->rlayer.rrl == NULL)
         return "unknown";
-    }
-}
 
-/*
- * Return values are as per SSL_read()
- */
-int ssl3_read_n(SSL_CONNECTION *s, size_t n, size_t max, int extend,
-                int clearold, size_t *readbytes)
-{
-    /*
-     * If extend == 0, obtain new n-byte packet; if extend == 1, increase
-     * packet by another n bytes. The packet will be in the sub-array of
-     * s->rlayer.rbuf.buf specified by s->rlayer.packet and
-     * s->rlayer.packet_length. (If s->rlayer.read_ahead is set, 'max' bytes may
-     * be stored in rbuf [plus s->rlayer.packet_length bytes if extend == 1].)
-     * if clearold == 1, move the packet to the start of the buffer; if
-     * clearold == 0 then leave any old packets where they were
-     */
-    size_t len, left, align = 0;
-    unsigned char *pkt;
-    SSL3_BUFFER *rb;
+    sc->rlayer.rrlmethod->get_state(sc->rlayer.rrl, &shrt, NULL);
 
-    if (n == 0)
-        return 0;
-
-    rb = &s->rlayer.rbuf;
-    if (rb->buf == NULL)
-        if (!ssl3_setup_read_buffer(s)) {
-            /* SSLfatal() already called */
-            return -1;
-        }
-
-    left = rb->left;
-#if defined(SSL3_ALIGN_PAYLOAD) && SSL3_ALIGN_PAYLOAD!=0
-    align = (size_t)rb->buf + SSL3_RT_HEADER_LENGTH;
-    align = SSL3_ALIGN_PAYLOAD - 1 - ((align - 1) % SSL3_ALIGN_PAYLOAD);
-#endif
-
-    if (!extend) {
-        /* start with empty packet ... */
-        if (left == 0)
-            rb->offset = align;
-        else if (align != 0 && left >= SSL3_RT_HEADER_LENGTH) {
-            /*
-             * check if next packet length is large enough to justify payload
-             * alignment...
-             */
-            pkt = rb->buf + rb->offset;
-            if (pkt[0] == SSL3_RT_APPLICATION_DATA
-                && (pkt[3] << 8 | pkt[4]) >= 128) {
-                /*
-                 * Note that even if packet is corrupted and its length field
-                 * is insane, we can only be led to wrong decision about
-                 * whether memmove will occur or not. Header values has no
-                 * effect on memmove arguments and therefore no buffer
-                 * overrun can be triggered.
-                 */
-                memmove(rb->buf + align, pkt, left);
-                rb->offset = align;
-            }
-        }
-        s->rlayer.packet = rb->buf + rb->offset;
-        s->rlayer.packet_length = 0;
-        /* ... now we can act as if 'extend' was set */
-    }
-
-    len = s->rlayer.packet_length;
-    pkt = rb->buf + align;
-    /*
-     * Move any available bytes to front of buffer: 'len' bytes already
-     * pointed to by 'packet', 'left' extra ones at the end
-     */
-    if (s->rlayer.packet != pkt && clearold == 1) {
-        memmove(pkt, s->rlayer.packet, len + left);
-        s->rlayer.packet = pkt;
-        rb->offset = len + align;
-    }
-
-    /*
-     * For DTLS/UDP reads should not span multiple packets because the read
-     * operation returns the whole packet at once (as long as it fits into
-     * the buffer).
-     */
-    if (SSL_CONNECTION_IS_DTLS(s)) {
-        if (left == 0 && extend)
-            return 0;
-        if (left > 0 && n > left)
-            n = left;
-    }
-
-    /* if there is enough in the buffer from a previous read, take some */
-    if (left >= n) {
-        s->rlayer.packet_length += n;
-        rb->left = left - n;
-        rb->offset += n;
-        *readbytes = n;
-        return 1;
-    }
-
-    /* else we need to read more data */
-
-    if (n > rb->len - rb->offset) {
-        /* does not happen */
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return -1;
-    }
-
-    /*
-     * Ktls always reads full records.
-     * Also, we always act like read_ahead is set for DTLS.
-     */
-    if (!BIO_get_ktls_recv(s->rbio) && !s->rlayer.read_ahead
-        && !SSL_CONNECTION_IS_DTLS(s)) {
-        /* ignore max parameter */
-        max = n;
-    } else {
-        if (max < n)
-            max = n;
-        if (max > rb->len - rb->offset)
-            max = rb->len - rb->offset;
-    }
-
-    while (left < n) {
-        size_t bioread = 0;
-        int ret;
-
-        /*
-         * Now we have len+left bytes at the front of s->s3.rbuf.buf and
-         * need to read in more until we have len+n (up to len+max if
-         * possible)
-         */
-
-        clear_sys_error();
-        if (s->rbio != NULL) {
-            s->rwstate = SSL_READING;
-            ret = BIO_read(s->rbio, pkt + len + left, max - left);
-            if (ret >= 0)
-                bioread = ret;
-            if (ret <= 0
-                    && !BIO_should_retry(s->rbio)
-                    && BIO_eof(s->rbio)) {
-                if (s->options & SSL_OP_IGNORE_UNEXPECTED_EOF) {
-                    SSL_set_shutdown(SSL_CONNECTION_GET_SSL(s),
-                                     SSL_RECEIVED_SHUTDOWN);
-                    s->s3.warn_alert = SSL_AD_CLOSE_NOTIFY;
-                } else {
-                    SSLfatal(s, SSL_AD_DECODE_ERROR,
-                             SSL_R_UNEXPECTED_EOF_WHILE_READING);
-                }
-            }
-        } else {
-            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_READ_BIO_NOT_SET);
-            ret = -1;
-        }
-
-        if (ret <= 0) {
-            rb->left = left;
-            if ((s->mode & SSL_MODE_RELEASE_BUFFERS) != 0
-                && !SSL_CONNECTION_IS_DTLS(s))
-                if (len + left == 0)
-                    ssl3_release_read_buffer(s);
-            return ret;
-        }
-        left += bioread;
-        /*
-         * reads should *never* span multiple packets for DTLS because the
-         * underlying transport protocol is message oriented as opposed to
-         * byte oriented as in the TLS case.
-         */
-        if (SSL_CONNECTION_IS_DTLS(s)) {
-            if (n > left)
-                n = left;       /* makes the while condition false */
-        }
-    }
-
-    /* done reading, now the book-keeping */
-    rb->offset += n;
-    rb->left = left - n;
-    s->rlayer.packet_length += n;
-    s->rwstate = SSL_NOTHING;
-    *readbytes = n;
-    return 1;
+    return shrt;
 }
 
 /*
@@ -1279,6 +1066,68 @@ int ssl3_write_pending(SSL_CONNECTION *s, int type, const unsigned char *buf,
     }
 }
 
+int ossl_tls_handle_rlayer_return(SSL_CONNECTION *s, int ret, char *file,
+                                  int line)
+{
+    SSL *ssl = SSL_CONNECTION_GET_SSL(s);
+
+    if (ret == OSSL_RECORD_RETURN_RETRY) {
+        s->rwstate = SSL_READING;
+        ret = -1;
+    } else {
+        s->rwstate = SSL_NOTHING;
+        if (ret == OSSL_RECORD_RETURN_EOF) {
+            if (s->options & SSL_OP_IGNORE_UNEXPECTED_EOF) {
+                SSL_set_shutdown(ssl, SSL_RECEIVED_SHUTDOWN);
+                s->s3.warn_alert = SSL_AD_CLOSE_NOTIFY;
+            } else {
+                ERR_new();
+                ERR_set_debug(file, line, 0);
+                ossl_statem_fatal(s, SSL_AD_DECODE_ERROR,
+                                  SSL_R_UNEXPECTED_EOF_WHILE_READING, NULL);
+            }
+        } else if (ret == OSSL_RECORD_RETURN_FATAL) {
+            int al = s->rlayer.rrlmethod->get_alert_code(s->rlayer.rrl);
+
+            if (al != SSL_AD_NO_ALERT) {
+                ERR_new();
+                ERR_set_debug(file, line, 0);
+                ossl_statem_fatal(s, al, SSL_R_RECORD_LAYER_FAILURE, NULL);
+            }
+            /*
+             * else some failure but there is no alert code. We don't log an
+             * error for this. The record layer should have logged an error
+             * already or, if not, its due to some sys call error which will be
+             * reported via SSL_ERROR_SYSCALL and errno.
+             */
+        }
+        /*
+         * The record layer distinguishes the cases of EOF, non-fatal
+         * err and retry. Upper layers do not.
+         * If we got a retry or success then *ret is already correct,
+         * otherwise we need to convert the return value.
+         */
+        if (ret == OSSL_RECORD_RETURN_NON_FATAL_ERR || ret == OSSL_RECORD_RETURN_EOF)
+            ret = 0;
+        else if (ret < OSSL_RECORD_RETURN_NON_FATAL_ERR)
+            ret = -1;
+    }
+
+    return ret;
+}
+
+void ssl_release_record(SSL_CONNECTION *s, TLS_RECORD *rr)
+{
+    if (rr->rechandle != NULL) {
+        /* The record layer allocated the buffers for this record */
+        s->rlayer.rrlmethod->release_record(s->rlayer.rrl, rr->rechandle);
+    } else {
+        /* We allocated the buffers for this record (only happens with DTLS) */
+        OPENSSL_free(rr->data);
+    }
+    s->rlayer.curr_rec++;
+}
+
 /*-
  * Return up to 'len' payload bytes received in 'type' records.
  * 'type' is one of the following:
@@ -1312,29 +1161,18 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
                     size_t len, int peek, size_t *readbytes)
 {
     int i, j, ret;
-    size_t n, curr_rec, num_recs, totalbytes;
-    SSL3_RECORD *rr;
-    SSL3_BUFFER *rbuf;
+    size_t n, curr_rec, totalbytes;
+    TLS_RECORD *rr;
     void (*cb) (const SSL *ssl, int type2, int val) = NULL;
     int is_tls13;
     SSL_CONNECTION *s = SSL_CONNECTION_FROM_SSL_ONLY(ssl);
 
     is_tls13 = SSL_CONNECTION_IS_TLS13(s);
 
-    rbuf = &s->rlayer.rbuf;
-
-    if (!SSL3_BUFFER_is_initialised(rbuf)) {
-        /* Not initialized yet */
-        if (!ssl3_setup_read_buffer(s)) {
-            /* SSLfatal() already called */
-            return -1;
-        }
-    }
-
-    if ((type && (type != SSL3_RT_APPLICATION_DATA)
-         && (type != SSL3_RT_HANDSHAKE)) || (peek
-                                             && (type !=
-                                                 SSL3_RT_APPLICATION_DATA))) {
+    if ((type != 0
+            && (type != SSL3_RT_APPLICATION_DATA)
+            && (type != SSL3_RT_HANDSHAKE))
+        || (peek && (type != SSL3_RT_APPLICATION_DATA))) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return -1;
     }
@@ -1388,38 +1226,31 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
      * rr[i].off,     - offset into 'data' for next read
      * rr[i].length,  - number of bytes.
      */
-    rr = s->rlayer.rrec;
-    num_recs = RECORD_LAYER_get_numrpipes(&s->rlayer);
+    /* get new records if necessary */
+    if (s->rlayer.curr_rec >= s->rlayer.num_recs) {
+        s->rlayer.curr_rec = s->rlayer.num_recs = 0;
+        do {
+            rr = &s->rlayer.tlsrecs[s->rlayer.num_recs];
 
-    do {
-        /* get new records if necessary */
-        if (num_recs == 0) {
-            ret = ssl3_get_record(s);
+            ret = HANDLE_RLAYER_RETURN(s,
+                    s->rlayer.rrlmethod->read_record(s->rlayer.rrl,
+                                                     &rr->rechandle,
+                                                     &rr->version, &rr->type,
+                                                     &rr->data, &rr->length,
+                                                     NULL, NULL));
             if (ret <= 0) {
                 /* SSLfatal() already called if appropriate */
                 return ret;
             }
-            num_recs = RECORD_LAYER_get_numrpipes(&s->rlayer);
-            if (num_recs == 0) {
-                /* Shouldn't happen */
-                SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-                return -1;
-            }
-        }
-        /* Skip over any records we have already read */
-        for (curr_rec = 0;
-             curr_rec < num_recs && SSL3_RECORD_is_read(&rr[curr_rec]);
-             curr_rec++) ;
-        if (curr_rec == num_recs) {
-            RECORD_LAYER_set_numrpipes(&s->rlayer, 0);
-            num_recs = 0;
-            curr_rec = 0;
-        }
-    } while (num_recs == 0);
-    rr = &rr[curr_rec];
+            rr->off = 0;
+            s->rlayer.num_recs++;
+        } while (s->rlayer.rrlmethod->processed_read_pending(s->rlayer.rrl)
+                 && s->rlayer.num_recs < SSL_MAX_PIPELINES);
+    }
+    rr = &s->rlayer.tlsrecs[s->rlayer.curr_rec];
 
     if (s->rlayer.handshake_fragment_len > 0
-            && SSL3_RECORD_get_type(rr) != SSL3_RT_HANDSHAKE
+            && rr->type != SSL3_RT_HANDSHAKE
             && SSL_CONNECTION_IS_TLS13(s)) {
         SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE,
                  SSL_R_MIXED_HANDSHAKE_AND_NON_HANDSHAKE_DATA);
@@ -1430,15 +1261,14 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
      * Reset the count of consecutive warning alerts if we've got a non-empty
      * record that isn't an alert.
      */
-    if (SSL3_RECORD_get_type(rr) != SSL3_RT_ALERT
-            && SSL3_RECORD_get_length(rr) != 0)
+    if (rr->type != SSL3_RT_ALERT && rr->length != 0)
         s->rlayer.alert_count = 0;
 
     /* we now have a packet which can be read and processed */
 
     if (s->s3.change_cipher_spec /* set when we receive ChangeCipherSpec,
                                   * reset by ssl3_get_finished */
-        && (SSL3_RECORD_get_type(rr) != SSL3_RT_HANDSHAKE)) {
+        && (rr->type != SSL3_RT_HANDSHAKE)) {
         SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE,
                  SSL_R_DATA_BETWEEN_CCS_AND_FINISHED);
         return -1;
@@ -1449,13 +1279,13 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
      * 'peek' mode)
      */
     if (s->shutdown & SSL_RECEIVED_SHUTDOWN) {
-        SSL3_RECORD_set_length(rr, 0);
+        s->rlayer.curr_rec++;
         s->rwstate = SSL_NOTHING;
         return 0;
     }
 
-    if (type == SSL3_RECORD_get_type(rr)
-        || (SSL3_RECORD_get_type(rr) == SSL3_RT_CHANGE_CIPHER_SPEC
+    if (type == rr->type
+        || (rr->type == SSL3_RT_CHANGE_CIPHER_SPEC
             && type == SSL3_RT_HANDSHAKE && recvd_type != NULL
             && !is_tls13)) {
         /*
@@ -1474,30 +1304,32 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
         }
 
         if (type == SSL3_RT_HANDSHAKE
-            && SSL3_RECORD_get_type(rr) == SSL3_RT_CHANGE_CIPHER_SPEC
+            && rr->type == SSL3_RT_CHANGE_CIPHER_SPEC
             && s->rlayer.handshake_fragment_len > 0) {
             SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_CCS_RECEIVED_EARLY);
             return -1;
         }
 
         if (recvd_type != NULL)
-            *recvd_type = SSL3_RECORD_get_type(rr);
+            *recvd_type = rr->type;
 
         if (len == 0) {
             /*
-             * Mark a zero length record as read. This ensures multiple calls to
+             * Skip a zero length record. This ensures multiple calls to
              * SSL_read() with a zero length buffer will eventually cause
              * SSL_pending() to report data as being available.
              */
-            if (SSL3_RECORD_get_length(rr) == 0)
-                SSL3_RECORD_set_read(rr);
+            if (rr->length == 0)
+                ssl_release_record(s, rr);
+
             return 0;
         }
 
         totalbytes = 0;
+        curr_rec = s->rlayer.curr_rec;
         do {
-            if (len - totalbytes > SSL3_RECORD_get_length(rr))
-                n = SSL3_RECORD_get_length(rr);
+            if (len - totalbytes > rr->length)
+                n = rr->length;
             else
                 n = len - totalbytes;
 
@@ -1505,35 +1337,29 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
             buf += n;
             if (peek) {
                 /* Mark any zero length record as consumed CVE-2016-6305 */
-                if (SSL3_RECORD_get_length(rr) == 0)
-                    SSL3_RECORD_set_read(rr);
+                if (rr->length == 0)
+                    ssl_release_record(s, rr);
             } else {
                 if (s->options & SSL_OP_CLEANSE_PLAINTEXT)
                     OPENSSL_cleanse(&(rr->data[rr->off]), n);
-                SSL3_RECORD_sub_length(rr, n);
-                SSL3_RECORD_add_off(rr, n);
-                if (SSL3_RECORD_get_length(rr) == 0) {
-                    s->rlayer.rstate = SSL_ST_READ_HEADER;
-                    SSL3_RECORD_set_off(rr, 0);
-                    SSL3_RECORD_set_read(rr);
-                }
+                rr->length -= n;
+                rr->off += n;
+                if (rr->length == 0)
+                    ssl_release_record(s, rr);
             }
-            if (SSL3_RECORD_get_length(rr) == 0
-                || (peek && n == SSL3_RECORD_get_length(rr))) {
-                curr_rec++;
+            if (rr->length == 0
+                || (peek && n == rr->length)) {
                 rr++;
+                curr_rec++;
             }
             totalbytes += n;
-        } while (type == SSL3_RT_APPLICATION_DATA && curr_rec < num_recs
-                 && totalbytes < len);
+        } while (type == SSL3_RT_APPLICATION_DATA
+                    && curr_rec < s->rlayer.num_recs
+                    && totalbytes < len);
         if (totalbytes == 0) {
             /* We must have read empty records. Get more data */
             goto start;
         }
-        if (!peek && curr_rec == num_recs
-            && (s->mode & SSL_MODE_RELEASE_BUFFERS)
-            && SSL3_BUFFER_get_left(rbuf) == 0)
-            ssl3_release_read_buffer(s);
         *readbytes = totalbytes;
         return 1;
     }
@@ -1547,7 +1373,7 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
     /*
      * Lets just double check that we've not got an SSLv2 record
      */
-    if (rr->rec_version == SSL2_VERSION) {
+    if (rr->version == SSL2_VERSION) {
         /*
          * Should never happen. ssl3_get_record() should only give us an SSLv2
          * record back if this is the first packet and we are looking for an
@@ -1566,7 +1392,7 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
          * with. We shouldn't be receiving anything other than a ClientHello
          * if we are a server.
          */
-        s->version = rr->rec_version;
+        s->version = rr->version;
         SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_UNEXPECTED_MESSAGE);
         return -1;
     }
@@ -1576,13 +1402,13 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
      * (Possibly rr is 'empty' now, i.e. rr->length may be 0.)
      */
 
-    if (SSL3_RECORD_get_type(rr) == SSL3_RT_ALERT) {
+    if (rr->type == SSL3_RT_ALERT) {
         unsigned int alert_level, alert_descr;
-        unsigned char *alert_bytes = SSL3_RECORD_get_data(rr)
-                                     + SSL3_RECORD_get_off(rr);
+        unsigned char *alert_bytes = rr->data
+                                     + rr->off;
         PACKET alert;
 
-        if (!PACKET_buf_init(&alert, alert_bytes, SSL3_RECORD_get_length(rr))
+        if (!PACKET_buf_init(&alert, alert_bytes, rr->length)
                 || !PACKET_get_1(&alert, &alert_level)
                 || !PACKET_get_1(&alert, &alert_descr)
                 || PACKET_remaining(&alert) != 0) {
@@ -1604,10 +1430,10 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
             cb(ssl, SSL_CB_READ_ALERT, j);
         }
 
-        if (alert_level == SSL3_AL_WARNING
+        if ((!is_tls13 && alert_level == SSL3_AL_WARNING)
                 || (is_tls13 && alert_descr == SSL_AD_USER_CANCELLED)) {
             s->s3.warn_alert = alert_descr;
-            SSL3_RECORD_set_read(rr);
+            ssl_release_record(s, rr);
 
             s->rlayer.alert_count++;
             if (s->rlayer.alert_count == MAX_WARN_ALERT_COUNT) {
@@ -1634,7 +1460,7 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
                           SSL_AD_REASON_OFFSET + alert_descr,
                           "SSL alert number %d", alert_descr);
             s->shutdown |= SSL_RECEIVED_SHUTDOWN;
-            SSL3_RECORD_set_read(rr);
+            ssl_release_record(s, rr);
             SSL_CTX_remove_session(s->session_ctx, s->session);
             return 0;
         } else if (alert_descr == SSL_AD_NO_RENEGOTIATION) {
@@ -1658,7 +1484,7 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
     }
 
     if ((s->shutdown & SSL_SENT_SHUTDOWN) != 0) {
-        if (SSL3_RECORD_get_type(rr) == SSL3_RT_HANDSHAKE) {
+        if (rr->type == SSL3_RT_HANDSHAKE) {
             BIO *rbio;
 
             /*
@@ -1669,8 +1495,7 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
              * sent close_notify.
              */
             if (!SSL_CONNECTION_IS_TLS13(s)) {
-                SSL3_RECORD_set_length(rr, 0);
-                SSL3_RECORD_set_read(rr);
+                ssl_release_record(s, rr);
 
                 if ((s->mode & SSL_MODE_AUTO_RETRY) != 0)
                     goto start;
@@ -1689,8 +1514,7 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
              * above.
              * No alert sent because we already sent close_notify
              */
-            SSL3_RECORD_set_length(rr, 0);
-            SSL3_RECORD_set_read(rr);
+            ssl_release_record(s, rr);
             SSLfatal(s, SSL_AD_NO_ALERT,
                      SSL_R_APPLICATION_DATA_AFTER_CLOSE_NOTIFY);
             return -1;
@@ -1703,29 +1527,28 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
      * "SHUTDOWN" code above to avoid filling the fragment storage with data
      * that we're just going to discard.
      */
-    if (SSL3_RECORD_get_type(rr) == SSL3_RT_HANDSHAKE) {
+    if (rr->type == SSL3_RT_HANDSHAKE) {
         size_t dest_maxlen = sizeof(s->rlayer.handshake_fragment);
         unsigned char *dest = s->rlayer.handshake_fragment;
         size_t *dest_len = &s->rlayer.handshake_fragment_len;
 
         n = dest_maxlen - *dest_len; /* available space in 'dest' */
-        if (SSL3_RECORD_get_length(rr) < n)
-            n = SSL3_RECORD_get_length(rr); /* available bytes */
+        if (rr->length < n)
+            n = rr->length; /* available bytes */
 
         /* now move 'n' bytes: */
-        memcpy(dest + *dest_len,
-               SSL3_RECORD_get_data(rr) + SSL3_RECORD_get_off(rr), n);
-        SSL3_RECORD_add_off(rr, n);
-        SSL3_RECORD_sub_length(rr, n);
+        memcpy(dest + *dest_len, rr->data + rr->off, n);
+        rr->off += n;
+        rr->length -= n;
         *dest_len += n;
-        if (SSL3_RECORD_get_length(rr) == 0)
-            SSL3_RECORD_set_read(rr);
+        if (rr->length == 0)
+            ssl_release_record(s, rr);
 
         if (*dest_len < dest_maxlen)
             goto start;     /* fragment was too small */
     }
 
-    if (SSL3_RECORD_get_type(rr) == SSL3_RT_CHANGE_CIPHER_SPEC) {
+    if (rr->type == SSL3_RT_CHANGE_CIPHER_SPEC) {
         SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_CCS_RECEIVED_EARLY);
         return -1;
     }
@@ -1758,8 +1581,7 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
             return -1;
 
         if (!(s->mode & SSL_MODE_AUTO_RETRY)) {
-            if (SSL3_BUFFER_get_left(rbuf) == 0) {
-                /* no read-ahead left? */
+            if (!RECORD_LAYER_read_pending(&s->rlayer)) {
                 BIO *bio;
                 /*
                  * In the case where we try to read application data, but we
@@ -1777,7 +1599,7 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
         goto start;
     }
 
-    switch (SSL3_RECORD_get_type(rr)) {
+    switch (rr->type) {
     default:
         /*
          * TLS 1.0 and 1.1 say you SHOULD ignore unrecognised record types, but
@@ -1824,7 +1646,7 @@ int ssl3_read_bytes(SSL *ssl, int type, int *recvd_type, unsigned char *buf,
                 /* SSLfatal() already called */
                 return -1;
             }
-            SSL3_RECORD_set_read(rr);
+            ssl_release_record(s, rr);
             goto start;
         } else {
             SSLfatal(s, SSL_AD_UNEXPECTED_MESSAGE, SSL_R_UNEXPECTED_RECORD);
@@ -1850,13 +1672,246 @@ void ssl3_record_sequence_update(unsigned char *seq)
  */
 int RECORD_LAYER_is_sslv2_record(RECORD_LAYER *rl)
 {
-    return SSL3_RECORD_is_sslv2_record(&rl->rrec[0]);
+    if (SSL_CONNECTION_IS_DTLS(rl->s))
+        return 0;
+    return rl->tlsrecs[0].version == SSL2_VERSION;
 }
 
-/*
- * Returns the length in bytes of the current rrec
- */
-size_t RECORD_LAYER_get_rrec_length(RECORD_LAYER *rl)
+static OSSL_FUNC_rlayer_msg_callback_fn rlayer_msg_callback_wrapper;
+static void rlayer_msg_callback_wrapper(int write_p, int version,
+                                        int content_type, const void *buf,
+                                        size_t len, void *cbarg)
 {
-    return SSL3_RECORD_get_length(&rl->rrec[0]);
+    SSL_CONNECTION *s = cbarg;
+    SSL *ssl = SSL_CONNECTION_GET_SSL(s);
+
+    if (s->msg_callback != NULL)
+        s->msg_callback(write_p, version, content_type, buf, len, ssl,
+                        s->msg_callback_arg);
+}
+
+static OSSL_FUNC_rlayer_security_fn rlayer_security_wrapper;
+static int rlayer_security_wrapper(void *cbarg, int op, int bits, int nid,
+                                   void *other)
+{
+    SSL_CONNECTION *s = cbarg;
+
+    return ssl_security(s, op, bits, nid, other);
+}
+
+static const OSSL_DISPATCH rlayer_dispatch[] = {
+    { OSSL_FUNC_RLAYER_SKIP_EARLY_DATA, (void (*)(void))ossl_statem_skip_early_data },
+    { OSSL_FUNC_RLAYER_MSG_CALLBACK, (void (*)(void))rlayer_msg_callback_wrapper },
+    { OSSL_FUNC_RLAYER_SECURITY, (void (*)(void))rlayer_security_wrapper },
+    { 0, NULL }
+};
+
+static const OSSL_RECORD_METHOD *ssl_select_next_record_layer(SSL_CONNECTION *s,
+                                                              int level)
+{
+
+    if (level == OSSL_RECORD_PROTECTION_LEVEL_NONE) {
+        if (SSL_CONNECTION_IS_DTLS(s))
+            return &ossl_dtls_record_method;
+
+        return &ossl_tls_record_method;
+    }
+
+#ifndef OPENSSL_NO_KTLS
+    /* KTLS does not support renegotiation */
+    if (level == OSSL_RECORD_PROTECTION_LEVEL_APPLICATION
+            && (s->options & SSL_OP_ENABLE_KTLS) != 0
+            && (SSL_CONNECTION_IS_TLS13(s) || SSL_IS_FIRST_HANDSHAKE(s)))
+        return &ossl_ktls_record_method;
+#endif
+
+    /* Default to the current OSSL_RECORD_METHOD */
+    return s->rlayer.rrlmethod;
+}
+
+static int ssl_post_record_layer_select(SSL_CONNECTION *s)
+{
+#ifndef OPENSSL_NO_KTLS
+    SSL *ssl = SSL_CONNECTION_GET_SSL(s);
+
+    if (s->rlayer.rrlmethod == &ossl_ktls_record_method) {
+        /* KTLS does not support renegotiation so disallow it */
+        SSL_set_options(ssl, SSL_OP_NO_RENEGOTIATION);
+    }
+#endif
+    if (SSL_IS_FIRST_HANDSHAKE(s) && s->rlayer.rrlmethod->set_first_handshake != NULL)
+        s->rlayer.rrlmethod->set_first_handshake(s->rlayer.rrl, 1);
+
+    if (s->max_pipelines != 0 && s->rlayer.rrlmethod->set_max_pipelines != NULL)
+        s->rlayer.rrlmethod->set_max_pipelines(s->rlayer.rrl, s->max_pipelines);
+
+    return 1;
+}
+
+int ssl_set_new_record_layer(SSL_CONNECTION *s, int version,
+                             int direction, int level,
+                             unsigned char *key, size_t keylen,
+                             unsigned char *iv,  size_t ivlen,
+                             unsigned char *mackey, size_t mackeylen,
+                             const EVP_CIPHER *ciph, size_t taglen,
+                             int mactype, const EVP_MD *md,
+                             const SSL_COMP *comp)
+{
+    OSSL_PARAM options[5], *opts = options;
+    OSSL_PARAM settings[6], *set =  settings;
+    const OSSL_RECORD_METHOD *origmeth = s->rlayer.rrlmethod;
+    SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
+    const OSSL_RECORD_METHOD *meth;
+    int use_etm, stream_mac = 0, tlstree = 0;
+    unsigned int maxfrag = SSL3_RT_MAX_PLAIN_LENGTH;
+    int use_early_data = 0;
+    uint32_t max_early_data;
+
+    meth = ssl_select_next_record_layer(s, level);
+
+    if (s->rlayer.rrlmethod != NULL && !s->rlayer.rrlmethod->free(s->rlayer.rrl)) {
+        ERR_raise(ERR_LIB_SSL, ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    s->rlayer.rrl = NULL;
+    if (meth != NULL)
+        s->rlayer.rrlmethod = meth;
+
+    if (!ossl_assert(s->rlayer.rrlmethod != NULL)) {
+        ERR_raise(ERR_LIB_SSL, ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    /* Parameters that *may* be supported by a record layer if passed */
+    *opts++ = OSSL_PARAM_construct_uint64(OSSL_LIBSSL_RECORD_LAYER_PARAM_OPTIONS,
+                                          &s->options);
+    *opts++ = OSSL_PARAM_construct_uint32(OSSL_LIBSSL_RECORD_LAYER_PARAM_MODE,
+                                          &s->mode);
+    *opts++ = OSSL_PARAM_construct_size_t(OSSL_LIBSSL_RECORD_LAYER_READ_BUFFER_LEN,
+                                          &s->rlayer.default_read_buf_len);
+    *opts++ = OSSL_PARAM_construct_int(OSSL_LIBSSL_RECORD_LAYER_PARAM_READ_AHEAD,
+                                       &s->rlayer.read_ahead);
+    *opts = OSSL_PARAM_construct_end();
+
+    /* Parameters that *must* be supported by a record layer if passed */
+    if (direction == OSSL_RECORD_DIRECTION_READ) {
+        use_etm = SSL_READ_ETM(s) ? 1 : 0;
+        if ((s->mac_flags & SSL_MAC_FLAG_READ_MAC_STREAM) != 0)
+            stream_mac = 1;
+
+        if ((s->mac_flags & SSL_MAC_FLAG_READ_MAC_TLSTREE) != 0)
+            tlstree = 1;
+    } else {
+        use_etm = SSL_WRITE_ETM(s) ? 1 : 0;
+        if ((s->mac_flags & SSL_MAC_FLAG_WRITE_MAC_STREAM) != 0)
+            stream_mac = 1;
+
+        if ((s->mac_flags & SSL_MAC_FLAG_WRITE_MAC_TLSTREE) != 0)
+            tlstree = 1;
+    }
+
+    if (use_etm)
+        *set++ = OSSL_PARAM_construct_int(OSSL_LIBSSL_RECORD_LAYER_PARAM_USE_ETM,
+                                          &use_etm);
+
+    if (stream_mac)
+        *set++ = OSSL_PARAM_construct_int(OSSL_LIBSSL_RECORD_LAYER_PARAM_STREAM_MAC,
+                                          &stream_mac);
+
+    if (tlstree)
+        *set++ = OSSL_PARAM_construct_int(OSSL_LIBSSL_RECORD_LAYER_PARAM_TLSTREE,
+                                          &tlstree);
+
+    if (s->session != NULL && USE_MAX_FRAGMENT_LENGTH_EXT(s->session))
+        maxfrag = GET_MAX_FRAGMENT_LENGTH(s->session);
+
+    if (maxfrag != SSL3_RT_MAX_PLAIN_LENGTH)
+        *set++ = OSSL_PARAM_construct_uint(OSSL_LIBSSL_RECORD_LAYER_PARAM_MAX_FRAG_LEN,
+                                           &maxfrag);
+
+    /*
+     * The record layer must check the amount of early data sent or received
+     * using the early keys. A server also needs to worry about rejected early
+     * data that might arrive when the handshake keys are in force.
+     */
+    /* TODO(RECLAYER): Check this when doing the "write" record layer */
+    if (s->server && direction == OSSL_RECORD_DIRECTION_READ) {
+        use_early_data = (level == OSSL_RECORD_PROTECTION_LEVEL_EARLY
+                          || level == OSSL_RECORD_PROTECTION_LEVEL_HANDSHAKE);
+    } else if (!s->server && direction == OSSL_RECORD_DIRECTION_WRITE) {
+        use_early_data = (level == OSSL_RECORD_PROTECTION_LEVEL_EARLY);
+    }
+    if (use_early_data) {
+        max_early_data = ossl_get_max_early_data(s);
+
+        if (max_early_data != 0)
+            *set++ = OSSL_PARAM_construct_uint(OSSL_LIBSSL_RECORD_LAYER_PARAM_MAX_EARLY_DATA,
+                                            &max_early_data);
+    }
+
+    *set = OSSL_PARAM_construct_end();
+
+    for (;;) {
+        int rlret;
+        BIO *prev = s->rlayer.rrlnext;
+        unsigned int epoch = 0;;
+
+        if (SSL_CONNECTION_IS_DTLS(s)
+                && level != OSSL_RECORD_PROTECTION_LEVEL_NONE)
+            epoch =  DTLS_RECORD_LAYER_get_r_epoch(&s->rlayer) + 1; /* new epoch */
+
+        if (SSL_CONNECTION_IS_DTLS(s))
+            s->rlayer.rrlnext = BIO_new(BIO_s_dgram_mem());
+        else
+            s->rlayer.rrlnext = BIO_new(BIO_s_mem());
+
+        if (s->rlayer.rrlnext == NULL) {
+            BIO_free(prev);
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return 0;
+        }
+
+        rlret = s->rlayer.rrlmethod->new_record_layer(sctx->libctx,
+                                                      sctx->propq,
+                                                      version, s->server,
+                                                      direction, level, epoch,
+                                                      key, keylen, iv, ivlen,
+                                                      mackey, mackeylen, ciph,
+                                                      taglen, mactype, md, comp,
+                                                      prev, s->rbio,
+                                                      s->rlayer.rrlnext, NULL,
+                                                      NULL, settings, options,
+                                                      rlayer_dispatch, s,
+                                                      &s->rlayer.rrl);
+        BIO_free(prev);
+        switch (rlret) {
+        case OSSL_RECORD_RETURN_FATAL:
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_RECORD_LAYER_FAILURE);
+            return 0;
+
+        case OSSL_RECORD_RETURN_NON_FATAL_ERR:
+            if (s->rlayer.rrlmethod != origmeth && origmeth != NULL) {
+                /*
+                 * We tried a new record layer method, but it didn't work out,
+                 * so we fallback to the original method and try again
+                 */
+                s->rlayer.rrlmethod = origmeth;
+                continue;
+            }
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_NO_SUITABLE_RECORD_LAYER);
+            return 0;
+
+        case OSSL_RECORD_RETURN_SUCCESS:
+            break;
+
+        default:
+            /* Should not happen */
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return 0;
+        }
+        break;
+    }
+
+    return ssl_post_record_layer_select(s);
 }

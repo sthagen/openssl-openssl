@@ -1005,7 +1005,7 @@ EXT_RETURN tls_construct_ctos_psk(SSL_CONNECTION *s, WPACKET *pkt,
                                   X509 *x, size_t chainidx)
 {
 #ifndef OPENSSL_NO_TLS1_3
-    uint32_t now, agesec, agems = 0;
+    uint32_t agesec, agems = 0;
     size_t reshashsize = 0, pskhashsize = 0, binderoffset, msglen;
     unsigned char *resbinder = NULL, *pskbinder = NULL, *msgstart = NULL;
     const EVP_MD *handmd = NULL, *mdres = NULL, *mdpsk = NULL;
@@ -1062,8 +1062,7 @@ EXT_RETURN tls_construct_ctos_psk(SSL_CONNECTION *s, WPACKET *pkt,
          * this in multiple places in the code, so portability shouldn't be an
          * issue.
          */
-        now = (uint32_t)time(NULL);
-        agesec = now - (uint32_t)s->session->time;
+        agesec = (uint32_t)(time(NULL) - s->session->time);
         /*
          * We calculate the age in seconds but the server may work in ms. Due to
          * rounding errors we could overestimate the age by up to 1s. It is
@@ -1769,6 +1768,7 @@ int tls_parse_stoc_supported_versions(SSL_CONNECTION *s, PACKET *pkt,
 
     /* We just set it here. We validate it in ssl_choose_client_version */
     s->version = version;
+    s->rlayer.rrlmethod->set_protocol_version(s->rlayer.rrl, version);
 
     return 1;
 }

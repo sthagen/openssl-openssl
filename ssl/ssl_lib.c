@@ -21,6 +21,7 @@
 #include <openssl/async.h>
 #include <openssl/ct.h>
 #include <openssl/trace.h>
+#include <openssl/core_names.h>
 #include "internal/cryptlib.h"
 #include "internal/refcount.h"
 #include "internal/ktls.h"
@@ -656,6 +657,18 @@ int ossl_ssl_connection_reset(SSL *s)
     }
 
     RECORD_LAYER_clear(&sc->rlayer);
+    BIO_free(sc->rlayer.rrlnext);
+    sc->rlayer.rrlnext = NULL;
+
+    if (!ssl_set_new_record_layer(sc,
+                                  SSL_CONNECTION_IS_DTLS(sc) ? DTLS_ANY_VERSION : TLS_ANY_VERSION,
+                                  OSSL_RECORD_DIRECTION_READ,
+                                  OSSL_RECORD_PROTECTION_LEVEL_NONE,
+                                  NULL, 0, NULL, 0, NULL,  0, NULL, 0,
+                                  NID_undef, NULL, NULL)) {
+        /* SSLfatal already called */
+        return 0;
+    }
 
     return 1;
 }
@@ -795,10 +808,7 @@ SSL *ossl_ssl_connection_new(SSL_CTX *ctx)
     s->max_send_fragment = ctx->max_send_fragment;
     s->split_send_fragment = ctx->split_send_fragment;
     s->max_pipelines = ctx->max_pipelines;
-    if (s->max_pipelines > 1)
-        RECORD_LAYER_set_read_ahead(&s->rlayer, 1);
-    if (ctx->default_read_buf_len > 0)
-        SSL_set_default_read_buffer_len(ssl, ctx->default_read_buf_len);
+    s->rlayer.default_read_buf_len = ctx->default_read_buf_len;
 
     s->ext.debug_cb = 0;
     s->ext.debug_arg = NULL;
@@ -1339,7 +1349,7 @@ void ossl_ssl_connection_free(SSL *ssl)
     X509_VERIFY_PARAM_free(s->param);
     dane_final(&s->dane);
 
-    RECORD_LAYER_release(&s->rlayer);
+    RECORD_LAYER_clear(&s->rlayer);
 
     /* Ignore return value */
     ssl_free_wbio_buffer(s);
@@ -1422,6 +1432,7 @@ void SSL_set0_rbio(SSL *s, BIO *rbio)
 
     BIO_free_all(sc->rbio);
     sc->rbio = rbio;
+    sc->rlayer.rrlmethod->set1_bio(sc->rlayer.rrl, sc->rbio);
 }
 
 void SSL_set0_wbio(SSL *s, BIO *wbio)
@@ -1723,11 +1734,19 @@ void SSL_set_verify_depth(SSL *s, int depth)
 void SSL_set_read_ahead(SSL *s, int yes)
 {
     SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
+    OSSL_PARAM options[2], *opts = options;
 
     if (sc == NULL)
         return;
 
     RECORD_LAYER_set_read_ahead(&sc->rlayer, yes);
+
+    *opts++ = OSSL_PARAM_construct_int(OSSL_LIBSSL_RECORD_LAYER_PARAM_READ_AHEAD,
+                                       &sc->rlayer.read_ahead);
+    *opts = OSSL_PARAM_construct_end();
+
+    /* Ignore return value */
+    sc->rlayer.rrlmethod->set_options(sc->rlayer.rrl, options);
 }
 
 int SSL_get_read_ahead(const SSL *s)
@@ -1771,13 +1790,13 @@ int SSL_has_pending(const SSL *s)
 
     /* Check buffered app data if any first */
     if (SSL_CONNECTION_IS_DTLS(sc)) {
-        DTLS1_RECORD_DATA *rdata;
+        TLS_RECORD *rdata;
         pitem *item, *iter;
 
         iter = pqueue_iterator(sc->rlayer.d->buffered_app_data.q);
         while ((item = pqueue_next(&iter)) != NULL) {
             rdata = item->data;
-            if (rdata->rrec.length > 0)
+            if (rdata->length > 0)
                 return 1;
         }
     }
@@ -2726,7 +2745,20 @@ long SSL_ctrl(SSL *s, int cmd, long larg, void *parg)
         return 1;
 
     case SSL_CTRL_MODE:
-        return (sc->mode |= larg);
+    {
+        OSSL_PARAM options[2], *opts = options;
+
+        sc->mode |= larg;
+
+        *opts++ = OSSL_PARAM_construct_uint32(OSSL_LIBSSL_RECORD_LAYER_PARAM_MODE,
+                                              &sc->mode);
+        *opts = OSSL_PARAM_construct_end();
+
+        /* Ignore return value */
+        sc->rlayer.rrlmethod->set_options(sc->rlayer.rrl, options);
+
+        return sc->mode;
+    }
     case SSL_CTRL_CLEAR_MODE:
         return (sc->mode &= ~larg);
     case SSL_CTRL_GET_MAX_CERT_LIST:
@@ -2757,8 +2789,8 @@ long SSL_ctrl(SSL *s, int cmd, long larg, void *parg)
         if (larg < 1 || larg > SSL_MAX_PIPELINES)
             return 0;
         sc->max_pipelines = larg;
-        if (larg > 1)
-            RECORD_LAYER_set_read_ahead(&sc->rlayer, 1);
+        if (sc->rlayer.rrlmethod->set_max_pipelines != NULL)
+            sc->rlayer.rrlmethod->set_max_pipelines(sc->rlayer.rrl, (size_t)larg);
         return 1;
     case SSL_CTRL_GET_RI_SUPPORT:
         return sc->s3.send_connection_binding;
@@ -5642,11 +5674,21 @@ uint64_t SSL_CTX_set_options(SSL_CTX *ctx, uint64_t op)
 uint64_t SSL_set_options(SSL *s, uint64_t op)
 {
     SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
+    OSSL_PARAM options[2], *opts = options;
 
     if (sc == NULL)
         return 0;
 
-    return sc->options |= op;
+    sc->options |= op;
+
+    *opts++ = OSSL_PARAM_construct_uint64(OSSL_LIBSSL_RECORD_LAYER_PARAM_OPTIONS,
+                                          &sc->options);
+    *opts = OSSL_PARAM_construct_end();
+
+    /* Ignore return value */
+    sc->rlayer.rrlmethod->set_options(sc->rlayer.rrl, options);
+
+    return sc->options;
 }
 
 uint64_t SSL_CTX_clear_options(SSL_CTX *ctx, uint64_t op)

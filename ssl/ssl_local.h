@@ -28,6 +28,7 @@
 # include <openssl/symhacks.h>
 # include <openssl/ct.h>
 # include "record/record.h"
+# include "record/recordmethod.h"
 # include "statem/statem.h"
 # include "internal/packet.h"
 # include "internal/dane.h"
@@ -35,6 +36,7 @@
 # include "internal/tsan_assist.h"
 # include "internal/bio.h"
 # include "internal/ktls.h"
+# include "internal/time.h"
 
 # ifdef OPENSSL_BUILD_SHLIBSSL
 #  undef OPENSSL_EXTERN
@@ -144,6 +146,7 @@
 # define DTLS_VERSION_LT(v1, v2) (dtls_ver_ordinal(v1) > dtls_ver_ordinal(v2))
 # define DTLS_VERSION_LE(v1, v2) (dtls_ver_ordinal(v1) >= dtls_ver_ordinal(v2))
 
+# define SSL_AD_NO_ALERT    -1
 
 /*
  * Define the Bitmasks for SSL_CIPHER.algorithms.
@@ -600,8 +603,7 @@ struct ssl_session_st {
     CRYPTO_REF_COUNT references;
     time_t timeout;
     time_t time;
-    time_t calc_timeout;
-    int timeout_ovf;
+    OSSL_TIME calc_timeout;
     unsigned int compress_meth; /* Need to lookup the method */
     const SSL_CIPHER *cipher;
     unsigned long cipher_id;    /* when ASN.1 loaded, this needs to be used to
@@ -1762,7 +1764,10 @@ struct ssl_connection_st {
      * basis, depending on the chosen cipher.
      */
     int (*not_resumable_session_cb) (SSL *ssl, int is_forward_secure);
+
+    /* Record layer data */
     RECORD_LAYER rlayer;
+
     /* Default password callback. */
     pem_password_cb *default_passwd_callback;
     /* Default password callback user data. */
@@ -1905,7 +1910,7 @@ struct dtls1_retransmit_state {
     EVP_MD_CTX *write_hash;     /* used for mac generation */
     COMP_CTX *compress;         /* compression */
     SSL_SESSION *session;
-    unsigned short epoch;
+    uint16_t epoch;
 };
 
 struct hm_header_st {
@@ -2850,26 +2855,14 @@ __owur int ssl_log_secret(SSL_CONNECTION *s, const char *label,
 #  ifndef OPENSSL_NO_KTLS
 /* ktls.c */
 int ktls_check_supported_cipher(const SSL_CONNECTION *s, const EVP_CIPHER *c,
-                                const EVP_CIPHER_CTX *dd);
-int ktls_configure_crypto(SSL_CONNECTION *s, const EVP_CIPHER *c,
-                          EVP_CIPHER_CTX *dd,
+                                const EVP_MD *md, size_t taglen);
+int ktls_configure_crypto(OSSL_LIB_CTX *libctx, int version,
+                          const EVP_CIPHER *c, const EVP_MD *md,
                           void *rl_sequence, ktls_crypto_info_t *crypto_info,
-                          int is_tx, unsigned char *iv,
-                          unsigned char *key, unsigned char *mac_key,
-                          size_t mac_secret_size);
+                          int is_tx, unsigned char *iv, size_t ivlen,
+                          unsigned char *key, size_t keylen,
+                          unsigned char *mac_key, size_t mac_secret_size);
 #  endif
-
-/* s3_cbc.c */
-__owur char ssl3_cbc_record_digest_supported(const EVP_MD_CTX *ctx);
-__owur int ssl3_cbc_digest_record(const EVP_MD *md,
-                                  unsigned char *md_out,
-                                  size_t *md_out_size,
-                                  const unsigned char *header,
-                                  const unsigned char *data,
-                                  size_t data_size,
-                                  size_t data_plus_mac_plus_padding_size,
-                                  const unsigned char *mac_secret,
-                                  size_t mac_secret_length, char is_sslv3);
 
 __owur int srp_generate_server_master_secret(SSL_CONNECTION *s);
 __owur int srp_generate_client_master_secret(SSL_CONNECTION *s);

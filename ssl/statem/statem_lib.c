@@ -794,16 +794,18 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
 {
     size_t md_len;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
+    int was_first = SSL_IS_FIRST_HANDSHAKE(s);
 
 
     /* This is a real handshake so make sure we clean it up at the end */
     if (s->server) {
         /*
         * To get this far we must have read encrypted data from the client. We
-        * no longer tolerate unencrypted alerts. This value is ignored if less
-        * than TLSv1.3
+        * no longer tolerate unencrypted alerts. This is ignored if less than
+        * TLSv1.3
         */
-        s->statem.enc_read_state = ENC_READ_STATE_VALID;
+        if (s->rlayer.rrlmethod->set_plain_alerts != NULL)
+            s->rlayer.rrlmethod->set_plain_alerts(s->rlayer.rrl, 0);
         if (s->post_handshake_auth != SSL_PHA_REQUESTED)
             s->statem.cleanuphand = 1;
         if (SSL_CONNECTION_IS_TLS13(s)
@@ -892,6 +894,11 @@ MSG_PROCESS_RETURN tls_process_finished(SSL_CONNECTION *s, PACKET *pkt)
             }
         }
     }
+
+    if (was_first
+            && !SSL_IS_FIRST_HANDSHAKE(s)
+            && s->rlayer.rrlmethod->set_first_handshake != NULL)
+        s->rlayer.rrlmethod->set_first_handshake(s->rlayer.rrl, 0);
 
     return MSG_PROCESS_FINISHED_READING;
 }
@@ -1263,8 +1270,7 @@ int tls_get_message_header(SSL_CONNECTION *s, int *mt)
          * Total message size is the remaining record bytes to read
          * plus the SSL3_HM_HEADER_LENGTH bytes that we already read
          */
-        l = RECORD_LAYER_get_rrec_length(&s->rlayer)
-            + SSL3_HM_HEADER_LENGTH;
+        l = s->rlayer.tlsrecs[0].length + SSL3_HM_HEADER_LENGTH;
         s->s3.tmp.message_size = l;
 
         s->init_msg = s->init_buf->data;
@@ -1874,6 +1880,10 @@ int ssl_choose_server_version(SSL_CONNECTION *s, CLIENTHELLO_MSG *hello,
             check_for_downgrade(s, best_vers, dgrd);
             s->version = best_vers;
             ssl->method = best_method;
+            if (!s->rlayer.rrlmethod->set_protocol_version(s->rlayer.rrl,
+                                                           best_vers))
+                return ERR_R_INTERNAL_ERROR;
+
             return 0;
         }
         return SSL_R_UNSUPPORTED_PROTOCOL;
@@ -1901,6 +1911,10 @@ int ssl_choose_server_version(SSL_CONNECTION *s, CLIENTHELLO_MSG *hello,
             check_for_downgrade(s, vent->version, dgrd);
             s->version = vent->version;
             ssl->method = method;
+            if (!s->rlayer.rrlmethod->set_protocol_version(s->rlayer.rrl,
+                                                           s->version))
+                return ERR_R_INTERNAL_ERROR;
+
             return 0;
         }
         disabled = 1;
@@ -1960,6 +1974,11 @@ int ssl_choose_client_version(SSL_CONNECTION *s, int version,
          * versions they don't want.  If not, then easy to fix, just return
          * ssl_method_error(s, s->method)
          */
+        if (!s->rlayer.rrlmethod->set_protocol_version(s->rlayer.rrl,
+                                                       s->version)) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return 0;
+        }
         return 1;
     case TLS_ANY_VERSION:
         table = tls_version_table;
@@ -2020,6 +2039,11 @@ int ssl_choose_client_version(SSL_CONNECTION *s, int version,
             continue;
 
         ssl->method = vent->cmeth();
+        if (!s->rlayer.rrlmethod->set_protocol_version(s->rlayer.rrl,
+                                                       s->version)) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return 0;
+        }
         return 1;
     }
 
@@ -2176,9 +2200,21 @@ int ssl_set_client_hello_version(SSL_CONNECTION *s)
 
     s->version = ver_max;
 
-    /* TLS1.3 always uses TLS1.2 in the legacy_version field */
-    if (!SSL_CONNECTION_IS_DTLS(s) && ver_max > TLS1_2_VERSION)
+    if (SSL_CONNECTION_IS_DTLS(s)) {
+        if (ver_max == DTLS1_BAD_VER) {
+            /*
+             * Even though this is technically before version negotiation,
+             * because we have asked for DTLS1_BAD_VER we will never negotiate
+             * anything else, and this has impacts on the record layer for when
+             * we read the ServerHello. So we need to tell the record layer
+             * about this immediately.
+             */
+            s->rlayer.rrlmethod->set_protocol_version(s->rlayer.rrl, ver_max);
+        }
+    } else if (ver_max > TLS1_2_VERSION) {
+        /* TLS1.3 always uses TLS1.2 in the legacy_version field */
         ver_max = TLS1_2_VERSION;
+    }
 
     s->client_version = ver_max;
     return 0;

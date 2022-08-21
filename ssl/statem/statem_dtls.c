@@ -825,7 +825,7 @@ static int dtls_get_reassembled_message(SSL_CONNECTION *s, int *errtype,
      * We must have at least frag_len bytes left in the record to be read.
      * Fragments must not span records.
      */
-    if (frag_len > RECORD_LAYER_get_rrec_length(&s->rlayer)) {
+    if (frag_len > s->rlayer.tlsrecs[s->rlayer.curr_rec].length) {
         SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_LENGTH);
         goto f_err;
     }
@@ -922,7 +922,6 @@ static int dtls_get_reassembled_message(SSL_CONNECTION *s, int *errtype,
 /*-
  * for these 2 messages, we need to
  * ssl->enc_read_ctx                    re-init
- * ssl->rlayer.read_sequence            zero
  * ssl->s3.read_mac_secret             re-init
  * ssl->session->read_sym_enc           assign
  * ssl->session->read_compression       assign
