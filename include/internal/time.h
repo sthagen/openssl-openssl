@@ -98,6 +98,20 @@ int ossl_time_compare(OSSL_TIME a, OSSL_TIME b)
     return 0;
 }
 
+/* Returns true if an OSSL_TIME is ossl_time_zero(). */
+static ossl_unused ossl_inline
+int ossl_time_is_zero(OSSL_TIME t)
+{
+    return ossl_time_compare(t, ossl_time_zero()) == 0;
+}
+
+/* Returns true if an OSSL_TIME is ossl_time_infinite(). */
+static ossl_unused ossl_inline
+int ossl_time_is_infinite(OSSL_TIME t)
+{
+    return ossl_time_compare(t, ossl_time_infinite()) == 0;
+}
+
 /*
  * Arithmetic operations on times.
  * These operations are saturating, in that an overflow or underflow returns
