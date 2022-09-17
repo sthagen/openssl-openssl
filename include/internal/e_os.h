@@ -249,7 +249,7 @@ FILE *__iob_func();
 /***********************************************/
 
 # if defined(OPENSSL_SYS_WINDOWS)
-#  if (_MSC_VER >= 1310) && !defined(_WIN32_WCE)
+#  if defined(_MSC_VER) && (_MSC_VER >= 1310) && !defined(_WIN32_WCE)
 #   define open _open
 #   define fdopen _fdopen
 #   define close _close
@@ -320,17 +320,13 @@ static ossl_inline void ossl_sleep(unsigned long millis)
 }
 #else
 /* Fallback to a busy wait */
+# include "internal/time.h"
 static ossl_inline void ossl_sleep(unsigned long millis)
 {
-    struct timeval start, now;
-    unsigned long elapsedms;
+    const OSSL_TIME finish = ossl_time_add(ossl_time_now(), ossl_ms2time(millis));
 
-    gettimeofday(&start, NULL);
-    do {
-        gettimeofday(&now, NULL);
-        elapsedms = (((now.tv_sec - start.tv_sec) * 1000000)
-                     + now.tv_usec - start.tv_usec) / 1000;
-    } while (elapsedms < millis);
+    while (ossl_time_compare(ossl_time_now(), finish) < 0)
+        /* busy wait */ ;
 }
 #endif /* defined OPENSSL_SYS_UNIX */
 

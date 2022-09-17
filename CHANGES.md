@@ -179,6 +179,27 @@ OpenSSL 3.1
 
    *Hugo Landau*
 
+ * The `SSL_CERT_PATH` and `SSL_CERT_URI` environment variables are introduced.
+   `SSL_CERT_URI` can be used to specify a URI for a root certificate store. The
+   `SSL_CERT_PATH` environment variable specifies a delimiter-separated list of
+   paths which are searched for root certificates.
+
+   The existing `SSL_CERT_DIR` environment variable is deprecated.
+   `SSL_CERT_DIR` was previously used to specify either a delimiter-separated
+   list of paths or an URI, which is ambiguous. Setting `SSL_CERT_PATH` causes
+   `SSL_CERT_DIR` to be ignored for the purposes of determining root certificate
+   directories, and setting `SSL_CERT_URI` causes `SSL_CERT_DIR` to be ignored
+   for the purposes of determining root certificate stores.
+
+   *Hugo Landau*
+
+ * Support for loading root certificates from the Windows certificate store
+   has been added. The support is in the form of a store which recognises the
+   URI string of `org.openssl.winstore://`. This store is enabled by default and
+   can be disabled using the new compile-time option `no-winstore`.
+
+   *Hugo Landau*
+
 OpenSSL 3.0
 -----------
 

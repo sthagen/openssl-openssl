@@ -1596,7 +1596,8 @@ static int mac_test_run_mac(EVP_TEST *t)
             goto err;
         }
     }
-    if (reinit--) {
+    /* FIPS(3.0.0): can't reinitialise MAC contexts #18100 */
+    if (reinit-- && fips_provider_version_gt(libctx, 3, 0, 0)) {
         OSSL_PARAM ivparams[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
         int ret;
 
@@ -2822,7 +2823,9 @@ static int kdf_test_run(EVP_TEST *t)
         t->err = "INTERNAL_ERROR";
         goto err;
     }
-    if ((ctx = EVP_KDF_CTX_dup(expected->ctx)) != NULL) {
+    /* FIPS(3.0.0): can't dup KDF contexts #17572 */
+    if (fips_provider_version_gt(libctx, 3, 0, 0)
+            && (ctx = EVP_KDF_CTX_dup(expected->ctx)) != NULL) {
         EVP_KDF_CTX_free(expected->ctx);
         expected->ctx = ctx;
     }
@@ -2918,21 +2921,26 @@ static int pkey_kdf_test_run(EVP_TEST *t)
     unsigned char *got = NULL;
     size_t got_len = 0;
 
-    /* Find out the KDF output size */
-    if (EVP_PKEY_derive(expected->ctx, NULL, &got_len) <= 0) {
-        t->err = "INTERNAL_ERROR";
-        goto err;
-    }
-
-    /*
-     * We may get an absurd output size, which signals that anything goes.
-     * If not, we specify a too big buffer for the output, to test that
-     * EVP_PKEY_derive() can cope with it.
-     */
-    if (got_len == SIZE_MAX || got_len == 0)
+    if (fips_provider_version_eq(libctx, 3, 0, 0)) {
+        /* FIPS(3.0.0): can't deal with oversized output buffers #18533 */
         got_len = expected->output_len;
-    else
-        got_len = expected->output_len * 2;
+    } else {
+        /* Find out the KDF output size */
+        if (EVP_PKEY_derive(expected->ctx, NULL, &got_len) <= 0) {
+            t->err = "INTERNAL_ERROR";
+            goto err;
+        }
+
+        /*
+         * We may get an absurd output size, which signals that anything goes.
+         * If not, we specify a too big buffer for the output, to test that
+         * EVP_PKEY_derive() can cope with it.
+         */
+        if (got_len == SIZE_MAX || got_len == 0)
+            got_len = expected->output_len;
+        else
+            got_len = expected->output_len * 2;
+    }
 
     if (!TEST_ptr(got = OPENSSL_malloc(got_len == 0 ? 1 : got_len))) {
         t->err = "INTERNAL_ERROR";
@@ -3735,7 +3743,7 @@ static int parse(EVP_TEST *t)
     KEY_LIST *key, **klist;
     EVP_PKEY *pkey;
     PAIR *pp;
-    int i, skip_availablein = 0;
+    int i, j, skipped = 0;
 
 top:
     do {
@@ -3822,7 +3830,23 @@ start:
                 t->skip = 1;
                 return 0;
         }
-        skip_availablein++;
+        skipped++;
+        pp++;
+        goto start;
+    } else if (strcmp(pp->key, "FIPSversion") == 0) {
+        if (prov_available("fips")) {
+            j = fips_provider_version_match(libctx, pp->value);
+            if (j < 0) {
+                TEST_info("Line %d: error matching FIPS versions\n", t->s.curr);
+                return 0;
+            } else if (j == 0) {
+                TEST_info("skipping, FIPS provider incompatible version: %s:%d",
+                          t->s.test_file, t->s.start);
+                    t->skip = 1;
+                    return 0;
+            }
+        }
+        skipped++;
         pp++;
         goto start;
     }
@@ -3841,7 +3865,7 @@ start:
         *klist = key;
 
         /* Go back and start a new stanza. */
-        if ((t->s.numpairs - skip_availablein) != 1)
+        if ((t->s.numpairs - skipped) != 1)
             TEST_info("Line %d: missing blank line\n", t->s.curr);
         goto top;
     }
@@ -3858,7 +3882,7 @@ start:
         return 0;
     }
 
-    for (pp++, i = 1; i < (t->s.numpairs - skip_availablein); pp++, i++) {
+    for (pp++, i = 1; i < (t->s.numpairs - skipped); pp++, i++) {
         if (strcmp(pp->key, "Securitycheck") == 0) {
 #if defined(OPENSSL_NO_FIPS_SECURITYCHECKS)
 #else
