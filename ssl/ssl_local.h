@@ -1296,9 +1296,7 @@ struct ssl_connection_st {
         unsigned char write_mac_secret[EVP_MAX_MD_SIZE];
         unsigned char server_random[SSL3_RANDOM_SIZE];
         unsigned char client_random[SSL3_RANDOM_SIZE];
-        /* flags for countermeasure against known-IV weakness */
-        int need_empty_fragments;
-        int empty_fragment_done;
+
         /* used during startup, digest all incoming/outgoing packets */
         BIO *handshake_buffer;
         /*
@@ -1794,11 +1792,6 @@ struct ssl_connection_st {
      * this is a count of the ciphertext bytes.
      */
     uint32_t early_data_count;
-
-    /* TLS1.3 padding callback */
-    size_t (*record_padding_cb)(SSL *s, int type, size_t len, void *arg);
-    void *record_padding_arg;
-    size_t block_padding;
 
     /* The number of TLS1.3 tickets to automatically send */
     size_t num_tickets;
@@ -2855,7 +2848,9 @@ __owur int ssl_log_secret(SSL_CONNECTION *s, const char *label,
 #define CLIENT_HANDSHAKE_LABEL "CLIENT_HANDSHAKE_TRAFFIC_SECRET"
 #define SERVER_HANDSHAKE_LABEL "SERVER_HANDSHAKE_TRAFFIC_SECRET"
 #define CLIENT_APPLICATION_LABEL "CLIENT_TRAFFIC_SECRET_0"
+#define CLIENT_APPLICATION_N_LABEL "CLIENT_TRAFFIC_SECRET_N"
 #define SERVER_APPLICATION_LABEL "SERVER_TRAFFIC_SECRET_0"
+#define SERVER_APPLICATION_N_LABEL "SERVER_TRAFFIC_SECRET_N"
 #define EARLY_EXPORTER_SECRET_LABEL "EARLY_EXPORTER_SECRET"
 #define EXPORTER_SECRET_LABEL "EXPORTER_SECRET"
 

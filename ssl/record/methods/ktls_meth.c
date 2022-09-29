@@ -404,15 +404,14 @@ static int ktls_set_crypto_state(OSSL_RECORD_LAYER *rl, int level,
     if (!ktls_int_check_supported_cipher(rl, ciph, md, taglen))
         return OSSL_RECORD_RETURN_NON_FATAL_ERR;
 
-    /*
-     * TODO(RECLAYER): For the write side we need to add a check for
-     * use of s->record_padding_cb
-     */
-
     /* All future data will get encrypted by ktls. Flush the BIO or skip ktls */
     if (rl->direction == OSSL_RECORD_DIRECTION_WRITE) {
-       if (BIO_flush(rl->bio) <= 0)
-           return OSSL_RECORD_RETURN_NON_FATAL_ERR;
+        if (BIO_flush(rl->bio) <= 0)
+            return OSSL_RECORD_RETURN_NON_FATAL_ERR;
+
+        /* KTLS does not support record padding */
+        if (rl->padding != NULL || rl->block_padding > 0)
+            return OSSL_RECORD_RETURN_NON_FATAL_ERR;
     }
 
     if (!ktls_configure_crypto(rl->libctx, rl->version, ciph, md, rl->sequence,
@@ -482,13 +481,15 @@ static int ktls_post_process_record(OSSL_RECORD_LAYER *rl, SSL3_RECORD *rec)
 
 static struct record_functions_st ossl_ktls_funcs = {
     ktls_set_crypto_state,
-    ktls_read_n,
-    tls_get_more_records,
     ktls_cipher,
     NULL,
     tls_default_set_protocol_version,
+    ktls_read_n,
+    tls_get_more_records,
     ktls_validate_record_header,
-    ktls_post_process_record
+    ktls_post_process_record,
+    tls_get_max_records_default,
+    tls_write_records_default
 };
 
 static int
@@ -517,6 +518,12 @@ ktls_new_record_layer(OSSL_LIB_CTX *libctx, const char *propq, int vers,
 
     (*retrl)->funcs = &ossl_ktls_funcs;
 
+    /*
+     * TODO(RECLAYER): We're not ready to set the crypto state for the write
+     * record layer. Fix this once we are
+     */
+    if (direction == OSSL_RECORD_DIRECTION_WRITE)
+        return 1;
     ret = (*retrl)->funcs->set_crypto_state(*retrl, level, key, keylen, iv,
                                             ivlen, mackey, mackeylen, ciph,
                                             taglen, mactype, md, comp);

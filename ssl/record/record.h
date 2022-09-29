@@ -33,6 +33,8 @@ struct ssl3_buffer_st {
     size_t left;
     /* 'buf' is from application for KTLS */
     int app_buffer;
+    /* The type of data stored in this buffer. Only used for writing */
+    int type;
 };
 
 #define SEQ_NUM_SIZE                            8
@@ -131,8 +133,12 @@ typedef struct record_layer_st {
 
     /* Method to use for the read record layer*/
     const OSSL_RECORD_METHOD *rrlmethod;
+    /* Method to use for the write record layer*/
+    const OSSL_RECORD_METHOD *wrlmethod;
     /* The read record layer object itself */
     OSSL_RECORD_LAYER *rrl;
+    /* The write record layer object itself */
+    OSSL_RECORD_LAYER *wrl;
     /* BIO to store data destined for the next read record layer epoch */
     BIO *rrlnext;
     /* Default read buffer length to be passed to the record layer */
@@ -143,10 +149,14 @@ typedef struct record_layer_st {
      * non-blocking reads)
      */
     int read_ahead;
+    /*
+     * TODO(RECLAYER): These next 2 fields can be removed when DTLS is moved to
+     * the new write record layer architecture.
+     */
     /* How many pipelines can be used to write data */
     size_t numwpipes;
     /* write IO goes into here */
-    SSL3_BUFFER wbuf[SSL_MAX_PIPELINES];
+    SSL3_BUFFER wbuf[SSL_MAX_PIPELINES + 1];
     /* number of bytes sent so far */
     size_t wnum;
     unsigned char handshake_fragment[4];
@@ -163,6 +173,11 @@ typedef struct record_layer_st {
     /* Count of the number of consecutive warning alerts received */
     unsigned int alert_count;
     DTLS_RECORD_LAYER *d;
+
+    /* TLS1.3 padding callback */
+    size_t (*record_padding_cb)(SSL *s, int type, size_t len, void *arg);
+    void *record_padding_arg;
+    size_t block_padding;
 
     /* How many records we have read from the record layer */
     size_t num_recs;
@@ -207,9 +222,6 @@ int RECORD_LAYER_is_sslv2_record(RECORD_LAYER *rl);
 __owur size_t ssl3_pending(const SSL *s);
 __owur int ssl3_write_bytes(SSL *s, int type, const void *buf, size_t len,
                             size_t *written);
-int do_ssl3_write(SSL_CONNECTION *s, int type, const unsigned char *buf,
-                  size_t *pipelens, size_t numpipes,
-                  int create_empty_fragment, size_t *written);
 __owur int ssl3_read_bytes(SSL *s, int type, int *recvd_type,
                            unsigned char *buf, size_t len, int peek,
                            size_t *readbytes);
@@ -218,9 +230,6 @@ __owur int ssl3_enc(SSL_CONNECTION *s, SSL3_RECORD *inrecs, size_t n_recs,
                     int send, SSL_MAC_BUF *mac, size_t macsize);
 __owur int n_ssl3_mac(SSL_CONNECTION *s, SSL3_RECORD *rec, unsigned char *md,
                       int send);
-__owur int ssl3_write_pending(SSL_CONNECTION *s, int type,
-                              const unsigned char *buf, size_t len,
-                              size_t *written);
 __owur int tls1_enc(SSL_CONNECTION *s, SSL3_RECORD *recs, size_t n_recs,
                     int sending, SSL_MAC_BUF *mac, size_t macsize);
 __owur int tls1_mac_old(SSL_CONNECTION *s, SSL3_RECORD *rec, unsigned char *md,
@@ -243,11 +252,14 @@ int do_dtls1_write(SSL_CONNECTION *s, int type, const unsigned char *buf,
 void dtls1_reset_seq_numbers(SSL_CONNECTION *s, int rw);
 void ssl_release_record(SSL_CONNECTION *s, TLS_RECORD *rr);
 
-# define HANDLE_RLAYER_RETURN(s, ret) \
-    ossl_tls_handle_rlayer_return(s, ret, OPENSSL_FILE, OPENSSL_LINE)
+# define HANDLE_RLAYER_READ_RETURN(s, ret) \
+    ossl_tls_handle_rlayer_return(s, 0, ret, OPENSSL_FILE, OPENSSL_LINE)
 
-int ossl_tls_handle_rlayer_return(SSL_CONNECTION *s, int ret, char *file,
-                                  int line);
+# define HANDLE_RLAYER_WRITE_RETURN(s, ret) \
+    ossl_tls_handle_rlayer_return(s, 1, ret, OPENSSL_FILE, OPENSSL_LINE)
+
+int ossl_tls_handle_rlayer_return(SSL_CONNECTION *s, int writing, int ret,
+                                  char *file, int line);
 
 int ssl_set_new_record_layer(SSL_CONNECTION *s, int version, int direction,
                              int level, unsigned char *key, size_t keylen,
@@ -256,6 +268,7 @@ int ssl_set_new_record_layer(SSL_CONNECTION *s, int version, int direction,
                              const EVP_CIPHER *ciph, size_t taglen,
                              int mactype, const EVP_MD *md,
                              const SSL_COMP *comp);
+int ssl_set_record_protocol_version(SSL_CONNECTION *s, int vers);
 
 # define OSSL_FUNC_RLAYER_SKIP_EARLY_DATA        1
 OSSL_CORE_MAKE_FUNC(int, rlayer_skip_early_data, (void *cbarg))
@@ -267,3 +280,5 @@ OSSL_CORE_MAKE_FUNC(void, rlayer_msg_callback, (int write_p, int version,
 # define OSSL_FUNC_RLAYER_SECURITY               3
 OSSL_CORE_MAKE_FUNC(int, rlayer_security, (void *cbarg, int op, int bits,
                                            int nid, void *other))
+# define OSSL_FUNC_RLAYER_PADDING                4
+OSSL_CORE_MAKE_FUNC(size_t, rlayer_padding, (void *cbarg, int type, size_t len))

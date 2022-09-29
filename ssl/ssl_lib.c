@@ -669,6 +669,15 @@ int ossl_ssl_connection_reset(SSL *s)
         /* SSLfatal already called */
         return 0;
     }
+    if (!ssl_set_new_record_layer(sc,
+                                  SSL_CONNECTION_IS_DTLS(sc) ? DTLS_ANY_VERSION : TLS_ANY_VERSION,
+                                  OSSL_RECORD_DIRECTION_WRITE,
+                                  OSSL_RECORD_PROTECTION_LEVEL_NONE,
+                                  NULL, 0, NULL, 0, NULL,  0, NULL, 0,
+                                  NID_undef, NULL, NULL)) {
+        /* SSLfatal already called */
+        return 0;
+    }
 
     return 1;
 }
@@ -788,9 +797,9 @@ SSL *ossl_ssl_connection_new(SSL_CTX *ctx)
     s->msg_callback_arg = ctx->msg_callback_arg;
     s->verify_mode = ctx->verify_mode;
     s->not_resumable_session_cb = ctx->not_resumable_session_cb;
-    s->record_padding_cb = ctx->record_padding_cb;
-    s->record_padding_arg = ctx->record_padding_arg;
-    s->block_padding = ctx->block_padding;
+    s->rlayer.record_padding_cb = ctx->record_padding_cb;
+    s->rlayer.record_padding_arg = ctx->record_padding_arg;
+    s->rlayer.block_padding = ctx->block_padding;
     s->sid_ctx_length = ctx->sid_ctx_length;
     if (!ossl_assert(s->sid_ctx_length <= sizeof(s->sid_ctx)))
         goto err;
@@ -1349,10 +1358,10 @@ void ossl_ssl_connection_free(SSL *ssl)
     X509_VERIFY_PARAM_free(s->param);
     dane_final(&s->dane);
 
-    RECORD_LAYER_clear(&s->rlayer);
-
     /* Ignore return value */
     ssl_free_wbio_buffer(s);
+
+    RECORD_LAYER_clear(&s->rlayer);
 
     BIO_free_all(s->wbio);
     s->wbio = NULL;
@@ -1454,6 +1463,8 @@ void SSL_set0_wbio(SSL *s, BIO *wbio)
     /* Re-attach |bbio| to the new |wbio|. */
     if (sc->bbio != NULL)
         sc->wbio = BIO_push(sc->bbio, sc->wbio);
+
+    sc->rlayer.wrlmethod->set1_bio(sc->rlayer.wrl, sc->wbio);
 }
 
 void SSL_set_bio(SSL *s, BIO *rbio, BIO *wbio)
@@ -4800,6 +4811,8 @@ int ssl_init_wbio_buffer(SSL_CONNECTION *s)
     s->bbio = bbio;
     s->wbio = BIO_push(bbio, s->wbio);
 
+    s->rlayer.wrlmethod->set1_bio(s->rlayer.wrl, s->wbio);
+
     return 1;
 }
 
@@ -4810,6 +4823,8 @@ int ssl_free_wbio_buffer(SSL_CONNECTION *s)
         return 1;
 
     s->wbio = BIO_pop(s->wbio);
+    s->rlayer.wrlmethod->set1_bio(s->rlayer.wrl, s->wbio);
+
     BIO_free(s->bbio);
     s->bbio = NULL;
 
@@ -5382,7 +5397,7 @@ int SSL_set_record_padding_callback(SSL *ssl,
 
     b = SSL_get_wbio(ssl);
     if (b == NULL || !BIO_get_ktls_send(b)) {
-        sc->record_padding_cb = cb;
+        sc->rlayer.record_padding_cb = cb;
         return 1;
     }
     return 0;
@@ -5395,7 +5410,7 @@ void SSL_set_record_padding_callback_arg(SSL *ssl, void *arg)
     if (sc == NULL)
         return;
 
-    sc->record_padding_arg = arg;
+    sc->rlayer.record_padding_arg = arg;
 }
 
 void *SSL_get_record_padding_callback_arg(const SSL *ssl)
@@ -5405,7 +5420,7 @@ void *SSL_get_record_padding_callback_arg(const SSL *ssl)
     if (sc == NULL)
         return NULL;
 
-    return sc->record_padding_arg;
+    return sc->rlayer.record_padding_arg;
 }
 
 int SSL_set_block_padding(SSL *ssl, size_t block_size)
@@ -5417,9 +5432,9 @@ int SSL_set_block_padding(SSL *ssl, size_t block_size)
 
     /* block size of 0 or 1 is basically no padding */
     if (block_size == 1)
-        sc->block_padding = 0;
+        sc->rlayer.block_padding = 0;
     else if (block_size <= SSL3_RT_MAX_PLAIN_LENGTH)
-        sc->block_padding = block_size;
+        sc->rlayer.block_padding = block_size;
     else
         return 0;
     return 1;

@@ -413,6 +413,9 @@ extern "C" {
 #define OSSL_PKEY_PARAM_RSA_MGF1_DIGEST      OSSL_PKEY_PARAM_MGF1_DIGEST
 #define OSSL_PKEY_PARAM_RSA_PSS_SALTLEN      "saltlen"
 
+/* EC, X25519 and X448 Key generation parameters */
+#define OSSL_PKEY_PARAM_DHKEM_IKM        "dhkem-ikm"
+
 /* Key generation parameters */
 #define OSSL_PKEY_PARAM_FFC_TYPE         "type"
 #define OSSL_PKEY_PARAM_FFC_PBITS        "pbits"
@@ -507,9 +510,11 @@ extern "C" {
 
 /* KEM parameters */
 #define OSSL_KEM_PARAM_OPERATION            "operation"
+#define OSSL_KEM_PARAM_IKME                 "ikme"
 
 /* OSSL_KEM_PARAM_OPERATION values */
 #define OSSL_KEM_PARAM_OPERATION_RSASVE     "RSASVE"
+#define OSSL_KEM_PARAM_OPERATION_DHKEM      "DHKEM"
 
 /* Capabilities */
 
@@ -567,6 +572,7 @@ extern "C" {
 #define OSSL_LIBSSL_RECORD_LAYER_PARAM_TLSTREE        "tlstree"
 #define OSSL_LIBSSL_RECORD_LAYER_PARAM_MAX_FRAG_LEN   "max_frag_len"
 #define OSSL_LIBSSL_RECORD_LAYER_PARAM_MAX_EARLY_DATA "max_early_data"
+#define OSSL_LIBSSL_RECORD_LAYER_PARAM_BLOCK_PADDING  "block_padding"
 
 # ifdef __cplusplus
 }

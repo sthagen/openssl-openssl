@@ -806,11 +806,11 @@ static SUB_STATE_RETURN write_state_machine(SSL_CONNECTION *s)
     WORK_STATE(*pre_work) (SSL_CONNECTION *s, WORK_STATE wst);
     WORK_STATE(*post_work) (SSL_CONNECTION *s, WORK_STATE wst);
     int (*get_construct_message_f) (SSL_CONNECTION *s,
-                                    int (**confunc) (SSL_CONNECTION *s,
-                                                     WPACKET *pkt),
+                                    CON_FUNC_RETURN (**confunc) (SSL_CONNECTION *s,
+                                                                 WPACKET *pkt),
                                     int *mt);
     void (*cb) (const SSL *ssl, int type, int val) = NULL;
-    int (*confunc) (SSL_CONNECTION *s, WPACKET *pkt);
+    CON_FUNC_RETURN (*confunc) (SSL_CONNECTION *s, WPACKET *pkt);
     int mt;
     WPACKET pkt;
     SSL *ssl = SSL_CONNECTION_GET_SSL(s);
@@ -888,10 +888,24 @@ static SUB_STATE_RETURN write_state_machine(SSL_CONNECTION *s)
                 SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
                 return SUB_STATE_ERROR;
             }
-            if (confunc != NULL && !confunc(s, &pkt)) {
-                WPACKET_cleanup(&pkt);
-                check_fatal(s);
-                return SUB_STATE_ERROR;
+            if (confunc != NULL) {
+                CON_FUNC_RETURN tmpret;
+
+                tmpret = confunc(s, &pkt);
+                if (tmpret == CON_FUNC_ERROR) {
+                    WPACKET_cleanup(&pkt);
+                    check_fatal(s);
+                    return SUB_STATE_ERROR;
+                } else if (tmpret == CON_FUNC_DONT_SEND) {
+                    /*
+                     * The construction function decided not to construct the
+                     * message after all and continue. Skip sending.
+                     */
+                    WPACKET_cleanup(&pkt);
+                    st->write_state = WRITE_STATE_POST_WORK;
+                    st->write_state_work = WORK_MORE_A;
+                    break;
+                } /* else success */
             }
             if (!ssl_close_construct_packet(s, &pkt, mt)
                     || !WPACKET_finish(&pkt)) {

@@ -243,11 +243,11 @@ int tls1_change_cipher_state(SSL_CONNECTION *s, int which)
             s->mac_flags &= ~SSL_MAC_FLAG_READ_MAC_TLSTREE;
 
         if (!ssl_set_new_record_layer(s, s->version,
-                                        OSSL_RECORD_DIRECTION_READ,
-                                        OSSL_RECORD_PROTECTION_LEVEL_APPLICATION,
-                                        key, cl, iv, (size_t)k, mac_secret,
-                                        mac_secret_size, c, taglen, mac_type,
-                                        m, comp)) {
+                                      OSSL_RECORD_DIRECTION_READ,
+                                      OSSL_RECORD_PROTECTION_LEVEL_APPLICATION,
+                                      key, cl, iv, (size_t)k, mac_secret,
+                                      mac_secret_size, c, taglen, mac_type,
+                                      m, comp)) {
             /* SSLfatal already called */
             goto err;
         }
@@ -270,6 +270,17 @@ int tls1_change_cipher_state(SSL_CONNECTION *s, int which)
             s->mac_flags |= SSL_MAC_FLAG_WRITE_MAC_TLSTREE;
         else
             s->mac_flags &= ~SSL_MAC_FLAG_WRITE_MAC_TLSTREE;
+
+        if (!ssl_set_new_record_layer(s, s->version,
+                                      OSSL_RECORD_DIRECTION_WRITE,
+                                      OSSL_RECORD_PROTECTION_LEVEL_APPLICATION,
+                                      key, cl, iv, (size_t)k, mac_secret,
+                                      mac_secret_size, c, taglen, mac_type,
+                                      m, comp)) {
+            /* SSLfatal already called */
+            goto err;
+        }
+
         if (s->enc_write_ctx != NULL && !SSL_CONNECTION_IS_DTLS(s)) {
             reuse_dd = 1;
         } else if ((s->enc_write_ctx = EVP_CIPHER_CTX_new()) == NULL) {
@@ -426,12 +437,8 @@ int tls1_change_cipher_state(SSL_CONNECTION *s, int which)
         goto skip_ktls;
 
     /* ktls works with user provided buffers directly */
-    if (BIO_set_ktls(bio, &crypto_info, which & SSL3_CC_WRITE)) {
-        if (which & SSL3_CC_WRITE)
-            ssl3_release_write_buffer(s);
+    if (BIO_set_ktls(bio, &crypto_info, which & SSL3_CC_WRITE))
         SSL_set_options(SSL_CONNECTION_GET_SSL(s), SSL_OP_NO_RENEGOTIATION);
-    }
-
 #endif                          /* OPENSSL_NO_KTLS */
  skip_ktls:
     s->statem.enc_write_state = ENC_WRITE_STATE_VALID;
@@ -515,23 +522,6 @@ int tls1_setup_key_block(SSL_CONNECTION *s)
         BIO_printf(trc_out, "key block\n");
         BIO_dump_indent(trc_out, p, num, 4);
     } OSSL_TRACE_END(TLS);
-
-    if (!(s->options & SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS)
-        && SSL_CONNECTION_GET_SSL(s)->method->version <= TLS1_VERSION) {
-        /*
-         * enable vulnerability countermeasure for CBC ciphers with known-IV
-         * problem (http://www.openssl.org/~bodo/tls-cbc.txt)
-         */
-        s->s3.need_empty_fragments = 1;
-
-        if (s->session->cipher != NULL) {
-            if (s->session->cipher->algorithm_enc == SSL_eNULL)
-                s->s3.need_empty_fragments = 0;
-
-            if (s->session->cipher->algorithm_enc == SSL_RC4)
-                s->s3.need_empty_fragments = 0;
-        }
-    }
 
     ret = 1;
  err:

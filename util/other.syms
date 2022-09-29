@@ -139,6 +139,7 @@ pem_password_cb                         datatype
 ssl_ct_validation_cb                    datatype
 ASYNC_stack_alloc_fn                    datatype
 ASYNC_stack_free_fn                     datatype
+PKCS12_create_cb                        datatype
 #
 ASN1_BIT_STRING_digest                  define
 BIO_IS_ERRNO                            define
@@ -148,6 +149,13 @@ BIO_destroy_bio_pair                    define
 BIO_dgram_get_local_addr_cap            define
 BIO_dgram_get_local_addr_enable         define
 BIO_dgram_set_local_addr_enable         define
+BIO_dgram_set_no_trunc                  define
+BIO_dgram_get_no_trunc                  define
+BIO_dgram_get_caps                      define
+BIO_dgram_set_caps                      define
+BIO_dgram_get_effective_caps            define
+BIO_dgram_get_mtu                       define
+BIO_dgram_set_mtu                       define
 BIO_do_accept                           define
 BIO_do_connect                          define
 BIO_do_handshake                        define
