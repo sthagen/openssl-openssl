@@ -1151,7 +1151,7 @@ int SSL_dane_enable(SSL *s, const char *basedomain)
 
     /*
      * Default SNI name.  This rejects empty names, while set1_host below
-     * accepts them and disables host name checks.  To avoid side-effects with
+     * accepts them and disables hostname checks.  To avoid side-effects with
      * invalid input, set the SNI name first.
      */
     if (sc->ext.hostname == NULL) {
@@ -2789,6 +2789,7 @@ long SSL_ctrl(SSL *s, int cmd, long larg, void *parg)
         sc->max_send_fragment = larg;
         if (sc->max_send_fragment < sc->split_send_fragment)
             sc->split_send_fragment = sc->max_send_fragment;
+        sc->rlayer.wrlmethod->set_max_frag_len(sc->rlayer.wrl, larg);
         return 1;
     case SSL_CTRL_SET_SPLIT_SEND_FRAGMENT:
         if ((size_t)larg > sc->max_send_fragment || larg == 0)

@@ -74,6 +74,69 @@ struct record_functions_st
     /* Return 1 for success or 0 for error */
     int (*write_records)(OSSL_RECORD_LAYER *rl, OSSL_RECORD_TEMPLATE *templates,
                          size_t numtempl);
+
+    /* Allocate the rl->wbuf buffers. Return 1 for success or 0 for error */
+    int (*allocate_write_buffers)(OSSL_RECORD_LAYER *rl,
+                                  OSSL_RECORD_TEMPLATE *templates,
+                                  size_t numtempl, size_t *prefix);
+
+    /*
+     * Initialise the packets in the |pkt| array using the buffers in |rl->wbuf|.
+     * Some protocol versions may use the space in |prefixtempl| to add
+     * an artificial template in front of the |templates| array and hence may
+     * initialise 1 more WPACKET than there are templates. |*wpinited|
+     * returns the number of WPACKETs in |pkt| that were successfully
+     * initialised. This must be 0 on entry and will be filled in even on error.
+     */
+    int (*initialise_write_packets)(OSSL_RECORD_LAYER *rl,
+                                    OSSL_RECORD_TEMPLATE *templates,
+                                    size_t numtempl,
+                                    OSSL_RECORD_TEMPLATE *prefixtempl,
+                                    WPACKET *pkt,
+                                    SSL3_BUFFER *bufs,
+                                    size_t *wpinited);
+
+    /* Get the actual record type to be used for a given template */
+    unsigned int (*get_record_type)(OSSL_RECORD_LAYER *rl,
+                                    OSSL_RECORD_TEMPLATE *template);
+
+    /* Write the record header data to the WPACKET */
+    int (*prepare_record_header)(OSSL_RECORD_LAYER *rl, WPACKET *thispkt,
+                                 OSSL_RECORD_TEMPLATE *templ,
+                                 unsigned int rectype,
+                                 unsigned char **recdata);
+
+    int (*add_record_padding)(OSSL_RECORD_LAYER *rl,
+                              OSSL_RECORD_TEMPLATE *thistempl,
+                              WPACKET *thispkt,
+                              SSL3_RECORD *thiswr);
+
+    /*
+     * This applies any mac that might be necessary, ensures that we have enough
+     * space in the WPACKET to perform the encryption and sets up the
+     * SSL3_RECORD ready for that encryption.
+     */
+    int (*prepare_for_encryption)(OSSL_RECORD_LAYER *rl,
+                                  size_t mac_size,
+                                  WPACKET *thispkt,
+                                  SSL3_RECORD *thiswr);
+
+    /*
+     * Any updates required to the record after encryption has been applied. For
+     * example, adding a MAC if using encrypt-then-mac
+     */
+    int (*post_encryption_processing)(OSSL_RECORD_LAYER *rl,
+                                      size_t mac_size,
+                                      OSSL_RECORD_TEMPLATE *thistempl,
+                                      WPACKET *thispkt,
+                                      SSL3_RECORD *thiswr);
+
+    /*
+     * Some record layer implementations need to do some custom preparation of
+     * the BIO before we write to it. KTLS does this to prevent coalescing of
+     * control and data messages.
+     */
+    int (*prepare_write_bio)(OSSL_RECORD_LAYER *rl, int type);
 };
 
 struct ossl_record_layer_st
@@ -140,6 +203,7 @@ struct ossl_record_layer_st
     /* Sequence number for the next record */
     unsigned char sequence[SEQ_NUM_SIZE];
 
+    /* Alert code to be used if an error occurs */
     int alert;
 
     /*
@@ -172,7 +236,10 @@ struct ossl_record_layer_st
     /* Set to 1 if this is the first handshake. 0 otherwise */
     int is_first_handshake;
 
-    /* The negotiated maximum fragment length */
+    /*
+     * The smaller of the configured and negotiated maximum fragment length
+     * or SSL3_RT_MAX_PLAIN_LENGTH if none
+     */
     unsigned int max_frag_len;
 
     /* The maxium amount of early data we can receive/send */
@@ -328,6 +395,7 @@ void tls_get_state(OSSL_RECORD_LAYER *rl, const char **shortstr,
                    const char **longstr);
 int tls_set_options(OSSL_RECORD_LAYER *rl, const OSSL_PARAM *options);
 const COMP_METHOD *tls_get_compression(OSSL_RECORD_LAYER *rl);
+void tls_set_max_frag_len(OSSL_RECORD_LAYER *rl, size_t max_frag_len);
 int tls_setup_read_buffer(OSSL_RECORD_LAYER *rl);
 int tls_setup_write_buffer(OSSL_RECORD_LAYER *rl, size_t numwpipes,
                            size_t firstlen, size_t nextlen);
@@ -341,6 +409,40 @@ size_t tls_get_max_records_default(OSSL_RECORD_LAYER *rl, int type, size_t len,
 size_t tls_get_max_records_multiblock(OSSL_RECORD_LAYER *rl, int type,
                                       size_t len, size_t maxfrag,
                                       size_t *preffrag);
+int tls_allocate_write_buffers_default(OSSL_RECORD_LAYER *rl,
+                                       OSSL_RECORD_TEMPLATE *templates,
+                                       size_t numtempl, size_t *prefix);
+int tls_initialise_write_packets_default(OSSL_RECORD_LAYER *rl,
+                                         OSSL_RECORD_TEMPLATE *templates,
+                                         size_t numtempl,
+                                         OSSL_RECORD_TEMPLATE *prefixtempl,
+                                         WPACKET *pkt,
+                                         SSL3_BUFFER *bufs,
+                                         size_t *wpinited);
+int tls1_allocate_write_buffers(OSSL_RECORD_LAYER *rl,
+                                OSSL_RECORD_TEMPLATE *templates,
+                                size_t numtempl, size_t *prefix);
+int tls1_initialise_write_packets(OSSL_RECORD_LAYER *rl,
+                                  OSSL_RECORD_TEMPLATE *templates,
+                                  size_t numtempl,
+                                  OSSL_RECORD_TEMPLATE *prefixtempl,
+                                  WPACKET *pkt,
+                                  SSL3_BUFFER *bufs,
+                                  size_t *wpinited);
+int tls_prepare_record_header_default(OSSL_RECORD_LAYER *rl,
+                                      WPACKET *thispkt,
+                                      OSSL_RECORD_TEMPLATE *templ,
+                                      unsigned int rectype,
+                                      unsigned char **recdata);
+int tls_prepare_for_encryption_default(OSSL_RECORD_LAYER *rl,
+                                       size_t mac_size,
+                                       WPACKET *thispkt,
+                                       SSL3_RECORD *thiswr);
+int tls_post_encryption_processing_default(OSSL_RECORD_LAYER *rl,
+                                           size_t mac_size,
+                                           OSSL_RECORD_TEMPLATE *thistempl,
+                                           WPACKET *thispkt,
+                                           SSL3_RECORD *thiswr);
 int tls_write_records_default(OSSL_RECORD_LAYER *rl,
                               OSSL_RECORD_TEMPLATE *templates,
                               size_t numtempl);
