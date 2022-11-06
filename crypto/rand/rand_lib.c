@@ -97,6 +97,7 @@ void ossl_rand_cleanup_int(void)
     CRYPTO_THREAD_lock_free(rand_meth_lock);
     rand_meth_lock = NULL;
 # endif
+    ossl_release_default_drbg_ctx();
     rand_inited = 0;
 }
 
@@ -722,6 +723,34 @@ EVP_RAND_CTX *RAND_get0_private(OSSL_LIB_CTX *ctx)
         CRYPTO_THREAD_set_local(&dgbl->private, rand);
     }
     return rand;
+}
+
+int RAND_set0_public(OSSL_LIB_CTX *ctx, EVP_RAND_CTX *rand)
+{
+    RAND_GLOBAL *dgbl = rand_get_global(ctx);
+    EVP_RAND_CTX *old;
+    int r;
+
+    if (dgbl == NULL)
+        return 0;
+    old = CRYPTO_THREAD_get_local(&dgbl->public);
+    if ((r = CRYPTO_THREAD_set_local(&dgbl->public, rand)) > 0)
+        EVP_RAND_CTX_free(old);
+    return r;
+}
+
+int RAND_set0_private(OSSL_LIB_CTX *ctx, EVP_RAND_CTX *rand)
+{
+    RAND_GLOBAL *dgbl = rand_get_global(ctx);
+    EVP_RAND_CTX *old;
+    int r;
+
+    if (dgbl == NULL)
+        return 0;
+    old = CRYPTO_THREAD_get_local(&dgbl->private);
+    if ((r = CRYPTO_THREAD_set_local(&dgbl->private, rand)) > 0)
+        EVP_RAND_CTX_free(old);
+    return r;
 }
 
 #ifndef FIPS_MODULE

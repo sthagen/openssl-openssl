@@ -40,7 +40,7 @@ IF[{- !$disabled{tests} -}]
           exptest pbetest localetest evp_pkey_ctx_new_from_name \
           evp_pkey_provided_test evp_test evp_extra_test evp_extra_test2 \
           evp_fetch_prov_test evp_libctx_test ossl_store_test \
-          v3nametest v3ext \
+          v3nametest v3ext punycode_test \
           evp_pkey_provided_test evp_test evp_extra_test evp_extra_test2 \
           evp_fetch_prov_test v3nametest v3ext \
           crltest danetest bad_dtls_test lhash_test sparse_array_test \
@@ -63,7 +63,8 @@ IF[{- !$disabled{tests} -}]
           keymgmt_internal_test hexstr_test provider_status_test defltfips_test \
           bio_readbuffer_test user_property_test pkcs7_test upcallstest \
           provfetchtest prov_config_test rand_test ca_internals_test \
-          bio_tfo_test membio_test bio_dgram_test list_test fips_version_test
+          bio_tfo_test membio_test bio_dgram_test list_test fips_version_test \
+          x509_test
 
   IF[{- !$disabled{'deprecated-3.0'} -}]
     PROGRAMS{noinst}=enginetest
@@ -183,7 +184,7 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[evp_extra_test]=../include ../apps/include
   DEPEND[evp_extra_test]=../libcrypto.a libtestutil.a
 
-  SOURCE[evp_extra_test2]=evp_extra_test2.c
+  SOURCE[evp_extra_test2]=evp_extra_test2.c $INITSRC
   INCLUDE[evp_extra_test2]=../include ../apps/include
   DEPEND[evp_extra_test2]=../libcrypto libtestutil.a
 
@@ -326,6 +327,10 @@ IF[{- !$disabled{tests} -}]
   SOURCE[pkcs7_test]=pkcs7_test.c
   INCLUDE[pkcs7_test]=../include ../apps/include
   DEPEND[pkcs7_test]=../libcrypto libtestutil.a
+
+  SOURCE[punycode_test]=punycode_test.c
+  INCLUDE[punycode_test]=../include ../apps/include
+  DEPEND[punycode_test]=../libcrypto.a libtestutil.a
 
   SOURCE[stack_test]=stack_test.c
   INCLUDE[stack_test]=../include ../apps/include
@@ -491,6 +496,10 @@ IF[{- !$disabled{tests} -}]
   SOURCE[x509_time_test]=x509_time_test.c
   INCLUDE[x509_time_test]=../include ../apps/include
   DEPEND[x509_time_test]=../libcrypto libtestutil.a
+
+  SOURCE[x509_test]=x509_test.c
+  INCLUDE[x509_test]=../include ../apps/include
+  DEPEND[x509_test]=../libcrypto libtestutil.a
 
   SOURCE[recordlentest]=recordlentest.c helpers/ssltestlib.c
   INCLUDE[recordlentest]=../include ../apps/include
