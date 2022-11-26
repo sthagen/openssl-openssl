@@ -24,15 +24,14 @@ OpenSSL 3.2
 
 ### Changes between 3.0 and 3.2 [xx XXX xxxx]
 
- * Removed all references to invalid OSSL_PKEY_PARAM_RSA names for CRT parameters
-   in OpenSSL code.
-   Applications should not use the names OSSL_PKEY_PARAM_RSA_FACTOR,
-   OSSL_PKEY_PARAM_RSA_EXPONENT and OSSL_PKEY_PARAM_RSA_COEFFICIENT.
-   Use the numbered names such as OSSL_PKEY_PARAM_RSA_FACTOR1 instead.
-   Using these invalid names may cause algorithms to use slower methods
-   that ignore the CRT parameters.
+ * Added support for Hybrid Public Key Encryption (HPKE) as defined
+   in RFC9180. HPKE is required for TLS Encrypted ClientHello (ECH),
+   Message Layer Security (MLS) and other IETF specifications.
+   HPKE can also be used by other applications that require
+   encrypting "to" an ECDH public key. External APIs are defined in
+   include/openssl/hpke.h and documented in doc/man3/OSSL_HPKE_CTX_new.pod
 
-   *Shane Lontis*
+   *Stephen Farrell*
 
  * Add support for certificate compression (RFC8879), including
    library support for Brotli and Zstandard compression.
@@ -170,6 +169,11 @@ OpenSSL 3.2
 
    *Tomáš Mráz*
 
+ * Add X.509 certificate codeSigning purpose and related checks on key usage and
+   extended key usage of the leaf certificate according to the CA/Browser Forum.
+
+   * Lutz Jänicke*
+
  * Fix and extend certificate handling and the apps `x509`, `verify` etc.
    such as adding a trace facility for debugging certificate chain building.
 
@@ -223,6 +227,18 @@ OpenSSL 3.2
 
    *Hugo Landau*
 
+ * Enable KTLS with the TLS 1.3 CCM mode ciphersuites. Note that some linux
+   kernel versions that support KTLS have a known bug in CCM processing. That
+   has been fixed in stable releases starting from 5.4.164, 5.10.84, 5.15.7,
+   and all releases since 5.16. KTLS with CCM ciphersuites should be only used
+   on these releases.
+
+   *Tianjia Zhang*
+
+ * Zerocopy KTLS sendfile() support on Linux.
+
+   *Maxim Mikityanskiy*
+
 OpenSSL 3.0
 -----------
 
@@ -233,11 +249,63 @@ breaking changes, and mappings for the large list of deprecated functions.
 
 [Migration guide]: https://github.com/openssl/openssl/tree/master/doc/man7/migration_guide.pod
 
-### Changes between 3.0.6 and 3.0.7 [xx XXX xxxx]
+### Changes between 3.0.6 and 3.0.7 [1 Nov 2022]
+
+ * Fixed two buffer overflows in punycode decoding functions.
+
+   A buffer overrun can be triggered in X.509 certificate verification,
+   specifically in name constraint checking. Note that this occurs after
+   certificate chain signature verification and requires either a CA to
+   have signed the malicious certificate or for the application to continue
+   certificate verification despite failure to construct a path to a trusted
+   issuer.
+
+   In a TLS client, this can be triggered by connecting to a malicious
+   server.  In a TLS server, this can be triggered if the server requests
+   client authentication and a malicious client connects.
+
+   An attacker can craft a malicious email address to overflow
+   an arbitrary number of bytes containing the `.`  character (decimal 46)
+   on the stack.  This buffer overflow could result in a crash (causing a
+   denial of service).
+   ([CVE-2022-3786])
+
+   An attacker can craft a malicious email address to overflow four
+   attacker-controlled bytes on the stack.  This buffer overflow could
+   result in a crash (causing a denial of service) or potentially remote code
+   execution depending on stack layout for any given platform/compiler.
+   ([CVE-2022-3602])
+
+   *Paul Dale*
+
+ * Removed all references to invalid OSSL_PKEY_PARAM_RSA names for CRT
+   parameters in OpenSSL code.
+   Applications should not use the names OSSL_PKEY_PARAM_RSA_FACTOR,
+   OSSL_PKEY_PARAM_RSA_EXPONENT and OSSL_PKEY_PARAM_RSA_COEFFICIENT.
+   Use the numbered names such as OSSL_PKEY_PARAM_RSA_FACTOR1 instead.
+   Using these invalid names may cause algorithms to use slower methods
+   that ignore the CRT parameters.
+
+   *Shane Lontis*
+
+ * Fixed a regression introduced in 3.0.6 version raising errors on some stack
+   operations.
+
+   *Tomáš Mráz*
+
+ * Fixed a regression introduced in 3.0.6 version not refreshing the certificate
+   data to be signed before signing the certificate.
+
+   *Gibeom Gwon*
 
  * Added RIPEMD160 to the default provider.
 
    *Paul Dale*
+
+ * Ensured that the key share group sent or accepted for the key exchange
+   is allowed for the protocol version.
+
+   *Matt Caswell*
 
 ### Changes between 3.0.5 and 3.0.6 [11 Oct 2022]
 
