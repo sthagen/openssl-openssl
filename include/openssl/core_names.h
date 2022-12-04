@@ -97,6 +97,7 @@ extern "C" {
 #define OSSL_CIPHER_PARAM_CTS_MODE             "cts_mode"     /* utf8_string */
 /* For passing the AlgorithmIdentifier parameter in DER form */
 #define OSSL_CIPHER_PARAM_ALGORITHM_ID_PARAMS  "alg_id_param" /* octet_string */
+#define OSSL_CIPHER_PARAM_XTS_STANDARD         "xts_standard" /* utf8_string */
 
 #define OSSL_CIPHER_PARAM_TLS1_MULTIBLOCK_MAX_SEND_FRAGMENT                    \
     "tls1multi_maxsndfrag" /* uint */
@@ -229,6 +230,8 @@ extern "C" {
 #define OSSL_KDF_PARAM_X942_SUPP_PUBINFO    "supp-pubinfo"
 #define OSSL_KDF_PARAM_X942_SUPP_PRIVINFO   "supp-privinfo"
 #define OSSL_KDF_PARAM_X942_USE_KEYBITS     "use-keybits"
+#define OSSL_KDF_PARAM_HMACDRBG_ENTROPY     "entropy"
+#define OSSL_KDF_PARAM_HMACDRBG_NONCE       "nonce"
 
 /* Known KDF names */
 #define OSSL_KDF_NAME_HKDF           "HKDF"
@@ -244,6 +247,7 @@ extern "C" {
 #define OSSL_KDF_NAME_X963KDF        "X963KDF"
 #define OSSL_KDF_NAME_KBKDF          "KBKDF"
 #define OSSL_KDF_NAME_KRB5KDF        "KRB5KDF"
+#define OSSL_KDF_NAME_HMACDRBGKDF    "HMAC-DRBG-KDF"
 
 /* Known RAND names */
 #define OSSL_RAND_PARAM_STATE                   "state"
@@ -460,6 +464,7 @@ extern "C" {
 #define OSSL_SIGNATURE_PARAM_MGF1_PROPERTIES    \
     OSSL_PKEY_PARAM_MGF1_PROPERTIES
 #define OSSL_SIGNATURE_PARAM_DIGEST_SIZE        OSSL_PKEY_PARAM_DIGEST_SIZE
+#define OSSL_SIGNATURE_PARAM_NONCE_TYPE         "nonce_type"
 
 /* Asym cipher parameters */
 #define OSSL_ASYM_CIPHER_PARAM_DIGEST                   OSSL_PKEY_PARAM_DIGEST
