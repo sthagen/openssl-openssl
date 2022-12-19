@@ -505,6 +505,12 @@ int OSSL_CRMF_MSGS_verify_popo(const OSSL_CRMF_MSGS *reqs,
                 ERR_raise(ERR_LIB_CRMF, CRMF_R_POPO_INCONSISTENT_PUBLIC_KEY);
                 return 0;
             }
+
+            /*
+             * Should check at this point the contents of the authInfo sub-field
+             * as requested in FR #19807 according to RFC 4211 section 4.1.
+             */
+
             it = ASN1_ITEM_rptr(OSSL_CRMF_POPOSIGNINGKEYINPUT);
             asn = sig->poposkInput;
         } else {
@@ -521,6 +527,12 @@ int OSSL_CRMF_MSGS_verify_popo(const OSSL_CRMF_MSGS *reqs,
             return 0;
         break;
     case OSSL_CRMF_POPO_KEYENC:
+        /*
+         * When OSSL_CMP_certrep_new() supports encrypted certs,
+         * should return 1 if the type of req->popo->value.keyEncipherment
+         * is OSSL_CRMF_POPOPRIVKEY_SUBSEQUENTMESSAGE and
+         * its value.subsequentMessage == OSSL_CRMF_SUBSEQUENTMESSAGE_ENCRCERT
+         */
     case OSSL_CRMF_POPO_KEYAGREE:
     default:
         ERR_raise(ERR_LIB_CRMF, CRMF_R_UNSUPPORTED_POPO_METHOD);
@@ -653,7 +665,7 @@ X509
     cikeysize = EVP_CIPHER_get_key_length(cipher);
     /* first the symmetric key needs to be decrypted */
     pkctx = EVP_PKEY_CTX_new_from_pkey(libctx, pkey, propq);
-    if (pkctx != NULL && EVP_PKEY_decrypt_init(pkctx)) {
+    if (pkctx != NULL && EVP_PKEY_decrypt_init(pkctx) > 0) {
         ASN1_BIT_STRING *encKey = ecert->encSymmKey;
         size_t failure;
         int retval;

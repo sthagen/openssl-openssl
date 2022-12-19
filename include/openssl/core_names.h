@@ -302,6 +302,7 @@ extern "C" {
 #define OSSL_PKEY_PARAM_DIST_ID             "distid"
 #define OSSL_PKEY_PARAM_PUB_KEY             "pub"
 #define OSSL_PKEY_PARAM_PRIV_KEY            "priv"
+#define OSSL_PKEY_PARAM_IMPLICIT_REJECTION  "implicit-rejection"
 
 /* Diffie-Hellman/DSA Parameters */
 #define OSSL_PKEY_PARAM_FFC_P               "p"
@@ -407,6 +408,7 @@ extern "C" {
 #define OSSL_PKEY_RSA_PSS_SALT_LEN_DIGEST "digest"
 #define OSSL_PKEY_RSA_PSS_SALT_LEN_MAX    "max"
 #define OSSL_PKEY_RSA_PSS_SALT_LEN_AUTO   "auto"
+#define OSSL_PKEY_RSA_PSS_SALT_LEN_AUTO_DIGEST_MAX "auto-digestmax"
 
 /* Key generation parameters */
 #define OSSL_PKEY_PARAM_RSA_BITS             OSSL_PKEY_PARAM_BITS
@@ -464,7 +466,7 @@ extern "C" {
 #define OSSL_SIGNATURE_PARAM_MGF1_PROPERTIES    \
     OSSL_PKEY_PARAM_MGF1_PROPERTIES
 #define OSSL_SIGNATURE_PARAM_DIGEST_SIZE        OSSL_PKEY_PARAM_DIGEST_SIZE
-#define OSSL_SIGNATURE_PARAM_NONCE_TYPE         "nonce_type"
+#define OSSL_SIGNATURE_PARAM_NONCE_TYPE         "nonce-type"
 
 /* Asym cipher parameters */
 #define OSSL_ASYM_CIPHER_PARAM_DIGEST                   OSSL_PKEY_PARAM_DIGEST
@@ -481,6 +483,7 @@ extern "C" {
 #define OSSL_ASYM_CIPHER_PARAM_OAEP_LABEL               "oaep-label"
 #define OSSL_ASYM_CIPHER_PARAM_TLS_CLIENT_VERSION       "tls-client-version"
 #define OSSL_ASYM_CIPHER_PARAM_TLS_NEGOTIATED_VERSION   "tls-negotiated-version"
+#define OSSL_ASYM_CIPHER_PARAM_IMPLICIT_REJECTION       "implicit-rejection"
 
 /*
  * Encoder / decoder parameters
