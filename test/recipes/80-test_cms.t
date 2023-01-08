@@ -655,7 +655,7 @@ my @smime_cms_param_tests_autodigestmax = (
         "-keyopt", "rsa_padding_mode:pss", "-keyopt", "rsa_pss_saltlen:auto-digestmax",
         "-out", "{output}.cms" ],
       # digest is SHA-512, which produces 64, bytes of output, but an RSA-PSS
-      # signature with a 1024 bit RSA key can only accomodate 62
+      # signature with a 1024 bit RSA key can only accommodate 62
       sub { my %opts = @_; rsapssSaltlen("$opts{output}.cms") == 62; },
       [ "{cmd2}", @defaultprov, "-verify", "-in", "{output}.cms", "-inform", "PEM",
         "-CAfile", $smroot, "-out", "{output}.txt" ],
@@ -826,7 +826,7 @@ sub rsapssSaltlen {
   my $pssparam_offset = -1;
   while ($_ = shift @asn1parse) {
     chomp;
-    next unless /:rsassaPss$/;
+    next unless /:rsassaPss/;
     # This line contains :rsassaPss, the next line contains a raw dump of the
     # RSA_PSS_PARAMS sequence; obtain its offset
     $_ = shift @asn1parse;
@@ -852,7 +852,7 @@ sub rsapssSaltlen {
   # This assumes the salt length is the last field, which may possibly be
   # incorrect if there is a non-standard trailer field, but there almost never
   # is in PSS.
-  if ($pssparam[-1] =~ /prim:\s+INTEGER\s+:([A-Fa-f0-9]+)$/) {
+  if ($pssparam[-1] =~ /prim:\s+INTEGER\s+:([A-Fa-f0-9]+)/) {
     $saltlen = hex($1);
   }
 
