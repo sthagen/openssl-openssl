@@ -15,6 +15,8 @@
 # include "internal/quic_types.h"
 # include "internal/quic_record_util.h"
 
+# ifndef OPENSSL_NO_QUIC
+
 /*
  * QUIC Record Layer - TX
  * ======================
@@ -65,12 +67,14 @@ void ossl_qtx_free(OSSL_QTX *qtx);
  * secret_len is the length of the secret buffer in bytes. The buffer must be
  * sized correctly to the chosen suite, else the function fails.
  *
- * This function can only be called once for a given EL. Subsequent calls fail,
- * as do calls made after a corresponding call to ossl_qtx_discard_enc_level for
- * that EL. The secret for a EL cannot be changed after it is set because QUIC
- * has no facility for introducing additional key material after an EL is setup.
- * (QUIC key updates generate new keys from existing key material and do not
- * introduce new entropy into a connection's key material.)
+ * This function can only be called once for a given EL, except for the INITIAL
+ * EL, as the INITIAL EL can need to be rekeyed if connection retry occurs.
+ * Subsequent calls for non-INITIAL ELs fail. Calls made after a corresponding
+ * call to ossl_qtx_discard_enc_level for a given EL also fail, including for
+ * the INITIAL EL. The secret for a non-INITIAL EL cannot be changed after it is
+ * set because QUIC has no facility for introducing additional key material
+ * after an EL is setup. (QUIC key updates generate new keys from existing key
+ * material and do not introduce new entropy into a connection's key material.)
  *
  * Returns 1 on success or 0 on failure.
  */
@@ -206,8 +210,27 @@ void ossl_qtx_finish_dgram(OSSL_QTX *qtx);
  * is desired. The queue is drained into the OS's sockets as much as possible.
  * To determine if there is still data to be sent after calling this function,
  * use ossl_qtx_get_queue_len_bytes().
+ *
+ * Returns one of the following values:
+ *
+ *   QTX_FLUSH_NET_RES_OK
+ *      Either no packets are currently queued for transmission,
+ *      or at least one packet was successfully submitted.
+ *
+ *   QTX_FLUSH_NET_RES_TRANSIENT_FAIL
+ *      The underlying network write BIO indicated a transient error
+ *      (e.g. buffers full).
+ *
+ *   QTX_FLUSH_NET_RES_PERMANENT_FAIL
+ *      Internal error (e.g. assertion or allocation error)
+ *      or the underlying network write BIO indicated a non-transient
+ *      error.
  */
-void ossl_qtx_flush_net(OSSL_QTX *qtx);
+#define QTX_FLUSH_NET_RES_OK                1
+#define QTX_FLUSH_NET_RES_TRANSIENT_FAIL    (-1)
+#define QTX_FLUSH_NET_RES_PERMANENT_FAIL    (-2)
+
+int ossl_qtx_flush_net(OSSL_QTX *qtx);
 
 /*
  * Diagnostic function. If there is any datagram pending transmission, pops it
@@ -240,9 +263,10 @@ size_t ossl_qtx_get_unflushed_pkt_count(OSSL_QTX *qtx);
 
 /*
  * Change the BIO being used by the QTX. May be NULL if actual transmission is
- * not currently required.
+ * not currently required. Does not up-ref the BIO; the caller is responsible
+ * for ensuring the lifetime of the BIO exceeds the lifetime of the QTX.
  */
-int ossl_qtx_set1_bio(OSSL_QTX *qtx, BIO *bio);
+void ossl_qtx_set_bio(OSSL_QTX *qtx, BIO *bio);
 
 /* Changes the MDPL. */
 int ossl_qtx_set_mdpl(OSSL_QTX *qtx, size_t mdpl);
@@ -318,5 +342,7 @@ uint64_t ossl_qtx_get_cur_epoch_pkt_count(OSSL_QTX *qtx, uint32_t enc_level);
  * error condition to a peer is a Stateless Reset packet.
  */
 uint64_t ossl_qtx_get_max_epoch_pkt_count(OSSL_QTX *qtx, uint32_t enc_level);
+
+# endif
 
 #endif

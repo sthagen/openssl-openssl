@@ -16,6 +16,8 @@
 # include "internal/time.h"
 # include "internal/list.h"
 
+# ifndef OPENSSL_NO_QUIC
+
 typedef struct ossl_ackm_st OSSL_ACKM;
 
 OSSL_ACKM *ossl_ackm_new(OSSL_TIME (*now)(void *arg),
@@ -104,10 +106,10 @@ struct ossl_ackm_tx_pkt_st {
 int ossl_ackm_on_tx_packet(OSSL_ACKM *ackm, OSSL_ACKM_TX_PKT *pkt);
 int ossl_ackm_on_rx_datagram(OSSL_ACKM *ackm, size_t num_bytes);
 
-#define OSSL_ACKM_ECN_NONE      0
-#define OSSL_ACKM_ECN_ECT1      1
-#define OSSL_ACKM_ECN_ECT0      2
-#define OSSL_ACKM_ECN_ECNCE     3
+#  define OSSL_ACKM_ECN_NONE      0
+#  define OSSL_ACKM_ECN_ECT1      1
+#  define OSSL_ACKM_ECN_ECT0      2
+#  define OSSL_ACKM_ECN_ECNCE     3
 
 typedef struct ossl_ackm_rx_pkt_st {
     /* The packet number of the received packet. */
@@ -212,5 +214,25 @@ int ossl_ackm_get_probe_request(OSSL_ACKM *ackm, int clear,
                                 OSSL_ACKM_PROBE_INFO *info);
 
 int ossl_ackm_get_largest_unacked(OSSL_ACKM *ackm, int pkt_space, QUIC_PN *pn);
+
+/*
+ * Forces the ACKM to consider a packet with the given PN in the given PN space
+ * as having been pseudo-lost. The main reason to use this is during a Retry, to
+ * force any resources sent in the first Initial packet to be resent.
+ *
+ * The lost callback is called for the packet, but the packet is NOT considered
+ * lost for congestion control purposes. Thus this is not exactly the same as a
+ * true loss situation.
+ */
+int ossl_ackm_mark_packet_pseudo_lost(OSSL_ACKM *ackm,
+                                      int pkt_space, QUIC_PN pn);
+
+/*
+ * Returns the PTO duration as currently calculated. This is a quantity of time.
+ * This duration is used in various parts of QUIC besides the ACKM.
+ */
+OSSL_TIME ossl_ackm_get_pto_duration(OSSL_ACKM *ackm);
+
+# endif
 
 #endif

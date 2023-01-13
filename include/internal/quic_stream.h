@@ -17,9 +17,10 @@
 #include "internal/quic_wire.h"
 #include "internal/quic_record_tx.h"
 #include "internal/quic_record_rx.h"
-#include "internal/quic_record_rx_wrap.h"
 #include "internal/quic_fc.h"
 #include "internal/quic_statm.h"
+
+# ifndef OPENSSL_NO_QUIC
 
 /*
  * QUIC Send Stream
@@ -129,6 +130,12 @@ int ossl_quic_sstream_get_stream_frame(QUIC_SSTREAM *qss,
                                        OSSL_QUIC_FRAME_STREAM *hdr,
                                        OSSL_QTX_IOVEC *iov,
                                        size_t *num_iov);
+
+/*
+ * Returns 1 if there is data pending transmission. Equivalent to calling
+ * ossl_quic_sstream_get_stream_frame and seeing if it succeeds.
+ */
+int ossl_quic_sstream_has_pending(QUIC_SSTREAM *qss);
 
 /*
  * Returns the current size of the stream; i.e., the number of bytes which have
@@ -296,7 +303,7 @@ typedef struct quic_rstream_st QUIC_RSTREAM;
  * If they are non-NULL, the `rxfc` is called when receive stream data
  * is read by application. `statm` is queried for current rtt.
  */
-QUIC_RSTREAM *ossl_quic_rstream_new(OSSL_QRX *qrx, QUIC_RXFC *rxfc,
+QUIC_RSTREAM *ossl_quic_rstream_new(QUIC_RXFC *rxfc,
                                     OSSL_STATM *statm);
 
 /*
@@ -314,7 +321,7 @@ void ossl_quic_rstream_free(QUIC_RSTREAM *qrs);
  * Or to indicate `fin` without any further data added to the stream.
  */
 
-int ossl_quic_rstream_queue_data(QUIC_RSTREAM *qrs, OSSL_QRX_PKT_WRAP *pkt_wrap,
+int ossl_quic_rstream_queue_data(QUIC_RSTREAM *qrs, OSSL_QRX_PKT *pkt,
                                  uint64_t offset,
                                  const unsigned char *data, uint64_t data_len,
                                  int fin);
@@ -343,5 +350,7 @@ int ossl_quic_rstream_peek(QUIC_RSTREAM *qrs, unsigned char *buf, size_t size,
  * set to 0 otherwise.
  */
 int ossl_quic_rstream_available(QUIC_RSTREAM *qrs, size_t *avail, int *fin);
+
+# endif
 
 #endif

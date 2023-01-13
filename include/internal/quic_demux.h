@@ -16,6 +16,8 @@
 # include "internal/time.h"
 # include "internal/list.h"
 
+# ifndef OPENSSL_NO_QUIC
+
 /*
  * QUIC Demuxer
  * ============
@@ -124,6 +126,12 @@ struct quic_urxe_st {
      * QRX only; not used by the demuxer.
      */
     char            deferred;
+
+    /*
+     * Used by the DEMUX to track if a URXE has been handed out. Used primarily
+     * for debugging purposes.
+     */
+    char            demux_state;
 };
 
 /* Accessors for URXE buffer. */
@@ -183,7 +191,6 @@ typedef void (ossl_quic_demux_cb_fn)(QUIC_URXE *e, void *arg);
  */
 QUIC_DEMUX *ossl_quic_demux_new(BIO *net_bio,
                                 size_t short_conn_id_len,
-                                size_t default_urxe_alloc_len,
                                 OSSL_TIME (*now)(void *arg),
                                 void *now_arg);
 
@@ -192,6 +199,17 @@ QUIC_DEMUX *ossl_quic_demux_new(BIO *net_bio,
  * before calling this. No-op if demux is NULL.
  */
 void ossl_quic_demux_free(QUIC_DEMUX *demux);
+
+/*
+ * Changes the BIO which the demuxer reads from. This also sets the MTU if the
+ * BIO supports querying the MTU.
+ */
+void ossl_quic_demux_set_bio(QUIC_DEMUX *demux, BIO *net_bio);
+
+/*
+ * Changes the MTU in bytes we use to receive datagrams.
+ */
+int ossl_quic_demux_set_mtu(QUIC_DEMUX *demux, unsigned int mtu);
 
 /*
  * Register a datagram handler callback for a connection ID.
@@ -249,8 +267,26 @@ void ossl_quic_demux_release_urxe(QUIC_DEMUX *demux,
  * Process any unprocessed RX'd datagrams, by calling registered callbacks by
  * connection ID, reading more datagrams from the BIO if necessary.
  *
- * Returns 1 on success or 0 on failure.
+ * Returns one of the following values:
+ *
+ *     QUIC_DEMUX_PUMP_RES_OK
+ *         At least one incoming datagram was processed.
+ *
+ *     QUIC_DEMUX_PUMP_RES_TRANSIENT_FAIL
+ *         No more incoming datagrams are currently available.
+ *         Call again later.
+ *
+ *     QUIC_DEMUX_PUMP_RES_PERMANENT_FAIL
+ *         Either the network read BIO has failed in a non-transient fashion, or
+ *         the QUIC implementation has encountered an internal state, assertion
+ *         or allocation error. The caller should tear down the connection
+ *         similarly to in the case of a protocol violation.
+ *
  */
+#define QUIC_DEMUX_PUMP_RES_OK              1
+#define QUIC_DEMUX_PUMP_RES_TRANSIENT_FAIL  (-1)
+#define QUIC_DEMUX_PUMP_RES_PERMANENT_FAIL  (-2)
+
 int ossl_quic_demux_pump(QUIC_DEMUX *demux);
 
 /*
@@ -267,5 +303,7 @@ int ossl_quic_demux_inject(QUIC_DEMUX *demux,
                            size_t buf_len,
                            const BIO_ADDR *peer,
                            const BIO_ADDR *local);
+
+# endif
 
 #endif

@@ -104,11 +104,6 @@ OSSL_QTX *ossl_qtx_new(const OSSL_QTX_ARGS *args)
     if (qtx == NULL)
         return 0;
 
-    if (args->bio != NULL && !BIO_up_ref(args->bio)) {
-        OPENSSL_free(qtx);
-        return 0;
-    }
-
     qtx->libctx             = args->libctx;
     qtx->propq              = args->propq;
     qtx->bio                = args->bio;
@@ -143,7 +138,6 @@ void ossl_qtx_free(OSSL_QTX *qtx)
     for (i = 0; i < QUIC_ENC_LEVEL_NUM; ++i)
         ossl_qrl_enc_level_set_discard(&qtx->el_set, i);
 
-    BIO_free(qtx->bio);
     OPENSSL_free(qtx);
 }
 
@@ -818,14 +812,18 @@ static void txe_to_msg(TXE *txe, BIO_MSG *msg)
 
 #define MAX_MSGS_PER_SEND   32
 
-void ossl_qtx_flush_net(OSSL_QTX *qtx)
+int ossl_qtx_flush_net(OSSL_QTX *qtx)
 {
     BIO_MSG msg[MAX_MSGS_PER_SEND];
-    size_t wr, i;
+    size_t wr, i, total_written = 0;
     TXE *txe;
+    int res;
+
+    if (ossl_list_txe_head(&qtx->pending) == NULL)
+        return QTX_FLUSH_NET_RES_OK; /* Nothing to send. */
 
     if (qtx->bio == NULL)
-        return;
+        return QTX_FLUSH_NET_RES_PERMANENT_FAIL;
 
     for (;;) {
         for (txe = ossl_list_txe_head(&qtx->pending), i = 0;
@@ -835,21 +833,46 @@ void ossl_qtx_flush_net(OSSL_QTX *qtx)
 
         if (!i)
             /* Nothing to send. */
-            return;
+            break;
 
-        if (!BIO_sendmmsg(qtx->bio, msg, sizeof(BIO_MSG), i, 0, &wr) || wr == 0)
+        ERR_set_mark();
+        res = BIO_sendmmsg(qtx->bio, msg, sizeof(BIO_MSG), i, 0, &wr);
+        if (res && wr == 0) {
+            /*
+             * Treat 0 messages sent as a transient error and just stop for now.
+             */
+            ERR_clear_last_mark();
+            break;
+        } else if (!res) {
             /*
              * We did not get anything, so further calls will probably not
              * succeed either.
              */
-            break;
+            if (BIO_err_is_non_fatal(ERR_peek_last_error())) {
+                /* Transient error, just stop for now, clearing the error. */
+                ERR_pop_to_mark();
+                break;
+            } else {
+                /* Non-transient error, fail and do not clear the error. */
+                ERR_clear_last_mark();
+                return QTX_FLUSH_NET_RES_PERMANENT_FAIL;
+            }
+        }
+
+        ERR_clear_last_mark();
 
         /*
          * Remove everything which was successfully sent from the pending queue.
          */
         for (i = 0; i < wr; ++i)
             qtx_pending_to_free(qtx);
+
+        total_written += wr;
     }
+
+    return total_written > 0
+        ? QTX_FLUSH_NET_RES_OK
+        : QTX_FLUSH_NET_RES_TRANSIENT_FAIL;
 }
 
 int ossl_qtx_pop_net(OSSL_QTX *qtx, BIO_MSG *msg)
@@ -864,14 +887,9 @@ int ossl_qtx_pop_net(OSSL_QTX *qtx, BIO_MSG *msg)
     return 1;
 }
 
-int ossl_qtx_set1_bio(OSSL_QTX *qtx, BIO *bio)
+void ossl_qtx_set_bio(OSSL_QTX *qtx, BIO *bio)
 {
-    if (bio != NULL && !BIO_up_ref(bio))
-        return 0;
-
-    BIO_free(qtx->bio);
     qtx->bio = bio;
-    return 1;
 }
 
 int ossl_qtx_set_mdpl(OSSL_QTX *qtx, size_t mdpl)

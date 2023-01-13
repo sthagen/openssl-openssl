@@ -59,6 +59,9 @@ struct ossl_quic_tx_packetiser_st {
      */
     unsigned int    want_conn_close         : 1;
 
+    /* Has the handshake been completed? */
+    unsigned int    handshake_complete      : 1;
+
     OSSL_QUIC_FRAME_CONN_CLOSE  conn_close_frame;
 
     /* Internal state - packet assembly. */
@@ -440,8 +443,12 @@ int ossl_quic_tx_packetiser_discard_enc_level(OSSL_QUIC_TX_PACKETISER *txp,
     if (enc_level != QUIC_ENC_LEVEL_0RTT)
         txp->args.crypto[ossl_quic_enc_level_to_pn_space(enc_level)] = NULL;
 
-    ossl_qtx_discard_enc_level(txp->args.qtx, enc_level);
     return 1;
+}
+
+void ossl_quic_tx_packetiser_notify_handshake_complete(OSSL_QUIC_TX_PACKETISER *txp)
+{
+    txp->handshake_complete = 1;
 }
 
 void ossl_quic_tx_packetiser_schedule_handshake_done(OSSL_QUIC_TX_PACKETISER *txp)
@@ -459,6 +466,25 @@ void ossl_quic_tx_packetiser_schedule_ack_eliciting(OSSL_QUIC_TX_PACKETISER *txp
 #define TXP_ERR_SUCCESS      1  /* Success */
 #define TXP_ERR_SPACE        2  /* Not enough room for another packet */
 #define TXP_ERR_INPUT        3  /* Invalid/malformed input */
+
+int ossl_quic_tx_packetiser_has_pending(OSSL_QUIC_TX_PACKETISER *txp,
+                                        uint32_t archetype,
+                                        uint32_t flags)
+{
+    uint32_t enc_level;
+    int bypass_cc = ((flags & TX_PACKETISER_BYPASS_CC) != 0);
+
+    if (!bypass_cc && !txp->args.cc_method->can_send(txp->args.cc_data))
+        return 0;
+
+    for (enc_level = QUIC_ENC_LEVEL_INITIAL;
+         enc_level < QUIC_ENC_LEVEL_NUM;
+         ++enc_level)
+        if (txp_el_pending(txp, enc_level, archetype))
+            return 1;
+
+    return 0;
+}
 
 /*
  * Generates a datagram by polling the various ELs to determine if they want to
@@ -778,7 +804,7 @@ static int txp_el_pending(OSSL_QUIC_TX_PACKETISER *txp, uint32_t enc_level,
             }
        }
 
-    if (a.allow_stream_rel) {
+    if (a.allow_stream_rel && txp->handshake_complete) {
         QUIC_STREAM_ITER it;
 
         /* If there are any active streams, 0/1-RTT wants to produce a packet.
@@ -1227,7 +1253,7 @@ static int txp_generate_crypto_frames(OSSL_QUIC_TX_PACKETISER *txp,
     OSSL_QTX_IOVEC iov[2];
     uint64_t hdr_bytes;
     WPACKET *wpkt;
-    QUIC_TXPIM_CHUNK chunk;
+    QUIC_TXPIM_CHUNK chunk = {0};
     size_t i, space_left;
 
     for (i = 0;; ++i) {
@@ -1383,6 +1409,7 @@ static int txp_generate_stream_frames(OSSL_QUIC_TX_PACKETISER *txp,
     size_t i, j, space_left;
     int needs_padding_if_implicit, can_fill_payload, use_explicit_len;
     int could_have_following_chunk;
+    uint64_t orig_len;
     uint64_t hdr_len_implicit, payload_len_implicit;
     uint64_t hdr_len_explicit, payload_len_explicit;
     uint64_t fc_swm, fc_new_hwm;
@@ -1433,6 +1460,7 @@ static int txp_generate_stream_frames(OSSL_QUIC_TX_PACKETISER *txp,
             goto err;
 
         shdr = &chunks[i % 2].shdr;
+        orig_len = shdr->len;
         if (i > 0)
             /* Load next chunk for lookahead. */
             if (!txp_plan_stream_chunk(txp, h, sstream, stream_txfc, i + 1,
@@ -1551,6 +1579,16 @@ static int txp_generate_stream_frames(OSSL_QUIC_TX_PACKETISER *txp,
         chunk.has_reset_stream  = 0;
         if (!ossl_quic_txpim_pkt_append_chunk(tpkt, &chunk))
             goto err; /* alloc error */
+
+        if (shdr->len < orig_len) {
+            /*
+             * If we did not serialize all of this chunk we definitely do not
+             * want to try the next chunk (and we must not mark the stream
+             * as drained).
+             */
+            rc = 1;
+            goto err;
+        }
     }
 
 err:
@@ -1926,7 +1964,7 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
             goto fatal_err;
 
     /* Stream-specific frames */
-    if (a.allow_stream_rel)
+    if (a.allow_stream_rel && txp->handshake_complete)
         if (!txp_generate_stream_related(txp, &h, pn_space, tpkt, min_ppl,
                                          &have_ack_eliciting,
                                          &tmp_head))
@@ -2067,11 +2105,8 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
          */
         ossl_quic_stream_map_update_state(txp->args.qsm, stream);
 
-        if (!stream->want_max_stream_data
-            && !stream->want_stop_sending
-            && !stream->want_reset_stream
-            && (stream->txp_drained || stream->txp_blocked))
-            assert(!stream->active);
+        if (stream->txp_drained)
+            assert(!ossl_quic_sstream_has_pending(stream->sstream));
     }
 
     /* We have now sent the packet, so update state accordingly. */
