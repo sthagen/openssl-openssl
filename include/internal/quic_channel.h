@@ -59,6 +59,7 @@ typedef struct quic_channel_args_st {
     OSSL_LIB_CTX *libctx;
     const char *propq;
     int is_server;
+    SSL *tls;
 } QUIC_CHANNEL_ARGS;
 
 typedef struct quic_channel_st QUIC_CHANNEL;
@@ -91,7 +92,7 @@ void ossl_quic_channel_free(QUIC_CHANNEL *ch);
 int ossl_quic_channel_start(QUIC_CHANNEL *ch);
 
 /* Start a locally initiated connection shutdown. */
-void ossl_quic_channel_local_close(QUIC_CHANNEL *ch);
+void ossl_quic_channel_local_close(QUIC_CHANNEL *ch, uint64_t app_error_code);
 
 /*
  * Called when the handshake is confirmed.

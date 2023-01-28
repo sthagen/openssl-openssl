@@ -12,12 +12,13 @@
 #include <openssl/sslerr.h>
 #include <crypto/rand.h>
 #include "quic_local.h"
-#include "internal/quic_dummy_handshake.h"
+#include "internal/quic_tls.h"
 #include "internal/quic_rx_depack.h"
 #include "internal/quic_error.h"
 #include "internal/time.h"
 
 static void aon_write_finish(QUIC_CONNECTION *qc);
+static int ensure_channel(QUIC_CONNECTION *qc);
 
 /*
  * QUIC Front-End I/O API: Common Utilities
@@ -118,6 +119,7 @@ SSL *ossl_quic_new(SSL_CTX *ctx)
 {
     QUIC_CONNECTION *qc = NULL;
     SSL *ssl_base = NULL;
+    SSL_CONNECTION *sc = NULL;
 
     qc = OPENSSL_zalloc(sizeof(*qc));
     if (qc == NULL)
@@ -125,15 +127,20 @@ SSL *ossl_quic_new(SSL_CTX *ctx)
 
     /* Initialise the QUIC_CONNECTION's stub header. */
     ssl_base = &qc->ssl;
-    if (!ossl_ssl_init(ssl_base, ctx, SSL_TYPE_QUIC_CONNECTION)) {
+    if (!ossl_ssl_init(ssl_base, ctx, ctx->method, SSL_TYPE_QUIC_CONNECTION)) {
         ssl_base = NULL;
         goto err;
     }
+
+    qc->tls = ossl_ssl_connection_new_int(ctx, TLS_method());
+    if (qc->tls == NULL || (sc = SSL_CONNECTION_FROM_SSL(qc->tls)) == NULL)
+         goto err;
 
     /* Channel is not created yet. */
     qc->ssl_mode   = qc->ssl.ctx->mode;
     qc->last_error = SSL_ERROR_NONE;
     qc->blocking   = 1;
+
     return ssl_base;
 
 err:
@@ -156,6 +163,8 @@ void ossl_quic_free(SSL *s)
     BIO_free(qc->net_wbio);
 
     /* Note: SSL_free calls OPENSSL_free(qc) for us */
+
+    SSL_free(qc->tls);
 }
 
 /* SSL method init */
@@ -478,17 +487,34 @@ int ossl_quic_get_net_write_desired(QUIC_CONNECTION *qc)
  */
 
 /* SSL_shutdown */
-int ossl_quic_shutdown(SSL *s)
+static int quic_shutdown_wait(void *arg)
 {
-    QUIC_CONNECTION *qc = QUIC_CONNECTION_FROM_SSL(s);
+    QUIC_CONNECTION *qc = arg;
 
-    if (!expect_quic_conn(qc))
-        return 0;
+    return qc->ch == NULL || ossl_quic_channel_is_terminated(qc->ch);
+}
 
-    if (qc->ch != NULL)
-        ossl_quic_channel_local_close(qc->ch);
+int ossl_quic_conn_shutdown(QUIC_CONNECTION *qc, uint64_t flags,
+                            const SSL_SHUTDOWN_EX_ARGS *args,
+                            size_t args_len)
+{
+    if (!ensure_channel(qc))
+        return -1;
 
-    return 1;
+    ossl_quic_channel_local_close(qc->ch,
+                                  args != NULL ? args->quic_error_code : 0);
+
+    /* TODO(QUIC): !SSL_SHUTDOWN_FLAG_NO_STREAM_FLUSH */
+
+    if (ossl_quic_channel_is_terminated(qc->ch))
+        return 1;
+
+    if (blocking_mode(qc) && (flags & SSL_SHUTDOWN_FLAG_RAPID) == 0)
+        block_until_pred(qc, quic_shutdown_wait, NULL, 0);
+    else
+        ossl_quic_reactor_tick(ossl_quic_channel_get_reactor(qc->ch));
+
+    return ossl_quic_channel_is_terminated(qc->ch);
 }
 
 /* SSL_ctrl */
@@ -565,12 +591,7 @@ static int configure_channel(QUIC_CONNECTION *qc)
     return 1;
 }
 
-/*
- * Creates a channel and configures it with the information we have accumulated
- * via calls made to us from the application prior to starting a handshake
- * attempt.
- */
-static int ensure_channel_and_start(QUIC_CONNECTION *qc)
+static int ensure_channel(QUIC_CONNECTION *qc)
 {
     QUIC_CHANNEL_ARGS args = {0};
 
@@ -580,9 +601,23 @@ static int ensure_channel_and_start(QUIC_CONNECTION *qc)
     args.libctx     = qc->ssl.ctx->libctx;
     args.propq      = qc->ssl.ctx->propq;
     args.is_server  = 0;
+    args.tls        = qc->tls;
 
     qc->ch = ossl_quic_channel_new(&args);
     if (qc->ch == NULL)
+        return 0;
+
+    return 1;
+}
+
+/*
+ * Creates a channel and configures it with the information we have accumulated
+ * via calls made to us from the application prior to starting a handshake
+ * attempt.
+ */
+static int ensure_channel_and_start(QUIC_CONNECTION *qc)
+{
+    if (!ensure_channel(qc))
         return 0;
 
     if (!configure_channel(qc)
@@ -721,6 +756,7 @@ int ossl_quic_accept(SSL *s)
  *   (BIO/)SSL_read             => ossl_quic_read
  *   (BIO/)SSL_write            => ossl_quic_write
  *         SSL_pending          => ossl_quic_pending
+ *         SSL_stream_conclude  => ossl_quic_conn_stream_conclude
  */
 
 /* SSL_get_error */
@@ -1018,6 +1054,10 @@ static int quic_read_actual(QUIC_CONNECTION *qc,
 {
     int is_fin = 0;
 
+    /* If the receive part of the stream is over, issue EOF. */
+    if (stream->recv_fin_retired)
+        return QUIC_RAISE_NORMAL_ERROR(qc, SSL_ERROR_ZERO_RETURN);
+
     if (stream->rstream == NULL)
         return QUIC_RAISE_NON_NORMAL_ERROR(qc, ERR_R_INTERNAL_ERROR, NULL);
 
@@ -1064,9 +1104,11 @@ static int quic_read_again(void *arg)
 {
     struct quic_read_again_args *args = arg;
 
-    if (!ossl_quic_channel_is_active(args->qc->ch))
+    if (!ossl_quic_channel_is_active(args->qc->ch)) {
         /* If connection is torn down due to an error while blocking, stop. */
+        QUIC_RAISE_NON_NORMAL_ERROR(args->qc, SSL_R_PROTOCOL_IS_SHUTDOWN, NULL);
         return -1;
+    }
 
     if (!quic_read_actual(args->qc, args->stream,
                           args->buf, args->len, args->bytes_read,
@@ -1094,15 +1136,15 @@ static int quic_read(SSL *s, void *buf, size_t len, size_t *bytes_read, int peek
     if (qc->ch != NULL && ossl_quic_channel_is_term_any(qc->ch))
         return QUIC_RAISE_NON_NORMAL_ERROR(qc, SSL_R_PROTOCOL_IS_SHUTDOWN, NULL);
 
-    /* If we haven't finished the handshake, try to advance it.*/
+    /* If we haven't finished the handshake, try to advance it. */
     if (ossl_quic_do_handshake(qc) < 1)
-        return 0;
+        return 0; /* ossl_quic_do_handshake raised error here */
 
     if (qc->stream0 == NULL)
         return QUIC_RAISE_NON_NORMAL_ERROR(qc, ERR_R_INTERNAL_ERROR, NULL);
 
     if (!quic_read_actual(qc, qc->stream0, buf, len, bytes_read, peek))
-        return 0;
+        return 0; /* quic_read_actual raised error here */
 
     if (*bytes_read > 0) {
         /*
@@ -1125,12 +1167,10 @@ static int quic_read(SSL *s, void *buf, size_t len, size_t *bytes_read, int peek
         args.peek       = peek;
 
         res = block_until_pred(qc, quic_read_again, &args, 0);
-        if (res <= 0) {
-            if (!ossl_quic_channel_is_active(qc->ch))
-                return QUIC_RAISE_NON_NORMAL_ERROR(qc, SSL_R_PROTOCOL_IS_SHUTDOWN, NULL);
-            else
-                return QUIC_RAISE_NON_NORMAL_ERROR(qc, ERR_R_INTERNAL_ERROR, NULL);
-        }
+        if (res == 0)
+            return QUIC_RAISE_NON_NORMAL_ERROR(qc, ERR_R_INTERNAL_ERROR, NULL);
+        else if (res < 0)
+            return 0; /* quic_read_again raised error here */
 
         return 1;
     } else {
@@ -1170,6 +1210,26 @@ size_t ossl_quic_pending(const SSL *s)
         return 0;
 
     return avail;
+}
+
+/*
+ * SSL_stream_conclude
+ * -------------------
+ */
+int ossl_quic_conn_stream_conclude(QUIC_CONNECTION *qc)
+{
+    QUIC_STREAM *qs = qc->stream0;
+
+    if (qs == NULL || qs->sstream == NULL)
+        return 0;
+
+    if (!ossl_quic_channel_is_active(qc->ch)
+        || ossl_quic_sstream_get_final_size(qs->sstream, NULL))
+        return 1;
+
+    ossl_quic_sstream_fin(qs->sstream);
+    quic_post_write(qc, 1, 1);
+    return 1;
 }
 
 /*

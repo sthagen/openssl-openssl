@@ -18,6 +18,7 @@
 #include "internal/nelem.h"
 #include "internal/refcount.h"
 #include "crypto/cryptlib.h"
+#include "crypto/ctype.h"
 
 #ifndef OPENSSL_NO_TRACE
 
@@ -288,11 +289,6 @@ static int set_trace_data(int category, int type, BIO **channel,
     }
 
     /* Before running callbacks are done, set new data where appropriate */
-    if (channel != NULL && *channel != NULL) {
-        trace_channels[category].type = type;
-        trace_channels[category].bio = *channel;
-    }
-
     if (prefix != NULL && *prefix != NULL) {
         if ((curr_prefix = OPENSSL_strdup(*prefix)) == NULL)
             return 0;
@@ -303,6 +299,15 @@ static int set_trace_data(int category, int type, BIO **channel,
         if ((curr_suffix = OPENSSL_strdup(*suffix)) == NULL)
             return 0;
         trace_channels[category].suffix = curr_suffix;
+    }
+
+    if (channel != NULL && *channel != NULL) {
+        trace_channels[category].type = type;
+        trace_channels[category].bio = *channel;
+        /*
+         * This must not be done before setting prefix/suffix,
+         * as those may fail, and then the caller is mislead to free *channel.
+         */
     }
 
     /* Finally, run the attach callback on the new data */
@@ -525,4 +530,28 @@ void OSSL_trace_end(int category, BIO * channel)
         CRYPTO_THREAD_unlock(trace_lock);
     }
 #endif
+}
+
+int OSSL_trace_string(BIO *out, int text, int full,
+                      const unsigned char *data, size_t size)
+{
+    unsigned char buf[OSSL_TRACE_STRING_MAX + 1];
+    int len, i;
+
+    if (!full && size > OSSL_TRACE_STRING_MAX) {
+        BIO_printf(out, "[len %zu limited to %d]: ",
+                   size, OSSL_TRACE_STRING_MAX);
+        len = OSSL_TRACE_STRING_MAX;
+    } else {
+        len = (int)size;
+    }
+    if (!text) { /* mask control characters while preserving newlines */
+        for (i = 0; i < len; i++, data++)
+            buf[i] = (char)*data != '\n' && ossl_iscntrl((int)*data)
+                ? ' ' : *data;
+        if (len == 0 || data[-1] != '\n')
+            buf[len++] = '\n';
+        data = buf;
+    }
+    return BIO_printf(out, "%.*s", len, data);
 }

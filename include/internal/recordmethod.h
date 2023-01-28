@@ -124,6 +124,8 @@ struct ossl_record_method_st {
                             int role, int direction,
                             int level,
                             uint16_t epoch,
+                            unsigned char *secret,
+                            size_t secretlen,
                             unsigned char *key,
                             size_t keylen,
                             unsigned char *iv,
@@ -135,6 +137,7 @@ struct ossl_record_method_st {
                             int mactype,
                             const EVP_MD *md,
                             COMP_METHOD *comp,
+                            const EVP_MD *kdfdigest,
                             BIO *prev,
                             BIO *transport,
                             BIO *next,
@@ -144,10 +147,9 @@ struct ossl_record_method_st {
                             const OSSL_PARAM *options,
                             const OSSL_DISPATCH *fns,
                             void *cbarg,
+                            void *rlarg,
                             OSSL_RECORD_LAYER **ret);
     int (*free)(OSSL_RECORD_LAYER *rl);
-
-    int (*reset)(OSSL_RECORD_LAYER *rl); /* Is this needed? */
 
     /* Returns 1 if we have unprocessed data buffered or 0 otherwise */
     int (*unprocessed_read_pending)(OSSL_RECORD_LAYER *rl);

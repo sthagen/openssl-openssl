@@ -24,6 +24,12 @@ struct quic_tserver_st {
      */
     QUIC_CHANNEL    *ch;
 
+    /* SSL_CTX for creating the underlying TLS connection */
+    SSL_CTX *ctx;
+
+    /* SSL for the underlying TLS connection */
+    SSL *tls;
+
     /* Our single bidirectional application data stream. */
     QUIC_STREAM     *stream0;
 
@@ -34,7 +40,21 @@ struct quic_tserver_st {
     unsigned int    connected       : 1;
 };
 
-QUIC_TSERVER *ossl_quic_tserver_new(const QUIC_TSERVER_ARGS *args)
+static int alpn_select_cb(SSL *ssl, const unsigned char **out,
+                          unsigned char *outlen, const unsigned char *in,
+                          unsigned int inlen, void *arg)
+{
+    unsigned char alpn[] = { 8, 'o', 's', 's', 'l', 't', 'e', 's', 't' };
+
+    if (SSL_select_next_proto((unsigned char **)out, outlen, alpn, sizeof(alpn),
+                              in, inlen) != OPENSSL_NPN_NEGOTIATED)
+        return SSL_TLSEXT_ERR_ALERT_FATAL;
+
+    return SSL_TLSEXT_ERR_OK;
+}
+
+QUIC_TSERVER *ossl_quic_tserver_new(const QUIC_TSERVER_ARGS *args,
+                                    const char *certfile, const char *keyfile)
 {
     QUIC_TSERVER *srv = NULL;
     QUIC_CHANNEL_ARGS ch_args = {0};
@@ -47,8 +67,25 @@ QUIC_TSERVER *ossl_quic_tserver_new(const QUIC_TSERVER_ARGS *args)
 
     srv->args = *args;
 
+    srv->ctx = SSL_CTX_new_ex(srv->args.libctx, srv->args.propq, TLS_method());
+    if (srv->ctx == NULL)
+        goto err;
+
+    if (SSL_CTX_use_certificate_file(srv->ctx, certfile, SSL_FILETYPE_PEM) <= 0)
+        goto err;
+
+    if (SSL_CTX_use_PrivateKey_file(srv->ctx, keyfile, SSL_FILETYPE_PEM) <= 0)
+        goto err;
+
+    SSL_CTX_set_alpn_select_cb(srv->ctx, alpn_select_cb, srv);
+
+    srv->tls = SSL_new(srv->ctx);
+    if (srv->tls == NULL)
+        goto err;
+
     ch_args.libctx      = srv->args.libctx;
     ch_args.propq       = srv->args.propq;
+    ch_args.tls         = srv->tls;
     ch_args.is_server   = 1;
 
     if ((srv->ch = ossl_quic_channel_new(&ch_args)) == NULL)
@@ -80,6 +117,8 @@ void ossl_quic_tserver_free(QUIC_TSERVER *srv)
     ossl_quic_channel_free(srv->ch);
     BIO_free(srv->args.net_rbio);
     BIO_free(srv->args.net_wbio);
+    SSL_free(srv->tls);
+    SSL_CTX_free(srv->ctx);
     OPENSSL_free(srv);
 }
 
@@ -103,9 +142,12 @@ int ossl_quic_tserver_read(QUIC_TSERVER *srv,
                            size_t buf_len,
                            size_t *bytes_read)
 {
-    int is_fin = 0; /* TODO(QUIC): Handle FIN in API */
+    int is_fin = 0;
 
     if (!ossl_quic_channel_is_active(srv->ch))
+        return 0;
+
+    if (srv->stream0->recv_fin_retired)
         return 0;
 
     if (!ossl_quic_rstream_read(srv->stream0->rstream, buf, buf_len,
@@ -138,6 +180,11 @@ int ossl_quic_tserver_read(QUIC_TSERVER *srv,
     return 1;
 }
 
+int ossl_quic_tserver_has_read_ended(QUIC_TSERVER *srv)
+{
+    return srv->stream0->recv_fin_retired;
+}
+
 int ossl_quic_tserver_write(QUIC_TSERVER *srv,
                             const unsigned char *buf,
                             size_t buf_len,
@@ -159,6 +206,21 @@ int ossl_quic_tserver_write(QUIC_TSERVER *srv,
                                           srv->stream0);
 
     /* Try and send. */
+    ossl_quic_tserver_tick(srv);
+    return 1;
+}
+
+int ossl_quic_tserver_conclude(QUIC_TSERVER *srv)
+{
+    if (!ossl_quic_channel_is_active(srv->ch))
+        return 0;
+
+    if (!ossl_quic_sstream_get_final_size(srv->stream0->sstream, NULL)) {
+        ossl_quic_sstream_fin(srv->stream0->sstream);
+        ossl_quic_stream_map_update_state(ossl_quic_channel_get_qsm(srv->ch),
+                                          srv->stream0);
+    }
+
     ossl_quic_tserver_tick(srv);
     return 1;
 }

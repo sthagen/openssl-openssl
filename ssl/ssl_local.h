@@ -28,7 +28,7 @@
 # include <openssl/symhacks.h>
 # include <openssl/ct.h>
 # include "record/record.h"
-# include "record/recordmethod.h"
+# include "internal/recordmethod.h"
 # include "statem/statem.h"
 # include "internal/packet.h"
 # include "internal/dane.h"
@@ -1238,6 +1238,7 @@ typedef struct cert_pkey_st CERT_PKEY;
 struct ssl_st {
     int type;
     SSL_CTX *ctx;
+    const SSL_METHOD *defltmeth;
     const SSL_METHOD *method;
     CRYPTO_REF_COUNT references;
     CRYPTO_RWLOCK *lock;
@@ -1248,10 +1249,6 @@ struct ssl_st {
 struct ssl_connection_st {
     /* type identifier and common data */
     struct ssl_st ssl;
-#ifndef OPENSSL_NO_QUIC
-    /* pointer to parent SSL of QUIC_CONNECTION or self */
-    struct ssl_st *user_ssl;
-#endif
     /*
      * protocol version (one of SSL2_VERSION, SSL3_VERSION, TLS1_VERSION,
      * DTLS1_VERSION)
@@ -1841,6 +1838,7 @@ struct ssl_connection_st {
 # define SSL_CONNECTION_FROM_CONST_SSL_ONLY(ssl) \
     SSL_CONNECTION_FROM_SSL_ONLY_int(ssl, const)
 # define SSL_CONNECTION_GET_CTX(sc) ((sc)->ssl.ctx)
+# define SSL_CONNECTION_GET_SSL(sc) (&(sc)->ssl)
 # ifndef OPENSSL_NO_QUIC
 #  include "quic/quic_local.h"
 #  define SSL_CONNECTION_FROM_SSL_int(ssl, c)                      \
@@ -1854,13 +1852,11 @@ struct ssl_connection_st {
     SSL_CONNECTION_FROM_SSL_int(ssl, SSL_CONNECTION_NO_CONST)
 #  define SSL_CONNECTION_FROM_CONST_SSL(ssl) \
     SSL_CONNECTION_FROM_SSL_int(ssl, const)
-#  define SSL_CONNECTION_GET_SSL(sc) ((sc)->user_ssl)
 # else
 #  define SSL_CONNECTION_FROM_SSL(ssl) \
     SSL_CONNECTION_FROM_SSL_ONLY_int(ssl, SSL_CONNECTION_NO_CONST)
 #  define SSL_CONNECTION_FROM_CONST_SSL(ssl) \
     SSL_CONNECTION_FROM_SSL_ONLY_int(ssl, const)
-#  define SSL_CONNECTION_GET_SSL(sc) (&(sc)->ssl)
 # endif
 
 /*
@@ -2465,7 +2461,9 @@ static ossl_inline void tls1_get_peer_groups(SSL_CONNECTION *s,
 
 # ifndef OPENSSL_UNIT_TEST
 
-__owur int ossl_ssl_init(SSL *ssl, SSL_CTX *ctx, int type);
+__owur int ossl_ssl_init(SSL *ssl, SSL_CTX *ctx, const SSL_METHOD *method,
+                         int type);
+__owur SSL *ossl_ssl_connection_new_int(SSL_CTX *ctx, const SSL_METHOD *method);
 __owur SSL *ossl_ssl_connection_new(SSL_CTX *ctx);
 void ossl_ssl_connection_free(SSL *ssl);
 __owur int ossl_ssl_connection_reset(SSL *ssl);
@@ -2892,6 +2890,14 @@ custom_ext_method *custom_ext_find(const custom_ext_methods *exts,
 
 void custom_ext_init(custom_ext_methods *meths);
 
+int ossl_tls_add_custom_ext_intern(SSL_CTX *ctx, custom_ext_methods *exts,
+                                   ENDPOINT role, unsigned int ext_type,
+                                   unsigned int context,
+                                   SSL_custom_ext_add_cb_ex add_cb,
+                                   SSL_custom_ext_free_cb_ex free_cb,
+                                   void *add_arg,
+                                   SSL_custom_ext_parse_cb_ex parse_cb,
+                                   void *parse_arg);
 __owur int custom_ext_parse(SSL_CONNECTION *s, unsigned int context,
                             unsigned int ext_type,
                             const unsigned char *ext_data, size_t ext_size,
@@ -2981,5 +2987,9 @@ static ossl_unused ossl_inline void ssl_tsan_counter(const SSL_CTX *ctx,
 
 int ossl_comp_has_alg(int a);
 size_t ossl_calculate_comp_expansion(int alg, size_t length);
+
+void ossl_ssl_set_custom_record_layer(SSL_CONNECTION *s,
+                                      const OSSL_RECORD_METHOD *meth,
+                                      void *rlarg);
 
 #endif

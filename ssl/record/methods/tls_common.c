@@ -158,11 +158,15 @@ int tls_setup_write_buffer(OSSL_RECORD_LAYER *rl, size_t numwpipes,
 #endif
 
         defltlen = rl->max_frag_len + SSL3_RT_SEND_MAX_ENCRYPTED_OVERHEAD
-                   + headerlen + align;
+                   + headerlen + align + rl->eivlen;
 #ifndef OPENSSL_NO_COMP
         if (tls_allow_compression(rl))
             defltlen += SSL3_RT_MAX_COMPRESSED_OVERHEAD;
 #endif
+        /*
+         * We don't need to add eivlen here since empty fragments only occur
+         * when we don't have an explicit IV
+         */
         if (!(rl->options & SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS))
             defltlen += headerlen + align + SSL3_RT_SEND_MAX_ENCRYPTED_OVERHEAD;
     }
@@ -1320,14 +1324,16 @@ tls_int_new_record_layer(OSSL_LIB_CTX *libctx, const char *propq, int vers,
 static int
 tls_new_record_layer(OSSL_LIB_CTX *libctx, const char *propq, int vers,
                      int role, int direction, int level, uint16_t epoch,
+                     unsigned char *secret, size_t secretlen,
                      unsigned char *key, size_t keylen, unsigned char *iv,
                      size_t ivlen, unsigned char *mackey, size_t mackeylen,
                      const EVP_CIPHER *ciph, size_t taglen,
                      int mactype,
-                     const EVP_MD *md, COMP_METHOD *comp, BIO *prev,
-                     BIO *transport, BIO *next, BIO_ADDR *local, BIO_ADDR *peer,
+                     const EVP_MD *md, COMP_METHOD *comp,
+                     const EVP_MD *kdfdigest, BIO *prev, BIO *transport,
+                     BIO *next, BIO_ADDR *local, BIO_ADDR *peer,
                      const OSSL_PARAM *settings, const OSSL_PARAM *options,
-                     const OSSL_DISPATCH *fns, void *cbarg,
+                     const OSSL_DISPATCH *fns, void *cbarg, void *rlarg,
                      OSSL_RECORD_LAYER **retrl)
 {
     int ret;
@@ -1420,12 +1426,6 @@ int tls_free(OSSL_RECORD_LAYER *rl)
     tls_int_free(rl);
 
     return ret;
-}
-
-int tls_reset(OSSL_RECORD_LAYER *rl)
-{
-    memset(rl, 0, sizeof(*rl));
-    return 1;
 }
 
 int tls_unprocessed_read_pending(OSSL_RECORD_LAYER *rl)
@@ -2089,7 +2089,6 @@ int tls_free_buffers(OSSL_RECORD_LAYER *rl)
 const OSSL_RECORD_METHOD ossl_tls_record_method = {
     tls_new_record_layer,
     tls_free,
-    tls_reset,
     tls_unprocessed_read_pending,
     tls_processed_read_pending,
     tls_app_data_pending,
