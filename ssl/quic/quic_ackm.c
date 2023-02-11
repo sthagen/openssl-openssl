@@ -943,7 +943,7 @@ static void ackm_on_pkts_lost(OSSL_ACKM *ackm, int pkt_space,
 
     if (pseudo)
         /*
-         * If this is psuedo-loss (e.g. during connection retry) we do not
+         * If this is pseudo-loss (e.g. during connection retry) we do not
          * inform the CC as it is not a real loss and not reflective of network
          * conditions.
          */
@@ -1250,18 +1250,22 @@ int ossl_ackm_on_handshake_confirmed(OSSL_ACKM *ackm)
     return 1;
 }
 
-static void ackm_queue_probe_handshake(OSSL_ACKM *ackm)
+static void ackm_queue_probe_anti_deadlock_handshake(OSSL_ACKM *ackm)
 {
-    ++ackm->pending_probe.handshake;
+    ++ackm->pending_probe.anti_deadlock_handshake;
 }
 
-static void ackm_queue_probe_padded_initial(OSSL_ACKM *ackm)
+static void ackm_queue_probe_anti_deadlock_initial(OSSL_ACKM *ackm)
 {
-    ++ackm->pending_probe.padded_initial;
+    ++ackm->pending_probe.anti_deadlock_initial;
 }
 
 static void ackm_queue_probe(OSSL_ACKM *ackm, int pkt_space)
 {
+    /*
+     * TODO(QUIC): We are allowed to send either one or two probe packets here.
+     * Determine a strategy for when we should send two probe packets.
+     */
     ++ackm->pending_probe.pto[pkt_space];
 }
 
@@ -1289,9 +1293,9 @@ int ossl_ackm_on_timeout(OSSL_ACKM *ackm)
          * ownership.
          */
         if (ackm->discarded[QUIC_PN_SPACE_INITIAL])
-            ackm_queue_probe_handshake(ackm);
+            ackm_queue_probe_anti_deadlock_handshake(ackm);
         else
-            ackm_queue_probe_padded_initial(ackm);
+            ackm_queue_probe_anti_deadlock_initial(ackm);
     } else {
         /*
          * PTO. The user of the ACKM should send new data if available, else
@@ -1312,15 +1316,9 @@ OSSL_TIME ossl_ackm_get_loss_detection_deadline(OSSL_ACKM *ackm)
     return ackm->loss_detection_deadline;
 }
 
-int ossl_ackm_get_probe_request(OSSL_ACKM *ackm, int clear,
-                                OSSL_ACKM_PROBE_INFO *info)
+OSSL_ACKM_PROBE_INFO *ossl_ackm_get0_probe_request(OSSL_ACKM *ackm)
 {
-    *info = ackm->pending_probe;
-
-    if (clear != 0)
-        memset(&ackm->pending_probe, 0, sizeof(ackm->pending_probe));
-
-    return 1;
+    return &ackm->pending_probe;
 }
 
 int ossl_ackm_get_largest_unacked(OSSL_ACKM *ackm, int pkt_space, QUIC_PN *pn)

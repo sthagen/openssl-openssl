@@ -25,6 +25,11 @@ OpenSSL 3.2
 
 ### Changes between 3.1 and 3.2 [xx XXX xxxx]
 
+ * Added EC_GROUP_to_params which creates an OSSL_PARAM array
+   from a given EC_GROUP.
+
+   *Oliver Mihatsch*
+
  * Added support for Hybrid Public Key Encryption (HPKE) as defined
    in RFC9180. HPKE is required for TLS Encrypted ClientHello (ECH),
    Message Layer Security (MLS) and other IETF specifications.
@@ -220,27 +225,14 @@ OpenSSL 3.1
    backward compatibility purposes and the "fips=yes" property query
    must be used for all algorithm fetches to ensure FIPS compliance.
 
-   The algorithms that are included but not approved are Triple DES and EdDSA.
+   The algorithms that are included but not approved are Triple DES ECB
+   and Triple DES CBC.
 
    *Paul Dale*
 
  * Added support for KMAC in KBKDF.
 
    *Shane Lontis*
-
- * Our provider implementations of `OSSL_FUNC_KEYMGMT_EXPORT` and
-   `OSSL_FUNC_KEYMGMT_GET_PARAMS` for EC and SM2 keys now honor
-   `OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT` as set (and
-   default to `POINT_CONVERSION_UNCOMPRESSED`) when exporting
-   `OSSL_PKEY_PARAM_PUB_KEY`, instead of unconditionally using
-   `POINT_CONVERSION_COMPRESSED` as in previous 3.x releases.
-   For symmetry, our implementation of `EVP_PKEY_ASN1_METHOD->export_to`
-   for legacy EC and SM2 keys is also changed similarly to honor the
-   equivalent conversion format flag as specified in the underlying
-   `EC_KEY` object being exported to a provider, when this function is
-   called through `EVP_PKEY_export()`.
-
-   *Nicola Tuveri*
 
  * RNDR and RNDRRS support in provider functions to provide
    random number generation for Arm CPUs (aarch64).
@@ -307,6 +299,22 @@ The migration guide contains more detailed information related to new features,
 breaking changes, and mappings for the large list of deprecated functions.
 
 [Migration guide]: https://github.com/openssl/openssl/tree/master/doc/man7/migration_guide.pod
+
+### Changes between 3.0.7 and 3.0.8 [xx XXX xxxx]
+
+ * Our provider implementations of `OSSL_FUNC_KEYMGMT_EXPORT` and
+   `OSSL_FUNC_KEYMGMT_GET_PARAMS` for EC and SM2 keys now honor
+   `OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT` as set (and
+   default to `POINT_CONVERSION_UNCOMPRESSED`) when exporting
+   `OSSL_PKEY_PARAM_PUB_KEY`, instead of unconditionally using
+   `POINT_CONVERSION_COMPRESSED` as in previous 3.x releases.
+   For symmetry, our implementation of `EVP_PKEY_ASN1_METHOD->export_to`
+   for legacy EC and SM2 keys is also changed similarly to honor the
+   equivalent conversion format flag as specified in the underlying
+   `EC_KEY` object being exported to a provider, when this function is
+   called through `EVP_PKEY_export()`.
+
+   *Nicola Tuveri*
 
 ### Changes between 3.0.6 and 3.0.7 [1 Nov 2022]
 

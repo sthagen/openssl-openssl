@@ -16,6 +16,7 @@
 #include <openssl/ssl.h>
 #include "internal/e_os.h"
 #include "internal/packet.h"
+#include "internal/ssl3_cbc.h"
 #include "../../ssl_local.h"
 #include "../record_local.h"
 #include "recmethod_local.h"
@@ -863,6 +864,11 @@ int tls_get_more_records(OSSL_RECORD_LAYER *rl)
                 enc_err = 0;
             if (thisrr->length > SSL3_RT_MAX_COMPRESSED_LENGTH + mac_size)
                 enc_err = 0;
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+            if (enc_err == 0 && mac_size > 0 && (md[0] ^ thismb->mac[0]) != 0xFF) {
+                enc_err = 1;
+            }
+#endif
         }
     }
 
