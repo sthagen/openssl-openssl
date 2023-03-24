@@ -510,7 +510,7 @@ int ossl_quic_conn_shutdown(QUIC_CONNECTION *qc, uint64_t flags,
         return 1;
 
     if (blocking_mode(qc) && (flags & SSL_SHUTDOWN_FLAG_RAPID) == 0)
-        block_until_pred(qc, quic_shutdown_wait, NULL, 0);
+        block_until_pred(qc, quic_shutdown_wait, qc, 0);
     else
         ossl_quic_reactor_tick(ossl_quic_channel_get_reactor(qc->ch));
 
@@ -537,7 +537,8 @@ long ossl_quic_ctrl(SSL *s, int cmd, long larg, void *parg)
         qc->ssl_mode &= ~(uint32_t)larg;
         return qc->ssl_mode;
     default:
-        return 0;
+        /* Probably a TLS related ctrl. Defer to our internal SSL object */
+        return SSL_ctrl(qc->tls, cmd, larg, parg);
     }
 }
 
@@ -651,7 +652,7 @@ int ossl_quic_do_handshake(QUIC_CONNECTION *qc)
 
     if (BIO_ADDR_family(&qc->init_peer_addr) == AF_UNSPEC) {
         /* Peer address must have been set. */
-        QUIC_RAISE_NON_NORMAL_ERROR(qc, ERR_R_PASSED_INVALID_ARGUMENT, NULL);
+        QUIC_RAISE_NON_NORMAL_ERROR(qc, SSL_R_REMOTE_PEER_ADDRESS_NOT_SET, NULL);
         return -1; /* Non-protocol error */
     }
 
@@ -663,7 +664,7 @@ int ossl_quic_do_handshake(QUIC_CONNECTION *qc)
 
     if (qc->net_rbio == NULL || qc->net_wbio == NULL) {
         /* Need read and write BIOs. */
-        QUIC_RAISE_NON_NORMAL_ERROR(qc, ERR_R_PASSED_INVALID_ARGUMENT, NULL);
+        QUIC_RAISE_NON_NORMAL_ERROR(qc, SSL_R_BIO_NOT_SET, NULL);
         return -1; /* Non-protocol error */
     }
 
@@ -1193,9 +1194,8 @@ int ossl_quic_peek(SSL *s, void *buf, size_t len, size_t *bytes_read)
  * SSL_pending
  * -----------
  */
-size_t ossl_quic_pending(const SSL *s)
+static size_t ossl_quic_pending_int(const QUIC_CONNECTION *qc)
 {
-    const QUIC_CONNECTION *qc = QUIC_CONNECTION_FROM_CONST_SSL(s);
     size_t avail = 0;
     int fin = 0;
 
@@ -1210,6 +1210,18 @@ size_t ossl_quic_pending(const SSL *s)
         return 0;
 
     return avail;
+}
+
+size_t ossl_quic_pending(const SSL *s)
+{
+    const QUIC_CONNECTION *qc = QUIC_CONNECTION_FROM_CONST_SSL(s);
+
+    return ossl_quic_pending_int(qc);
+}
+
+int ossl_quic_has_pending(const QUIC_CONNECTION *qc)
+{
+    return ossl_quic_pending_int(qc) > 0;
 }
 
 /*
@@ -1230,6 +1242,29 @@ int ossl_quic_conn_stream_conclude(QUIC_CONNECTION *qc)
     ossl_quic_sstream_fin(qs->sstream);
     quic_post_write(qc, 1, 1);
     return 1;
+}
+
+/*
+ * SSL_inject_net_dgram
+ * --------------------
+ */
+int SSL_inject_net_dgram(SSL *s, const unsigned char *buf,
+                         size_t buf_len,
+                         const BIO_ADDR *peer,
+                         const BIO_ADDR *local)
+{
+    QUIC_CONNECTION *qc = QUIC_CONNECTION_FROM_SSL(s);
+    QUIC_DEMUX *demux;
+
+    if (!expect_quic_conn(qc))
+        return 0;
+
+    if (qc->ch == NULL)
+        return QUIC_RAISE_NON_NORMAL_ERROR(qc, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED,
+                                           NULL);
+
+    demux = ossl_quic_channel_get0_demux(qc->ch);
+    return ossl_quic_demux_inject(demux, buf, buf_len, peer, local);
 }
 
 /*

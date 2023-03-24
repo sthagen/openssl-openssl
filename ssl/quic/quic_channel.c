@@ -111,6 +111,7 @@ static int ch_init(QUIC_CHANNEL *ch)
         goto err;
 
     /* We plug in a network write BIO to the QTX later when we get one. */
+    qtx_args.libctx = ch->libctx;
     qtx_args.mdpl = QUIC_MIN_INITIAL_DGRAM_LEN;
     ch->rx_max_udp_payload_size = qtx_args.mdpl;
 
@@ -192,6 +193,7 @@ static int ch_init(QUIC_CHANNEL *ch)
                                             ch_default_packet_handler,
                                             ch);
 
+    qrx_args.libctx             = ch->libctx;
     qrx_args.demux              = ch->demux;
     qrx_args.short_conn_id_len  = rx_short_cid_len;
     qrx_args.max_deferred       = 32;
@@ -434,6 +436,11 @@ int ossl_quic_channel_is_handshake_complete(const QUIC_CHANNEL *ch)
 int ossl_quic_channel_is_handshake_confirmed(const QUIC_CHANNEL *ch)
 {
     return ch->handshake_confirmed;
+}
+
+QUIC_DEMUX *ossl_quic_channel_get0_demux(QUIC_CHANNEL *ch)
+{
+    return ch->demux;
 }
 
 /*

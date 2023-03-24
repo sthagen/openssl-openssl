@@ -12,11 +12,9 @@
 
 #include <stdlib.h>
 #include <stddef.h>
-#include <stdint.h>
 #include <stdarg.h>
-#include <limits.h>
 #include <string.h>
-#include <crypto/evp.h>
+#include <openssl/e_os2.h>
 #include <openssl/evp.h>
 #include <openssl/objects.h>
 #include <openssl/crypto.h>
@@ -25,11 +23,12 @@
 #include <openssl/core_names.h>
 #include <openssl/params.h>
 #include <openssl/thread.h>
+#include <openssl/proverr.h>
 #include "internal/thread.h"
 #include "internal/numbers.h"
 #include "internal/endian.h"
+#include "crypto/evp.h"
 #include "prov/implementations.h"
-#include <openssl/proverr.h>
 #include "prov/provider_ctx.h"
 #include "prov/providercommon.h"
 #include "prov/blake2.h"
@@ -308,7 +307,7 @@ static ossl_inline uint64_t rotr64(const uint64_t w, const unsigned int c)
 
 static ossl_inline uint64_t mul_lower(uint64_t x, uint64_t y)
 {
-    const uint64_t m = UINT64_C(0xFFFFFFFF);
+    const uint64_t m = 0xFFFFFFFFUL;
     return (x & m) * (y & m);
 }
 
@@ -1026,7 +1025,6 @@ static int kdf_argon2_derive(void *vctx, unsigned char *out, size_t outlen,
 
     ctx->mac = EVP_MAC_fetch(ctx->libctx, "blake2bmac", ctx->propq);
     if (ctx->mac == NULL) {
-        OPENSSL_free(ctx);
         ERR_raise_data(ERR_LIB_PROV, PROV_R_MISSING_MAC,
                        "cannot fetch blake2bmac");
         return 0;
@@ -1034,10 +1032,10 @@ static int kdf_argon2_derive(void *vctx, unsigned char *out, size_t outlen,
 
     ctx->md = EVP_MD_fetch(ctx->libctx, "blake2b512", ctx->propq);
     if (ctx->md == NULL) {
-        OPENSSL_free(ctx);
+        EVP_MAC_free(ctx->mac);
         ERR_raise_data(ERR_LIB_PROV, PROV_R_MISSING_MESSAGE_DIGEST,
                        "canot fetch blake2b512");
-        goto fail1;
+        return 0;
     }
 
     if (ctx->salt == NULL || ctx->saltlen == 0) {
@@ -1136,7 +1134,6 @@ fail3:
 
 fail2:
     EVP_MD_free(ctx->md);
-fail1:
     EVP_MAC_free(ctx->mac);
 
     return 0;
