@@ -882,7 +882,12 @@ Default is one invocation.
 
 =item B<-reqin> I<filenames>
 
-Take sequence of CMP requests from file(s).
+Take the sequence of CMP requests to send to the server from file(s).
+This option is ignored if the B<-rspin> option is given
+because in the latter case no requests are actually sent.
+Except for first request, the client needs to update the recipNonce field in any
+further request in order to satisfy the checks to be performed by the server.
+This causes re-protection (if protecting requests is required).
 
 Multiple filenames may be given, separated by commas and/or whitespace
 (where in the latter case the whole argument must be enclosed in "...").
@@ -891,20 +896,21 @@ As many files are read as needed for a complete transaction.
 =item B<-reqin_new_tid>
 
 Use a fresh transactionID for CMP request messages read using B<-reqin>,
-which requires re-protecting them as far as they were protected before.
+which causes their reprotection (if protecting requests is required).
 This may be needed in case the sequence of requests is reused
 and the CMP server complains that the transaction ID has already been used.
 
 =item B<-reqout> I<filenames>
 
-Save sequence of CMP requests to file(s).
+Save the sequence of CMP requests created by the client to file(s).
+These requests are not sent to the server if the B<-reqin> option is used, too.
 
 Multiple filenames may be given, separated by commas and/or whitespace.
 As many files are written as needed to store the complete transaction.
 
 =item B<-rspin> I<filenames>
 
-Process sequence of CMP responses provided in file(s), skipping server.
+Process the sequence of CMP responses provided in file(s), skipping server.
 This excludes I<-server>, I<-port>, and I<-use_mock_srv>.
 
 Multiple filenames may be given, separated by commas and/or whitespace.
@@ -912,7 +918,7 @@ As many files are read as needed for the complete transaction.
 
 =item B<-rspout> I<filenames>
 
-Save sequence of CMP responses to file(s).
+Save the sequence of received CMP responses to file(s).
 
 Multiple filenames may be given, separated by commas and/or whitespace.
 As many files are written as needed to store the complete transaction.

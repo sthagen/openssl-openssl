@@ -1076,6 +1076,7 @@ int tls1_set_groups_list(SSL_CTX *ctx, uint16_t **pext, size_t *pextlen,
     tmparr = OPENSSL_memdup(gcb.gid_arr, gcb.gidcnt * sizeof(*tmparr));
     if (tmparr == NULL)
         goto end;
+    OPENSSL_free(*pext);
     *pext = tmparr;
     *pextlen = gcb.gidcnt;
     ret = 1;
@@ -1854,7 +1855,7 @@ int tls12_check_peer_sigalg(SSL_CONNECTION *s, uint16_t sig, EVP_PKEY *pkey)
     }
     lu = tls1_lookup_sigalg(s, sig);
     /* if this sigalg is loaded, set so far unknown pkeyid to its sig NID */
-    if ((pkeyid == -1) && (lu != NULL))
+    if ((pkeyid == EVP_PKEY_KEYMGMT) && (lu != NULL))
         pkeyid = lu->sig;
 
     /* Should never happen */
