@@ -37,6 +37,8 @@ typedef struct quic_tserver_args_st {
     OSSL_LIB_CTX *libctx;
     const char *propq;
     BIO *net_rbio, *net_wbio;
+    OSSL_TIME (*now_cb)(void *arg);
+    void *now_cb_arg;
 } QUIC_TSERVER_ARGS;
 
 QUIC_TSERVER *ossl_quic_tserver_new(const QUIC_TSERVER_ARGS *args,
@@ -58,6 +60,9 @@ int ossl_quic_tserver_set_handshake_mutator(QUIC_TSERVER *srv,
 /* Advances the state machine. */
 int ossl_quic_tserver_tick(QUIC_TSERVER *srv);
 
+/* Returns 1 if we have a (non-terminated) client. */
+int ossl_quic_tserver_is_connected(QUIC_TSERVER *srv);
+
 /*
  * Returns 1 if we have finished the TLS handshake
  */
@@ -70,6 +75,7 @@ QUIC_TERMINATE_CAUSE ossl_quic_tserver_get_terminate_cause(const QUIC_TSERVER *s
 
 /* Returns 1 if the server is in a terminated state */
 int ossl_quic_tserver_is_terminated(const QUIC_TSERVER *srv);
+
 /*
  * Attempts to read from stream 0. Writes the number of bytes read to
  * *bytes_read and returns 1 on success. If no bytes are available, 0 is written

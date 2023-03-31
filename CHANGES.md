@@ -25,6 +25,23 @@ OpenSSL 3.2
 
 ### Changes between 3.1 and 3.2 [xx XXX xxxx]
 
+ * Added an "advanced" command mode to s_client. Use this with the "-adv"
+   option. The old "basic" command mode recognises certain letters that must
+   always appear at the start of a line and cannot be escaped. The advanced
+   command mode enables commands to be entered anywhere and there is an
+   escaping mechanism. After starting s_client with "-adv" type "{help}"
+   to show a list of available commands.
+
+   *Matt Caswell*
+
+ * Add Raw Public Key (RFC7250) support. Authentication is supported
+   by matching keys against either local policy (TLSA records synthesised
+   from the expected keys) or DANE (TLSA records obtained by the
+   application from DNS). TLSA records will also match the same key in
+   the server certificate, should RPK use not happen to be negotiated.
+
+   *Todd Short*
+
  * Added EC_GROUP_to_params which creates an OSSL_PARAM array
    from a given EC_GROUP.
 
@@ -242,12 +259,36 @@ OpenSSL 3.1
 
 ### Changes between 3.1.0 and 3.1.1 [xx XXX xxxx]
 
+ * Add FIPS provider configuration option to disallow the use of
+   truncated digests with Hash and HMAC DRBGs (q.v. FIPS 140-3 IG D.R.).
+   The option '-no_drbg_truncated_digests' can optionally be
+   supplied to 'openssl fipsinstall'.
+
+   *Paul Dale*
+
+ * Corrected documentation of X509_VERIFY_PARAM_add0_policy() to mention
+   that it does not enable policy checking. Thanks to David Benjamin for
+   discovering this issue.
+   ([CVE-2023-0466])
+
+   *Tomáš Mráz*
+
+ * Fixed an issue where invalid certificate policies in leaf certificates are
+   silently ignored by OpenSSL and other certificate policy checks are skipped
+   for that certificate. A malicious CA could use this to deliberately assert
+   invalid certificate policies in order to circumvent policy checking on the
+   certificate altogether.
+   ([CVE-2023-0465])
+
+   *Matt Caswell*
+
  * Limited the number of nodes created in a policy tree to mitigate
    against CVE-2023-0464.  The default limit is set to 1000 nodes, which
    should be sufficient for most installations.  If required, the limit
    can be adjusted by setting the OPENSSL_POLICY_TREE_NODES_MAX build
    time define to a desired maximum number of nodes or zero to allow
    unlimited growth.
+   ([CVE-2023-0464])
 
    *Paul Dale*
 
@@ -19891,6 +19932,9 @@ ndif
 
 <!-- Links -->
 
+[CVE-2023-0466]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0466
+[CVE-2023-0465]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0465
+[CVE-2023-0464]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0464
 [CVE-2023-0401]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0401
 [CVE-2023-0286]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0286
 [CVE-2023-0217]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0217

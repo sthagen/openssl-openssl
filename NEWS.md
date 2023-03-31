@@ -22,6 +22,7 @@ OpenSSL 3.2
 
 ### Major changes between OpenSSL 3.1 and OpenSSL 3.2 [under development]
 
+  * Add Raw Public Key (RFC7250) support.
   * Added support for certificate compression (RFC8879), including
     library support for Brotli and Zstandard compression.
   * Subject or issuer names in X.509 objects are now displayed as UTF-8 strings
@@ -35,7 +36,14 @@ OpenSSL 3.2
 OpenSSL 3.1
 -----------
 
-### Major changes between OpenSSL 3.0 and OpenSSL 3.1.0 [under development]
+### Major changes between OpenSSL 3.1.0 and OpenSSL 3.1.1 [under development]
+
+  * Fixed documentation of X509_VERIFY_PARAM_add0_policy() ([CVE-2023-0466])
+  * Fixed handling of invalid certificate policies in leaf certificates
+    ([CVE-2023-0465])
+  * Limited the number of nodes created in a policy tree ([CVE-2023-0464])
+
+### Major changes between OpenSSL 3.0 and OpenSSL 3.1.0 [14 Mar 2023]
 
   * SSL 3, TLS 1.0, TLS 1.1, and DTLS 1.0 only work at security level 0.
   * Performance enhancements and new platform support including new
@@ -1458,6 +1466,9 @@ OpenSSL 0.9.x
   * Support for various new platforms
 
 <!-- Links -->
+[CVE-2023-0466]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0466
+[CVE-2023-0465]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0465
+[CVE-2023-0464]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0464
 [CVE-2023-0401]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0401
 [CVE-2023-0286]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0286
 [CVE-2023-0217]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-0217
