@@ -24,7 +24,12 @@ typedef struct tls_record_st {
     int version;
     int type;
     /* The data buffer containing bytes from the record */
-    unsigned char *data;
+    const unsigned char *data;
+    /*
+     * Buffer that we allocated to store data. If non NULL always the same as
+     * data (but non-const)
+     */
+    unsigned char *allocdata;
     /* Number of remaining to be read in the data buffer */
     size_t length;
     /* Offset into the data buffer where to start reading */
@@ -160,7 +165,7 @@ __owur int dtls1_write_bytes(SSL_CONNECTION *s, int type, const void *buf,
 int do_dtls1_write(SSL_CONNECTION *s, int type, const unsigned char *buf,
                    size_t len, size_t *written);
 void dtls1_increment_epoch(SSL_CONNECTION *s, int rw);
-void ssl_release_record(SSL_CONNECTION *s, TLS_RECORD *rr);
+int ssl_release_record(SSL_CONNECTION *s, TLS_RECORD *rr, size_t length);
 
 # define HANDLE_RLAYER_READ_RETURN(s, ret) \
     ossl_tls_handle_rlayer_return(s, 0, ret, OPENSSL_FILE, OPENSSL_LINE)
