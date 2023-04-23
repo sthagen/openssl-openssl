@@ -405,7 +405,7 @@ static int test_exec_GENM_ses_total_timeout(void)
 static int execute_exchange_certConf_test(CMP_SES_TEST_FIXTURE *fixture)
 {
     int res =
-        ossl_cmp_exchange_certConf(fixture->cmp_ctx,
+        ossl_cmp_exchange_certConf(fixture->cmp_ctx, OSSL_CMP_CERTREQID,
                                    OSSL_CMP_PKIFAILUREINFO_addInfoNotAvailable,
                                    "abcdefg");
 
@@ -449,6 +449,8 @@ void cleanup_tests(void)
     EVP_PKEY_free(server_key);
     X509_free(client_cert);
     EVP_PKEY_free(client_key);
+    OSSL_PROVIDER_unload(default_null_provider);
+    OSSL_PROVIDER_unload(provider);
     OSSL_LIB_CTX_free(libctx);
     return;
 }
