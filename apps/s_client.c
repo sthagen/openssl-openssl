@@ -3827,8 +3827,8 @@ static int user_data_process(struct user_data_st *user_data, size_t *len,
         char *cmd_start = buf_start;
 
         cmd_start[outlen] = '\0';
-        do {
-            cmd_start = strstr(cmd_start, "{");
+        for (;;) {
+            cmd_start = strchr(cmd_start, '{');
             if (cmd_start == buf_start && *(cmd_start + 1) == '{') {
                 /* The "{" is escaped, so skip it */
                 cmd_start += 2;
@@ -3838,11 +3838,12 @@ static int user_data_process(struct user_data_st *user_data, size_t *len,
                 outlen--;
                 continue;
             }
-        } while(0);
+            break;
+        }
 
         if (cmd_start == buf_start) {
             /* Command detected */
-            char *cmd_end = strstr(cmd_start, "}");
+            char *cmd_end = strchr(cmd_start, '}');
             char *arg_start;
             int cmd = -1, ret = USER_DATA_PROCESS_NO_DATA;
             size_t oldoff;
@@ -3857,7 +3858,7 @@ static int user_data_process(struct user_data_st *user_data, size_t *len,
                 return USER_DATA_PROCESS_NO_DATA;
             }
             *cmd_end = '\0';
-            arg_start = strstr(cmd_start, ":");
+            arg_start = strchr(cmd_start, ':');
             if (arg_start != NULL) {
                 *arg_start = '\0';
                 arg_start++;
