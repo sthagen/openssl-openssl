@@ -324,11 +324,11 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[quic_txpim_test]=../include ../apps/include
   DEPEND[quic_txpim_test]=../libcrypto.a ../libssl.a libtestutil.a
 
-  SOURCE[quic_fifd_test]=quic_fifd_test.c
+  SOURCE[quic_fifd_test]=quic_fifd_test.c cc_dummy.c
   INCLUDE[quic_fifd_test]=../include ../apps/include
   DEPEND[quic_fifd_test]=../libcrypto.a ../libssl.a libtestutil.a
 
-  SOURCE[quic_txp_test]=quic_txp_test.c
+  SOURCE[quic_txp_test]=quic_txp_test.c cc_dummy.c
   INCLUDE[quic_txp_test]=../include ../apps/include
   DEPEND[quic_txp_test]=../libcrypto.a ../libssl.a libtestutil.a
 
@@ -890,6 +890,13 @@ IF[{- !$disabled{tests} -}]
     INCLUDE[rsa_sp800_56b_test]=.. ../include ../crypto/rsa ../apps/include
     DEPEND[rsa_sp800_56b_test]=../libcrypto.a libtestutil.a
 
+    IF[{- !$disabled{'deprecated-3.0'} -}]
+      PROGRAMS{noinst}=rsa_x931_test
+      SOURCE[rsa_x931_test]=rsa_x931_test.c
+      INCLUDE[rsa_x931_test]=.. ../include ../apps/include
+      DEPEND[rsa_x931_test]=../libcrypto.a libtestutil.a
+    ENDIF
+
     SOURCE[bn_internal_test]=bn_internal_test.c
     INCLUDE[bn_internal_test]=.. ../include ../crypto/bn ../apps/include
     DEPEND[bn_internal_test]=../libcrypto.a libtestutil.a
@@ -1088,12 +1095,16 @@ ENDIF
     PROGRAMS{noinst}=quic_wire_test quic_ackm_test quic_record_test
     PROGRAMS{noinst}=quic_fc_test quic_stream_test quic_cfq_test quic_txpim_test
     PROGRAMS{noinst}=quic_fifd_test quic_txp_test quic_tserver_test
-    PROGRAMS{noinst}=quic_client_test
+    PROGRAMS{noinst}=quic_client_test quic_cc_test
   ENDIF
 
-  SOURCE[quic_ackm_test]=quic_ackm_test.c
+  SOURCE[quic_ackm_test]=quic_ackm_test.c cc_dummy.c
   INCLUDE[quic_ackm_test]=../include ../apps/include
   DEPEND[quic_ackm_test]=../libcrypto.a ../libssl.a libtestutil.a
+
+  SOURCE[quic_cc_test]=quic_cc_test.c
+  INCLUDE[quic_cc_test]=../include ../apps/include
+  DEPEND[quic_cc_test]=../libcrypto.a ../libssl.a libtestutil.a
 
   SOURCE[cert_comp_test]=cert_comp_test.c helpers/ssltestlib.c
   INCLUDE[cert_comp_test]=../include ../apps/include ..

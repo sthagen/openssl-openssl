@@ -738,7 +738,7 @@ int req_main(int argc, char **argv)
             BIO_printf(bio_err,
                        "Warning: Not placing -key in cert or request since request is used\n");
         req = load_csr_autofmt(infile /* if NULL, reads from stdin */,
-                               informat, "X509 request");
+                               informat, vfyopts, "X509 request");
         if (req == NULL)
             goto end;
     } else if (infile != NULL) {
@@ -937,7 +937,7 @@ int req_main(int argc, char **argv)
         if (i == 0)
             BIO_printf(bio_err, "Certificate request self-signature verify failure\n");
         else /* i > 0 */
-            BIO_printf(bio_err, "Certificate request self-signature verify OK\n");
+            BIO_printf(bio_out, "Certificate request self-signature verify OK\n");
     }
 
     if (noout && !text && !modulus && !subject && !pubkey) {
