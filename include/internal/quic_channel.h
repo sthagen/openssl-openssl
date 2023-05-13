@@ -84,6 +84,19 @@
  */
 #  define QUIC_TAKES_LOCK
 
+/*
+ * The function acquires the channel mutex and leaves it acquired
+ * when returning success.
+ *
+ * Any function tagged with this has the following precondition and
+ * postcondition:
+ *
+ *   Precondition: must not hold channel mutex (unchecked)
+ *   Postcondition: channel mutex is held by calling thread
+ *      or function returned failure
+ */
+#  define QUIC_ACQUIRES_LOCK
+
 #  define QUIC_TODO_LOCK
 
 #  define QUIC_CHANNEL_STATE_IDLE                        0
@@ -244,7 +257,8 @@ QUIC_STREAM *ossl_quic_channel_get_stream_by_id(QUIC_CHANNEL *ch,
 
 /* Returns 1 if channel is terminating or terminated. */
 int ossl_quic_channel_is_term_any(const QUIC_CHANNEL *ch);
-QUIC_TERMINATE_CAUSE ossl_quic_channel_get_terminate_cause(const QUIC_CHANNEL *ch);
+const QUIC_TERMINATE_CAUSE *
+ossl_quic_channel_get_terminate_cause(const QUIC_CHANNEL *ch);
 int ossl_quic_channel_is_terminating(const QUIC_CHANNEL *ch);
 int ossl_quic_channel_is_terminated(const QUIC_CHANNEL *ch);
 int ossl_quic_channel_is_active(const QUIC_CHANNEL *ch);
@@ -269,6 +283,39 @@ SSL *ossl_quic_channel_get0_ssl(QUIC_CHANNEL *ch);
  * the owner of the channel.
  */
 CRYPTO_MUTEX *ossl_quic_channel_get_mutex(QUIC_CHANNEL *ch);
+
+/*
+ * Creates a new locally-initiated stream in the stream mapper, choosing an
+ * appropriate stream ID. If is_uni is 1, creates a unidirectional stream, else
+ * creates a bidirectional stream. Returns NULL on failure.
+ */
+QUIC_STREAM *ossl_quic_channel_new_stream_local(QUIC_CHANNEL *ch, int is_uni);
+
+/*
+ * Creates a new remotely-initiated stream in the stream mapper. The stream ID
+ * is used to confirm the initiator and determine the stream type. The stream is
+ * automatically added to the QSM's accept queue. A pointer to the stream is
+ * also returned. Returns NULL on failure.
+ */
+QUIC_STREAM *ossl_quic_channel_new_stream_remote(QUIC_CHANNEL *ch,
+                                                 uint64_t stream_id);
+
+/*
+ * Configures incoming stream auto-reject. If enabled, incoming streams have
+ * both their sending and receiving parts automatically rejected using
+ * STOP_SENDING and STREAM_RESET frames. aec is the application error
+ * code to be used for those frames.
+ */
+void ossl_quic_channel_set_incoming_stream_auto_reject(QUIC_CHANNEL *ch,
+                                                       int enable,
+                                                       uint64_t aec);
+
+/*
+ * Causes the channel to reject the sending and receiving parts of a stream,
+ * as though autorejected. Can be used if a stream has already been
+ * accepted.
+ */
+void ossl_quic_channel_reject_stream(QUIC_CHANNEL *ch, QUIC_STREAM *qs);
 
 # endif
 

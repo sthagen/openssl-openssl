@@ -310,6 +310,9 @@ static QUIC_SSTREAM *get_sstream_by_id(uint64_t stream_id, uint32_t pn_space,
                                        void *arg);
 static void on_regen_notify(uint64_t frame_type, uint64_t stream_id,
                             QUIC_TXPIM_PKT *pkt, void *arg);
+static void on_confirm_notify(uint64_t frame_type, uint64_t stream_id,
+                              QUIC_TXPIM_PKT *pkt, void *arg);
+static void on_sstream_updated(uint64_t stream_id, void *arg);
 static int sstream_is_pending(QUIC_SSTREAM *sstream);
 static int txp_el_pending(OSSL_QUIC_TX_PACKETISER *txp, uint32_t enc_level,
                           uint32_t archetype,
@@ -350,7 +353,9 @@ OSSL_QUIC_TX_PACKETISER *ossl_quic_tx_packetiser_new(const OSSL_QUIC_TX_PACKETIS
         || args->ackm == NULL
         || args->qsm == NULL
         || args->conn_txfc == NULL
-        || args->conn_rxfc == NULL) {
+        || args->conn_rxfc == NULL
+        || args->max_streams_bidi_rxfc == NULL
+        || args->max_streams_uni_rxfc == NULL) {
         ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
         return NULL;
     }
@@ -365,7 +370,9 @@ OSSL_QUIC_TX_PACKETISER *ossl_quic_tx_packetiser_new(const OSSL_QUIC_TX_PACKETIS
     if (!ossl_quic_fifd_init(&txp->fifd,
                              txp->args.cfq, txp->args.ackm, txp->args.txpim,
                              get_sstream_by_id, txp,
-                             on_regen_notify, txp)) {
+                             on_regen_notify, txp,
+                             on_confirm_notify, txp,
+                             on_sstream_updated, txp)) {
         OPENSSL_free(txp);
         return NULL;
     }
@@ -805,8 +812,13 @@ static int txp_el_pending(OSSL_QUIC_TX_PACKETISER *txp, uint32_t enc_level,
         return 1;
 
     /* Do we want to produce a MAX_STREAMS frame? */
-    if (a.allow_conn_fc && (txp->want_max_streams_bidi
-                            || txp->want_max_streams_uni))
+    if (a.allow_conn_fc
+        && (txp->want_max_streams_bidi
+            || ossl_quic_rxfc_has_cwm_changed(txp->args.max_streams_bidi_rxfc,
+                                              0)
+            || txp->want_max_streams_uni
+            || ossl_quic_rxfc_has_cwm_changed(txp->args.max_streams_uni_rxfc,
+                                              0)))
         return 1;
 
     /* Do we want to produce a HANDSHAKE_DONE frame? */
@@ -1118,6 +1130,54 @@ static void on_regen_notify(uint64_t frame_type, uint64_t stream_id,
             assert(0);
             break;
     }
+}
+
+static void on_confirm_notify(uint64_t frame_type, uint64_t stream_id,
+                              QUIC_TXPIM_PKT *pkt, void *arg)
+{
+    OSSL_QUIC_TX_PACKETISER *txp = arg;
+
+    switch (frame_type) {
+        case OSSL_QUIC_FRAME_TYPE_STOP_SENDING:
+            {
+                QUIC_STREAM *s
+                    = ossl_quic_stream_map_get_by_id(txp->args.qsm, stream_id);
+
+                if (s == NULL)
+                    return;
+
+                s->acked_stop_sending = 1;
+                ossl_quic_stream_map_update_state(txp->args.qsm, s);
+            }
+            break;
+        case OSSL_QUIC_FRAME_TYPE_RESET_STREAM:
+            {
+                QUIC_STREAM *s
+                    = ossl_quic_stream_map_get_by_id(txp->args.qsm, stream_id);
+
+                if (s == NULL)
+                    return;
+
+                s->acked_reset_stream = 1;
+                ossl_quic_stream_map_update_state(txp->args.qsm, s);
+            }
+            break;
+        default:
+            assert(0);
+            break;
+    }
+}
+
+static void on_sstream_updated(uint64_t stream_id, void *arg)
+{
+    OSSL_QUIC_TX_PACKETISER *txp = arg;
+    QUIC_STREAM *s;
+
+    s = ossl_quic_stream_map_get_by_id(txp->args.qsm, stream_id);
+    if (s == NULL)
+        return;
+
+    ossl_quic_stream_map_update_state(txp->args.qsm, s);
 }
 
 static int txp_generate_pre_token(OSSL_QUIC_TX_PACKETISER *txp,
@@ -1913,15 +1973,13 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
     }
 
     /* MAX_STREAMS_BIDI (Regenerate) */
-    /*
-     * TODO(STREAMS): Once we support multiple streams, add stream count FC
-     * and plug this in.
-     */
     if (a.allow_conn_fc
-        && txp->want_max_streams_bidi
+        && (txp->want_max_streams_bidi
+            || ossl_quic_rxfc_has_cwm_changed(txp->args.max_streams_bidi_rxfc, 0))
         && tx_helper_get_space_left(&h) >= MIN_FRAME_SIZE_MAX_STREAMS_BIDI) {
         WPACKET *wpkt = tx_helper_begin(&h);
-        uint64_t max_streams = 1; /* TODO */
+        uint64_t max_streams
+            = ossl_quic_rxfc_get_cwm(txp->args.max_streams_bidi_rxfc);
 
         if (wpkt == NULL)
             goto fatal_err;
@@ -1942,10 +2000,12 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
 
     /* MAX_STREAMS_UNI (Regenerate) */
     if (a.allow_conn_fc
-        && txp->want_max_streams_uni
+        && (txp->want_max_streams_uni
+            || ossl_quic_rxfc_has_cwm_changed(txp->args.max_streams_uni_rxfc, 0))
         && tx_helper_get_space_left(&h) >= MIN_FRAME_SIZE_MAX_STREAMS_UNI) {
         WPACKET *wpkt = tx_helper_begin(&h);
-        uint64_t max_streams = 0; /* TODO */
+        uint64_t max_streams
+            = ossl_quic_rxfc_get_cwm(txp->args.max_streams_uni_rxfc);
 
         if (wpkt == NULL)
             goto fatal_err;
@@ -2195,11 +2255,15 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
         ossl_quic_rxfc_has_cwm_changed(txp->args.conn_rxfc, 1);
     }
 
-    if (tpkt->had_max_streams_bidi_frame)
+    if (tpkt->had_max_streams_bidi_frame) {
         txp->want_max_streams_bidi = 0;
+        ossl_quic_rxfc_has_cwm_changed(txp->args.max_streams_bidi_rxfc, 1);
+    }
 
-    if (tpkt->had_max_streams_uni_frame)
+    if (tpkt->had_max_streams_uni_frame) {
         txp->want_max_streams_uni = 0;
+        ossl_quic_rxfc_has_cwm_changed(txp->args.max_streams_uni_rxfc, 1);
+    }
 
     if (tpkt->had_ack_frame)
         txp->want_ack &= ~(1UL << pn_space);

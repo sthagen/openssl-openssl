@@ -47,6 +47,7 @@ struct helper {
     BIO                             *bio1, *bio2;
     QUIC_TXFC                       conn_txfc;
     QUIC_RXFC                       conn_rxfc, stream_rxfc;
+    QUIC_RXFC                       max_streams_bidi_rxfc, max_streams_uni_rxfc;
     OSSL_STATM                      statm;
     OSSL_CC_DATA                    *cc_data;
     const OSSL_CC_METHOD            *cc_method;
@@ -147,6 +148,17 @@ static int helper_init(struct helper *h)
                                        NULL)))
         goto err;
 
+    if (!TEST_true(ossl_quic_rxfc_init(&h->max_streams_bidi_rxfc, NULL,
+                                       100, 100,
+                                       fake_now,
+                                       NULL)))
+        goto err;
+
+    if (!TEST_true(ossl_quic_rxfc_init(&h->max_streams_uni_rxfc, NULL,
+                                       100, 100,
+                                       fake_now,
+                                       NULL)))
+
     if (!TEST_true(ossl_statm_init(&h->statm)))
         goto err;
 
@@ -162,7 +174,9 @@ static int helper_init(struct helper *h)
                                                h->cc_data)))
         goto err;
 
-    if (!TEST_true(ossl_quic_stream_map_init(&h->qsm, NULL, NULL)))
+    if (!TEST_true(ossl_quic_stream_map_init(&h->qsm, NULL, NULL,
+                                             &h->max_streams_bidi_rxfc,
+                                             &h->max_streams_uni_rxfc)))
         goto err;
 
     h->have_qsm = 1;
@@ -171,14 +185,16 @@ static int helper_init(struct helper *h)
         if (!TEST_ptr(h->args.crypto[i] = ossl_quic_sstream_new(4096)))
             goto err;
 
-    h->args.cur_scid   = scid_1;
-    h->args.cur_dcid   = dcid_1;
-    h->args.qsm        = &h->qsm;
-    h->args.conn_txfc  = &h->conn_txfc;
-    h->args.conn_rxfc  = &h->conn_rxfc;
-    h->args.cc_method  = h->cc_method;
-    h->args.cc_data    = h->cc_data;
-    h->args.now        = fake_now;
+    h->args.cur_scid                = scid_1;
+    h->args.cur_dcid                = dcid_1;
+    h->args.qsm                     = &h->qsm;
+    h->args.conn_txfc               = &h->conn_txfc;
+    h->args.conn_rxfc               = &h->conn_rxfc;
+    h->args.max_streams_bidi_rxfc   = &h->max_streams_bidi_rxfc;
+    h->args.max_streams_uni_rxfc    = &h->max_streams_uni_rxfc;
+    h->args.cc_method               = h->cc_method;
+    h->args.cc_data                 = h->cc_data;
+    h->args.now                     = fake_now;
 
     if (!TEST_ptr(h->txp = ossl_quic_tx_packetiser_new(&h->args)))
         goto err;
@@ -1454,7 +1470,8 @@ static int run_script(const struct script_op *script)
                                                                  op->arg0)))
                     goto err;
 
-                if (!TEST_true(ossl_quic_stream_stop_sending(s, op->arg1)))
+                if (!TEST_true(ossl_quic_stream_map_stop_sending_recv_part(h.args.qsm,
+                                                                           s, op->arg1)))
                     goto err;
 
                 ossl_quic_stream_map_update_state(h.args.qsm, s);
@@ -1471,7 +1488,8 @@ static int run_script(const struct script_op *script)
                                                                  op->arg0)))
                     goto err;
 
-                if (!TEST_true(ossl_quic_stream_reset(s, op->arg1)))
+                if (!TEST_true(ossl_quic_stream_map_reset_stream_send_part(h.args.qsm,
+                                                                           s, op->arg1)))
                     goto err;
 
                 ossl_quic_stream_map_update_state(h.args.qsm, s);

@@ -26,73 +26,23 @@
 
 # ifndef OPENSSL_NO_QUIC
 
-struct quic_conn_st {
-    /*
-     * ssl_st is a common header for ordinary SSL objects, QUIC connection
-     * objects and QUIC stream objects, allowing objects of these different
-     * types to be disambiguated at runtime and providing some common fields.
-     *
-     * Note: This must come first in the QUIC_CONNECTION structure.
-     */
+/*
+ * QUIC stream SSL object (QSSO) type. This implements the API personality layer
+ * for QSSO objects, wrapping the QUIC-native QUIC_STREAM object and tracking
+ * state required by the libssl API personality.
+ */
+struct quic_xso_st {
+    /* SSL object common header. */
     struct ssl_st                   ssl;
 
-    SSL                             *tls;
+    /* The connection this stream is associated with. Always non-NULL. */
+    QUIC_CONNECTION                 *conn;
 
-    /*
-     * The QUIC channel providing the core QUIC connection implementation. Note
-     * that this is not instantiated until we actually start trying to do the
-     * handshake. This is to allow us to gather information like whether we are
-     * going to be in client or server mode before committing to instantiating
-     * the channel, since we want to determine the channel arguments based on
-     * that.
-     *
-     * The channel remains available after connection termination until the SSL
-     * object is freed, thus (ch != NULL) iff (started == 1).
-     */
-    QUIC_CHANNEL                    *ch;
+    /* The stream object. Always non-NULL for as long as the XSO exists. */
+    QUIC_STREAM                     *stream;
 
-    /*
-     * The mutex used to synchronise access to the QUIC_CHANNEL. We own this but
-     * provide it to the channel.
-     */
-    CRYPTO_MUTEX                    *mutex;
-
-    /* Our single bidirectional application data stream. */
-    QUIC_STREAM                     *stream0;
-
-    /* The network read and write BIOs. */
-    BIO                             *net_rbio, *net_wbio;
-
-    /* Initial peer L4 address. */
-    BIO_ADDR                        init_peer_addr;
-
-#  ifndef OPENSSL_NO_QUIC_THREAD_ASSIST
-    /* Manages thread for QUIC thread assisted mode. */
-    QUIC_THREAD_ASSIST              thread_assist;
-#  endif
-
-    /* If non-NULL, used instead of ossl_time_now(). Used for testing. */
-    OSSL_TIME                       (*override_now_cb)(void *arg);
-    void                            *override_now_cb_arg;
-
-    /* Have we started? */
-    unsigned int                    started                 : 1;
-
-    /* Are we in blocking mode? */
+    /* Is this stream in blocking mode? */
     unsigned int                    blocking                : 1;
-
-    /* Can the read and write network BIOs support blocking? */
-    unsigned int                    can_poll_net_rbio       : 1;
-    unsigned int                    can_poll_net_wbio       : 1;
-
-    /*
-     * Has the application called SSL_set_accept_state? We do not support this
-     * but track it here so we can reject a subsequent handshake call.
-     */
-    unsigned int                    as_server               : 1;
-
-    /* Are we using thread assisted mode? Never changes after init. */
-    unsigned int                    is_thread_assisted      : 1;
 
     /*
      * This state tracks SSL_write all-or-nothing (AON) write semantics
@@ -134,6 +84,103 @@ struct quic_conn_st {
 
     /* SSL_set_mode */
     uint32_t                        ssl_mode;
+};
+
+struct quic_conn_st {
+    /*
+     * ssl_st is a common header for ordinary SSL objects, QUIC connection
+     * objects and QUIC stream objects, allowing objects of these different
+     * types to be disambiguated at runtime and providing some common fields.
+     *
+     * Note: This must come first in the QUIC_CONNECTION structure.
+     */
+    struct ssl_st                   ssl;
+
+    SSL                             *tls;
+
+    /*
+     * The QUIC channel providing the core QUIC connection implementation. Note
+     * that this is not instantiated until we actually start trying to do the
+     * handshake. This is to allow us to gather information like whether we are
+     * going to be in client or server mode before committing to instantiating
+     * the channel, since we want to determine the channel arguments based on
+     * that.
+     *
+     * The channel remains available after connection termination until the SSL
+     * object is freed, thus (ch != NULL) iff (started == 1).
+     */
+    QUIC_CHANNEL                    *ch;
+
+    /*
+     * The mutex used to synchronise access to the QUIC_CHANNEL. We own this but
+     * provide it to the channel.
+     */
+    CRYPTO_MUTEX                    *mutex;
+
+    /*
+     * If we have a default stream attached, this is the internal XSO
+     * object. If there is no default stream, this is NULL.
+     */
+    QUIC_XSO                        *default_xso;
+
+    /* The network read and write BIOs. */
+    BIO                             *net_rbio, *net_wbio;
+
+    /* Initial peer L4 address. */
+    BIO_ADDR                        init_peer_addr;
+
+#  ifndef OPENSSL_NO_QUIC_THREAD_ASSIST
+    /* Manages thread for QUIC thread assisted mode. */
+    QUIC_THREAD_ASSIST              thread_assist;
+#  endif
+
+    /* If non-NULL, used instead of ossl_time_now(). Used for testing. */
+    OSSL_TIME                       (*override_now_cb)(void *arg);
+    void                            *override_now_cb_arg;
+
+    /* Number of XSOs allocated. Includes the default XSO, if any. */
+    size_t                          num_xso;
+
+    /* Have we started? */
+    unsigned int                    started                 : 1;
+
+    /* Can the read and write network BIOs support blocking? */
+    unsigned int                    can_poll_net_rbio       : 1;
+    unsigned int                    can_poll_net_wbio       : 1;
+
+    /*
+     * This is 1 if we were instantiated using a QUIC server method
+     * (for future use).
+     */
+    unsigned int                    as_server               : 1;
+
+    /*
+     * Has the application called SSL_set_accept_state? We require this to be
+     * congruent with the value of as_server.
+     */
+    unsigned int                    as_server_state         : 1;
+
+    /* Are we using thread assisted mode? Never changes after init. */
+    unsigned int                    is_thread_assisted      : 1;
+
+    /* Do connection-level operations (e.g. handshakes) run in blocking mode? */
+    unsigned int                    blocking                : 1;
+
+    /* Do newly created streams start in blocking mode? Inherited by new XSOs. */
+    unsigned int                    default_blocking        : 1;
+
+    /* Have we created a default XSO yet? */
+    unsigned int                    default_xso_created     : 1;
+
+    /* Default stream type. Defaults to SSL_DEFAULT_STREAM_MODE_AUTO_BIDI. */
+    uint32_t                        default_stream_mode;
+
+    /* SSL_set_mode. This is not used directly but inherited by new XSOs. */
+    uint32_t                        default_ssl_mode;
+
+    /* SSL_set_incoming_stream_policy. */
+    int                             incoming_stream_policy;
+    uint64_t                        incoming_stream_aec;
 
     /*
      * Last 'normal' error during an app-level I/O operation, used by
@@ -167,32 +214,39 @@ void ossl_quic_conn_on_remote_conn_close(QUIC_CONNECTION *qc,
          ? (c QUIC_CONNECTION *)(ssl)            \
          : NULL))
 
-#  define QUIC_STREAM_FROM_SSL_int(ssl, c)       \
-     ((ssl) == NULL ? NULL                       \
-      : ((ssl)->type == SSL_TYPE_QUIC_CONNECTION \
-          || (ssl)->type == SSL_TYPE_QUIC_STREAM \
-         ? (c QUIC_STREAM *)(ssl)                \
-         : NULL))
+#  define QUIC_XSO_FROM_SSL_int(ssl, c)                             \
+    ((ssl) == NULL                                                  \
+     ? NULL                                                         \
+     : (((ssl)->type == SSL_TYPE_QUIC_XSO                           \
+        ? (c QUIC_XSO *)(ssl)                                       \
+        : ((ssl)->type == SSL_TYPE_QUIC_CONNECTION                  \
+           ? (c QUIC_XSO *)((QUIC_CONNECTION *)(ssl))->default_xso  \
+           : NULL))))
 
 #  define SSL_CONNECTION_FROM_QUIC_SSL_int(ssl, c)               \
      ((ssl) == NULL ? NULL                                       \
       : ((ssl)->type == SSL_TYPE_QUIC_CONNECTION                 \
          ? (c SSL_CONNECTION *)((c QUIC_CONNECTION *)(ssl))->tls \
          : NULL))
+
+#  define IS_QUIC(ssl) ((ssl) != NULL                                   \
+                        && ((ssl)->type == SSL_TYPE_QUIC_CONNECTION     \
+                            || (ssl)->type == SSL_TYPE_QUIC_XSO))
 # else
 #  define QUIC_CONNECTION_FROM_SSL_int(ssl, c) NULL
-#  define QUIC_STREAM_FROM_SSL_int(ssl, c) NULL
+#  define QUIC_XSO_FROM_SSL_int(ssl, c) NULL
 #  define SSL_CONNECTION_FROM_QUIC_SSL_int(ssl, c) NULL
+#  define IS_QUIC(ssl) 0
 # endif
 
 # define QUIC_CONNECTION_FROM_SSL(ssl) \
     QUIC_CONNECTION_FROM_SSL_int(ssl, SSL_CONNECTION_NO_CONST)
 # define QUIC_CONNECTION_FROM_CONST_SSL(ssl) \
     QUIC_CONNECTION_FROM_SSL_int(ssl, const)
-# define QUIC_STREAM_FROM_SSL(ssl) \
-    QUIC_STREAM_FROM_SSL_int(ssl, SSL_CONNECTION_NO_CONST)
-# define QUIC_STREAM_FROM_CONST_SSL(ssl) \
-    QUIC_STREAM_FROM_SSL_int(ssl, const)
+# define QUIC_XSO_FROM_SSL(ssl) \
+    QUIC_XSO_FROM_SSL_int(ssl, SSL_CONNECTION_NO_CONST)
+# define QUIC_XSO_FROM_CONST_SSL(ssl) \
+    QUIC_XSO_FROM_SSL_int(ssl, const)
 # define SSL_CONNECTION_FROM_QUIC_SSL(ssl) \
     SSL_CONNECTION_FROM_QUIC_SSL_int(ssl, SSL_CONNECTION_NO_CONST)
 # define SSL_CONNECTION_FROM_CONST_QUIC_SSL(ssl) \

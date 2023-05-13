@@ -69,9 +69,13 @@ struct quic_channel_st {
     OSSL_QUIC_TX_PACKETISER         *txp;
     QUIC_TXPIM                      *txpim;
     QUIC_CFQ                        *cfq;
-    /* Connection level FC. */
+    /*
+     * Connection level FC. The stream_count RXFCs is used to manage
+     * MAX_STREAMS signalling.
+     */
     QUIC_TXFC                       conn_txfc;
     QUIC_RXFC                       conn_rxfc;
+    QUIC_RXFC                       max_streams_bidi_rxfc, max_streams_uni_rxfc;
     QUIC_STREAM_MAP                 qsm;
     OSSL_STATM                      statm;
     OSSL_CC_DATA                    *cc_data;
@@ -96,12 +100,6 @@ struct quic_channel_st {
      */
     QUIC_SSTREAM                    *crypto_send[QUIC_PN_SPACE_NUM];
     QUIC_RSTREAM                    *crypto_recv[QUIC_PN_SPACE_NUM];
-
-    /*
-     * Our (currently only) application data stream. This is a bidirectional
-     * client-initiated stream and thus (in QUICv1) always has a stream ID of 0.
-     */
-    QUIC_STREAM                     *stream0;
 
     /* Internal state. */
     /*
@@ -129,10 +127,15 @@ struct quic_channel_st {
     /* Server only: The DCID we currently expect the peer to use to talk to us. */
     QUIC_CONN_ID                    cur_local_dcid;
 
+    /* Transport parameter values we send to our peer. */
+    uint64_t                        tx_init_max_stream_data_bidi_local;
+    uint64_t                        tx_init_max_stream_data_bidi_remote;
+    uint64_t                        tx_init_max_stream_data_uni;
+
     /* Transport parameter values received from server. */
-    uint64_t                        init_max_stream_data_bidi_local;
-    uint64_t                        init_max_stream_data_bidi_remote;
-    uint64_t                        init_max_stream_data_uni_remote;
+    uint64_t                        rx_init_max_stream_data_bidi_local;
+    uint64_t                        rx_init_max_stream_data_bidi_remote;
+    uint64_t                        rx_init_max_stream_data_uni;
     uint64_t                        rx_max_ack_delay; /* ms */
     unsigned char                   rx_ack_delay_exp;
 
@@ -159,6 +162,29 @@ struct quic_channel_st {
     uint64_t                        rx_max_udp_payload_size;
     /* Maximum active CID limit, as negotiated by transport parameters. */
     uint64_t                        rx_active_conn_id_limit;
+
+    /*
+     * Used to allocate stream IDs. This is a stream ordinal, i.e., a stream ID
+     * without the low two bits designating type and initiator. Shift and or in
+     * the type bits to convert to a stream ID.
+     */
+    uint64_t                        next_local_stream_ordinal_bidi;
+    uint64_t                        next_local_stream_ordinal_uni;
+
+    /*
+     * Used to track which stream ordinals within a given stream type have been
+     * used by the remote peer. This is an optimisation used to determine
+     * which streams should be implicitly created due to usage of a higher
+     * stream ordinal.
+     */
+    uint64_t                        next_remote_stream_ordinal_bidi;
+    uint64_t                        next_remote_stream_ordinal_uni;
+
+    /*
+     * Application error code to be used for STOP_SENDING/RESET_STREAM frames
+     * used to autoreject incoming streams.
+     */
+    uint64_t                        incoming_stream_auto_reject_aec;
 
     /* Valid if we are in the TERMINATING or TERMINATED states. */
     QUIC_TERMINATE_CAUSE            terminate_cause;
@@ -283,6 +309,9 @@ struct quic_channel_st {
      * 10.1).
      */
     unsigned int                    have_sent_ack_eliciting_since_rx    : 1;
+
+    /* Should incoming streams automatically be rejected? */
+    unsigned int                    incoming_stream_auto_reject         : 1;
 };
 
 # endif

@@ -129,7 +129,9 @@ static int depack_do_frame_reset_stream(PACKET *pkt,
         return 0;
     }
 
-    stream->peer_reset_stream = 1;
+    stream->peer_reset_stream       = 1;
+    stream->peer_reset_stream_aec   = frame_data.app_error_code;
+
     ossl_quic_stream_map_update_state(&ch->qsm, stream);
     return 1;
 }
@@ -171,8 +173,16 @@ static int depack_do_frame_stop_sending(PACKET *pkt,
         return 0;
     }
 
-    stream->peer_stop_sending = 1;
-    ossl_quic_stream_map_update_state(&ch->qsm, stream);
+    stream->peer_stop_sending       = 1;
+    stream->peer_stop_sending_aec   = frame_data.app_error_code;
+
+    /*
+     * RFC 9000 s. 3.5: Receiving a STOP_SENDING frame means we must respond in
+     * turn with a RESET_STREAM frame for the same part of the stream. The other
+     * part is unaffected.
+     */
+    ossl_quic_stream_map_reset_stream_send_part(&ch->qsm, stream,
+                                                frame_data.app_error_code);
     return 1;
 }
 
@@ -254,12 +264,127 @@ static int depack_do_frame_stream(PACKET *pkt, QUIC_CHANNEL *ch,
 
     stream = ossl_quic_stream_map_get_by_id(&ch->qsm, frame_data.stream_id);
     if (stream == NULL) {
-        ossl_quic_channel_raise_protocol_error(ch,
-                                               QUIC_ERR_STREAM_STATE_ERROR,
-                                               frame_type,
-                                               "STREAM frame for nonexistent "
-                                               "stream");
-        return 0;
+        uint64_t peer_role, stream_ordinal;
+        uint64_t *p_next_ordinal_local, *p_next_ordinal_remote;
+        QUIC_RXFC *max_streams_fc;
+        int is_uni;
+
+        /*
+         * If we do not yet have a stream with the given ID, there are three
+         * possibilities:
+         *
+         *   (a) The stream ID is for a remotely-created stream and the peer
+         *       is creating a stream.
+         *
+         *   (b) The stream ID is for a locally-created stream which has
+         *       previously been deleted.
+         *
+         *   (c) The stream ID is for a locally-created stream which does
+         *       not exist yet. This is a protocol violation and we must
+         *       terminate the connection in this case.
+         *
+         * We distinguish between (b) and (c) using the stream ID allocator
+         * variable. Since stream ordinals are allocated monotonically, we
+         * simply determine if the stream ordinal is in the future.
+         */
+
+        peer_role = ch->is_server
+            ? QUIC_STREAM_INITIATOR_CLIENT
+            : QUIC_STREAM_INITIATOR_SERVER;
+
+        is_uni = ((frame_data.stream_id & QUIC_STREAM_DIR_MASK)
+                  == QUIC_STREAM_DIR_UNI);
+
+        stream_ordinal = frame_data.stream_id >> 2;
+
+        if ((frame_data.stream_id & QUIC_STREAM_INITIATOR_MASK) == peer_role) {
+            /*
+             * Peer-created stream which does not yet exist. Create it. QUIC
+             * stream ordinals within a given stream type MUST be used in
+             * sequence and receiving a STREAM frame for ordinal n must
+             * implicitly create streams with ordinals [0, n) within that stream
+             * type even if no explicit STREAM frames are received for those
+             * ordinals.
+             */
+            p_next_ordinal_remote = is_uni
+                ? &ch->next_remote_stream_ordinal_uni
+                : &ch->next_remote_stream_ordinal_bidi;
+
+            /* Check this isn't violating stream count flow control. */
+            max_streams_fc = is_uni
+                ? &ch->max_streams_uni_rxfc
+                : &ch->max_streams_bidi_rxfc;
+
+            if (!ossl_quic_rxfc_on_rx_stream_frame(max_streams_fc,
+                                                   stream_ordinal + 1,
+                                                   /*is_fin=*/0)) {
+                ossl_quic_channel_raise_protocol_error(ch,
+                                                       QUIC_ERR_INTERNAL_ERROR,
+                                                       frame_type,
+                                                       "internal error (stream count RXFC)");
+                return 0;
+            }
+
+            if (ossl_quic_rxfc_get_error(max_streams_fc, 0) != QUIC_ERR_NO_ERROR) {
+                ossl_quic_channel_raise_protocol_error(ch, QUIC_ERR_STREAM_LIMIT_ERROR,
+                                                       frame_type,
+                                                       "exceeded maximum allowed streams");
+                return 0;
+            }
+
+            /*
+             * Create the named stream and any streams coming before it yet to
+             * be created.
+             */
+            while (*p_next_ordinal_remote <= stream_ordinal) {
+                uint64_t stream_id = (*p_next_ordinal_remote << 2) |
+                    (frame_data.stream_id
+                     & (QUIC_STREAM_DIR_MASK | QUIC_STREAM_INITIATOR_MASK));
+
+                stream = ossl_quic_channel_new_stream_remote(ch, stream_id);
+                if (stream == NULL) {
+                    ossl_quic_channel_raise_protocol_error(ch,
+                                                           QUIC_ERR_INTERNAL_ERROR,
+                                                           frame_type,
+                                                           "internal error (stream allocation)");
+                    return 0;
+                }
+
+                ++*p_next_ordinal_remote;
+            }
+
+            /*
+             * Fallthrough to processing of stream data for newly created
+             * stream.
+             */
+        } else {
+            /* Locally-created stream which does not yet exist. */
+
+            p_next_ordinal_local = is_uni
+                ? &ch->next_local_stream_ordinal_uni
+                : &ch->next_local_stream_ordinal_bidi;
+
+            if (stream_ordinal >= *p_next_ordinal_local) {
+                /*
+                 * We never created this stream yet, this is a protocol
+                 * violation.
+                 */
+                ossl_quic_channel_raise_protocol_error(ch,
+                                                       QUIC_ERR_STREAM_STATE_ERROR,
+                                                       frame_type,
+                                                       "STREAM frame for nonexistent "
+                                                       "stream");
+                return 0;
+            }
+
+            /*
+             * Otherwise this is for an old locally-initiated stream which we
+             * have subsequently deleted. Ignore the data; it may simply be a
+             * retransmission. We already take care of notifying the peer of the
+             * termination of the stream during the stream deletion lifecycle.
+             */
+            return 1;
+        }
     }
 
     if (stream->rstream == NULL) {
@@ -308,6 +433,33 @@ static int depack_do_frame_stream(PACKET *pkt, QUIC_CHANNEL *ch,
     return 1;
 }
 
+static void update_streams(QUIC_STREAM *s, void *arg)
+{
+    QUIC_CHANNEL *ch = arg;
+
+    ossl_quic_stream_map_update_state(&ch->qsm, s);
+}
+
+static void update_streams_bidi(QUIC_STREAM *s, void *arg)
+{
+    QUIC_CHANNEL *ch = arg;
+
+    if (!ossl_quic_stream_is_bidi(s))
+        return;
+
+    ossl_quic_stream_map_update_state(&ch->qsm, s);
+}
+
+static void update_streams_uni(QUIC_STREAM *s, void *arg)
+{
+    QUIC_CHANNEL *ch = arg;
+
+    if (ossl_quic_stream_is_bidi(s))
+        return;
+
+    ossl_quic_stream_map_update_state(&ch->qsm, s);
+}
+
 static int depack_do_frame_max_data(PACKET *pkt, QUIC_CHANNEL *ch,
                                     OSSL_ACKM_RX_PKT *ackm_data)
 {
@@ -325,7 +477,7 @@ static int depack_do_frame_max_data(PACKET *pkt, QUIC_CHANNEL *ch,
     ackm_data->is_ack_eliciting = 1;
 
     ossl_quic_txfc_bump_cwm(&ch->conn_txfc, max_data);
-    ossl_quic_stream_map_update_state(&ch->qsm, ch->stream0);
+    ossl_quic_stream_map_visit(&ch->qsm, update_streams, ch);
     return 1;
 }
 
@@ -404,17 +556,15 @@ static int depack_do_frame_max_streams(PACKET *pkt,
         if (max_streams > ch->max_local_streams_bidi)
             ch->max_local_streams_bidi = max_streams;
 
-        /* Stream may now be able to send */
-        ossl_quic_stream_map_update_state(&ch->qsm,
-                                          ch->stream0);
+        /* Some streams may now be able to send. */
+        ossl_quic_stream_map_visit(&ch->qsm, update_streams_bidi, ch);
         break;
     case OSSL_QUIC_FRAME_TYPE_MAX_STREAMS_UNI:
         if (max_streams > ch->max_local_streams_uni)
             ch->max_local_streams_uni = max_streams;
 
-        /* Stream may now be able to send */
-        ossl_quic_stream_map_update_state(&ch->qsm,
-                                          ch->stream0);
+        /* Some streams may now be able to send. */
+        ossl_quic_stream_map_visit(&ch->qsm, update_streams_uni, ch);
         break;
     default:
         ossl_quic_channel_raise_protocol_error(ch,

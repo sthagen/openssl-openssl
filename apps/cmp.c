@@ -1525,9 +1525,24 @@ static int setup_request_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         CMP_warn("no -subject given; no -csr or -oldcert or -cert available for fallback");
 
     if (opt_cmd == CMP_IR || opt_cmd == CMP_CR || opt_cmd == CMP_KUR) {
-        if (opt_newkey == NULL && opt_key == NULL && opt_csr == NULL) {
-            CMP_err("missing -newkey (or -key) to be certified and no -csr given");
+        if (opt_newkey == NULL
+            && opt_key == NULL && opt_csr == NULL && opt_oldcert == NULL) {
+            CMP_err("missing -newkey (or -key) to be certified and no -csr, -oldcert, or -cert given for fallback public key");
             return 0;
+        }
+        if (opt_newkey == NULL
+            && opt_popo != OSSL_CRMF_POPO_NONE
+            && opt_popo != OSSL_CRMF_POPO_RAVERIFIED) {
+            if (opt_csr != NULL) {
+                CMP_err1("no -newkey option given with private key for POPO, -csr option only provides public key%s",
+                        opt_key == NULL ? "" :
+                        ", and -key option superseded by by -csr");
+                return 0;
+            }
+            if (opt_key == NULL) {
+                CMP_err("missing -newkey (or -key) option for POPO");
+                return 0;
+            }
         }
         if (opt_certout == NULL) {
             CMP_err("-certout not given, nowhere to save newly enrolled certificate");
@@ -1952,12 +1967,14 @@ static int setup_client_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         if ((info = OPENSSL_zalloc(sizeof(*info))) == NULL)
             goto err;
         (void)OSSL_CMP_CTX_set_http_cb_arg(ctx, info);
-        info->server = opt_server;
-        info->port = server_port;
+        info->ssl_ctx = setup_ssl_ctx(ctx, host, engine);
+        info->server = host;
+        host = NULL; /* prevent deallocation */
+        if ((info->port = OPENSSL_strdup(server_port)) == NULL)
+            goto err;
         /* workaround for callback design flaw, see #17088: */
         info->use_proxy = proxy_host != NULL;
         info->timeout = OSSL_CMP_CTX_get_option(ctx, OSSL_CMP_OPT_MSG_TIMEOUT);
-        info->ssl_ctx = setup_ssl_ctx(ctx, host, engine);
 
         if (info->ssl_ctx == NULL)
             goto err;
@@ -3099,7 +3116,11 @@ int cmp_main(int argc, char **argv)
         /* cannot free info already here, as it may be used indirectly by: */
         OSSL_CMP_CTX_free(cmp_ctx);
 #ifndef OPENSSL_NO_SOCK
-        APP_HTTP_TLS_INFO_free(info);
+        if (info != NULL) {
+            OPENSSL_free((char *)info->server);
+            OPENSSL_free((char *)info->port);
+            APP_HTTP_TLS_INFO_free(info);
+        }
 #endif
     }
     X509_VERIFY_PARAM_free(vpm);

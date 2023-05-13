@@ -30,7 +30,7 @@
 
 /*
  * Interval before we force a PING to ensure NATs don't timeout. This is based
- * on the lowest commonly seen value of 30 seconds as cited in  RFC 9000 s.
+ * on the lowest commonly seen value of 30 seconds as cited in RFC 9000 s.
  * 10.1.2.
  */
 #define MAX_NAT_INTERVAL (ossl_ms2time(25000))
@@ -105,6 +105,14 @@ static int gen_rand_conn_id(OSSL_LIB_CTX *libctx, size_t len, QUIC_CONN_ID *cid)
  * QUIC Channel Initialization and Teardown
  * ========================================
  */
+#define DEFAULT_INIT_CONN_RXFC_WND      (2 * 1024 * 1024)
+#define DEFAULT_CONN_RXFC_MAX_WND_MUL   5
+
+#define DEFAULT_INIT_STREAM_RXFC_WND    (2 * 1024 * 1024)
+#define DEFAULT_STREAM_RXFC_MAX_WND_MUL 5
+
+#define DEFAULT_INIT_CONN_MAX_STREAMS           100
+
 static int ch_init(QUIC_CHANNEL *ch)
 {
     OSSL_QUIC_TX_PACKETISER_ARGS txp_args = {0};
@@ -139,10 +147,29 @@ static int ch_init(QUIC_CHANNEL *ch)
     if (!ossl_quic_txfc_init(&ch->conn_txfc, NULL))
         goto err;
 
+    /*
+     * Note: The TP we transmit governs what the peer can transmit and thus
+     * applies to the RXFC.
+     */
+    ch->tx_init_max_stream_data_bidi_local  = DEFAULT_INIT_STREAM_RXFC_WND;
+    ch->tx_init_max_stream_data_bidi_remote = DEFAULT_INIT_STREAM_RXFC_WND;
+    ch->tx_init_max_stream_data_uni         = DEFAULT_INIT_STREAM_RXFC_WND;
+
     if (!ossl_quic_rxfc_init(&ch->conn_rxfc, NULL,
-                             2  * 1024 * 1024,
-                             10 * 1024 * 1024,
+                             DEFAULT_INIT_CONN_RXFC_WND,
+                             DEFAULT_CONN_RXFC_MAX_WND_MUL *
+                             DEFAULT_INIT_CONN_RXFC_WND,
                              get_time, ch))
+        goto err;
+
+    if (!ossl_quic_rxfc_init_for_stream_count(&ch->max_streams_bidi_rxfc,
+                                              DEFAULT_INIT_CONN_MAX_STREAMS,
+                                              get_time, ch))
+        goto err;
+
+    if (!ossl_quic_rxfc_init_for_stream_count(&ch->max_streams_uni_rxfc,
+                                             DEFAULT_INIT_CONN_MAX_STREAMS,
+                                             get_time, ch))
         goto err;
 
     if (!ossl_statm_init(&ch->statm))
@@ -157,25 +184,29 @@ static int ch_init(QUIC_CHANNEL *ch)
                                   ch->cc_method, ch->cc_data)) == NULL)
         goto err;
 
-    if (!ossl_quic_stream_map_init(&ch->qsm, get_stream_limit, ch))
+    if (!ossl_quic_stream_map_init(&ch->qsm, get_stream_limit, ch,
+                                   &ch->max_streams_bidi_rxfc,
+                                   &ch->max_streams_uni_rxfc))
         goto err;
 
     ch->have_qsm = 1;
 
     /* We use a zero-length SCID. */
-    txp_args.cur_dcid           = ch->init_dcid;
-    txp_args.ack_delay_exponent = 3;
-    txp_args.qtx                = ch->qtx;
-    txp_args.txpim              = ch->txpim;
-    txp_args.cfq                = ch->cfq;
-    txp_args.ackm               = ch->ackm;
-    txp_args.qsm                = &ch->qsm;
-    txp_args.conn_txfc          = &ch->conn_txfc;
-    txp_args.conn_rxfc          = &ch->conn_rxfc;
-    txp_args.cc_method          = ch->cc_method;
-    txp_args.cc_data            = ch->cc_data;
-    txp_args.now                = get_time;
-    txp_args.now_arg            = ch;
+    txp_args.cur_dcid               = ch->init_dcid;
+    txp_args.ack_delay_exponent     = 3;
+    txp_args.qtx                    = ch->qtx;
+    txp_args.txpim                  = ch->txpim;
+    txp_args.cfq                    = ch->cfq;
+    txp_args.ackm                   = ch->ackm;
+    txp_args.qsm                    = &ch->qsm;
+    txp_args.conn_txfc              = &ch->conn_txfc;
+    txp_args.conn_rxfc              = &ch->conn_rxfc;
+    txp_args.max_streams_bidi_rxfc  = &ch->max_streams_bidi_rxfc;
+    txp_args.max_streams_uni_rxfc   = &ch->max_streams_uni_rxfc;
+    txp_args.cc_method              = ch->cc_method;
+    txp_args.cc_data                = ch->cc_data;
+    txp_args.now                    = get_time;
+    txp_args.now_arg                = ch;
     for (pn_space = QUIC_PN_SPACE_INITIAL; pn_space < QUIC_PN_SPACE_NUM; ++pn_space) {
         ch->crypto_send[pn_space] = ossl_quic_sstream_new(INIT_CRYPTO_BUF_LEN);
         if (ch->crypto_send[pn_space] == NULL)
@@ -224,26 +255,6 @@ static int ch_init(QUIC_CHANNEL *ch)
         if (ch->crypto_recv[pn_space] == NULL)
             goto err;
     }
-
-    if ((ch->stream0 = ossl_quic_stream_map_alloc(&ch->qsm, 0,
-                                                  QUIC_STREAM_INITIATOR_CLIENT
-                                                  | QUIC_STREAM_DIR_BIDI)) == NULL)
-        goto err;
-
-    if ((ch->stream0->sstream = ossl_quic_sstream_new(INIT_APP_BUF_LEN)) == NULL)
-        goto err;
-
-    if ((ch->stream0->rstream = ossl_quic_rstream_new(NULL, NULL, 0)) == NULL)
-        goto err;
-
-    if (!ossl_quic_txfc_init(&ch->stream0->txfc, &ch->conn_txfc))
-        goto err;
-
-    if (!ossl_quic_rxfc_init(&ch->stream0->rxfc, &ch->conn_rxfc,
-                             1 * 1024 * 1024,
-                             5 * 1024 * 1024,
-                             get_time, ch))
-        goto err;
 
     /* Plug in the TLS handshake layer. */
     tls_args.s                          = ch->tls;
@@ -310,11 +321,6 @@ static void ch_cleanup(QUIC_CHANNEL *ch)
     if (ch->have_statm)
         ossl_statm_destroy(&ch->statm);
     ossl_ackm_free(ch->ackm);
-
-    if (ch->stream0 != NULL) {
-        assert(ch->have_qsm);
-        ossl_quic_stream_map_release(&ch->qsm, ch->stream0); /* frees sstream */
-    }
 
     if (ch->have_qsm)
         ossl_quic_stream_map_cleanup(&ch->qsm);
@@ -439,9 +445,10 @@ int ossl_quic_channel_is_term_any(const QUIC_CHANNEL *ch)
         || ossl_quic_channel_is_terminated(ch);
 }
 
-QUIC_TERMINATE_CAUSE ossl_quic_channel_get_terminate_cause(const QUIC_CHANNEL *ch)
+const QUIC_TERMINATE_CAUSE *
+ossl_quic_channel_get_terminate_cause(const QUIC_CHANNEL *ch)
 {
-    return ch->terminate_cause;
+    return ossl_quic_channel_is_term_any(ch) ? &ch->terminate_cause : NULL;
 }
 
 int ossl_quic_channel_is_handshake_complete(const QUIC_CHANNEL *ch)
@@ -725,6 +732,31 @@ static int ch_on_handshake_alert(void *arg, unsigned char alert_code)
 #define TP_REASON_REQUIRED(x) \
     x " was not sent but is required"
 
+static void txfc_bump_cwm_bidi(QUIC_STREAM *s, void *arg)
+{
+    if (!ossl_quic_stream_is_bidi(s)
+        || ossl_quic_stream_is_server_init(s))
+        return;
+
+    ossl_quic_txfc_bump_cwm(&s->txfc, *(uint64_t *)arg);
+}
+
+static void txfc_bump_cwm_uni(QUIC_STREAM *s, void *arg)
+{
+    if (ossl_quic_stream_is_bidi(s)
+        || ossl_quic_stream_is_server_init(s))
+        return;
+
+    ossl_quic_txfc_bump_cwm(&s->txfc, *(uint64_t *)arg);
+}
+
+static void do_update(QUIC_STREAM *s, void *arg)
+{
+    QUIC_CHANNEL *ch = arg;
+
+    ossl_quic_stream_map_update_state(&ch->qsm, s);
+}
+
 static int ch_on_transport_params(const unsigned char *params,
                                   size_t params_len,
                                   void *arg)
@@ -870,7 +902,7 @@ static int ch_on_transport_params(const unsigned char *params,
              * This is correct; the BIDI_LOCAL TP governs streams created by
              * the endpoint which sends the TP, i.e., our peer.
              */
-            ch->init_max_stream_data_bidi_remote = v;
+            ch->rx_init_max_stream_data_bidi_remote = v;
             got_initial_max_stream_data_bidi_local = 1;
             break;
 
@@ -890,10 +922,10 @@ static int ch_on_transport_params(const unsigned char *params,
              * This is correct; the BIDI_REMOTE TP governs streams created
              * by the endpoint which receives the TP, i.e., us.
              */
-            ch->init_max_stream_data_bidi_local = v;
+            ch->rx_init_max_stream_data_bidi_local = v;
 
-            /* Apply to stream 0. */
-            ossl_quic_txfc_bump_cwm(&ch->stream0->txfc, v);
+            /* Apply to all existing streams. */
+            ossl_quic_stream_map_visit(&ch->qsm, txfc_bump_cwm_bidi, &v);
             got_initial_max_stream_data_bidi_remote = 1;
             break;
 
@@ -909,7 +941,10 @@ static int ch_on_transport_params(const unsigned char *params,
                 goto malformed;
             }
 
-            ch->init_max_stream_data_uni_remote = v;
+            ch->rx_init_max_stream_data_uni = v;
+
+            /* Apply to all existing streams. */
+            ossl_quic_stream_map_visit(&ch->qsm, txfc_bump_cwm_uni, &v);
             got_initial_max_stream_data_uni = 1;
             break;
 
@@ -1104,8 +1139,11 @@ static int ch_on_transport_params(const unsigned char *params,
 
     if (got_initial_max_data || got_initial_max_stream_data_bidi_remote
         || got_initial_max_streams_bidi || got_initial_max_streams_uni)
-        /* If FC credit was bumped, we may now be able to send. */
-        ossl_quic_stream_map_update_state(&ch->qsm, ch->stream0);
+        /*
+         * If FC credit was bumped, we may now be able to send. Update all
+         * streams.
+         */
+        ossl_quic_stream_map_visit(&ch->qsm, do_update, ch);
 
     /* If we are a server, we now generate our own transport parameters. */
     if (ch->is_server && !ch_generate_transport_params(ch)) {
@@ -1181,29 +1219,25 @@ static int ch_generate_transport_params(QUIC_CHANNEL *ch)
                                                    ossl_quic_rxfc_get_cwm(&ch->conn_rxfc)))
         goto err;
 
-    /*
-     * We actually want the default CWM for a new RXFC, but here we just use
-     * stream0 as a representative specimen. TODO(QUIC): revisit this when we
-     * support multiple streams.
-     */
+    /* Send the default CWM for a new RXFC. */
     if (!ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_INITIAL_MAX_STREAM_DATA_BIDI_LOCAL,
-                                                   ossl_quic_rxfc_get_cwm(&ch->stream0->rxfc)))
+                                                   ch->tx_init_max_stream_data_bidi_local))
         goto err;
 
     if (!ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_INITIAL_MAX_STREAM_DATA_BIDI_REMOTE,
-                                                   ossl_quic_rxfc_get_cwm(&ch->stream0->rxfc)))
+                                                   ch->tx_init_max_stream_data_bidi_remote))
         goto err;
 
     if (!ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_INITIAL_MAX_STREAM_DATA_UNI,
-                                                   ossl_quic_rxfc_get_cwm(&ch->stream0->rxfc)))
+                                                   ch->tx_init_max_stream_data_uni))
         goto err;
 
     if (!ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_INITIAL_MAX_STREAMS_BIDI,
-                                                   ch->is_server ? 1 : 0))
+                                                   ossl_quic_rxfc_get_cwm(&ch->max_streams_bidi_rxfc)))
         goto err;
 
     if (!ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_INITIAL_MAX_STREAMS_UNI,
-                                                   0))
+                                                   ossl_quic_rxfc_get_cwm(&ch->max_streams_uni_rxfc)))
         goto err;
 
     if (!WPACKET_get_total_written(&wpkt, &buf_len))
@@ -1337,6 +1371,9 @@ static void ch_tick(QUIC_TICK_RESULT *res, void *arg, uint32_t flags)
 
     /* Write any data to the network due to be sent. */
     ch_tx(ch);
+
+    /* Do stream GC. */
+    ossl_quic_stream_map_gc(&ch->qsm);
 
     /* Determine the time at which we should next be ticked. */
     res->tick_deadline = ch_determine_next_tick_deadline(ch);
@@ -2195,4 +2232,163 @@ static int ch_server_on_new_conn(QUIC_CHANNEL *ch, const BIO_ADDR *peer,
 SSL *ossl_quic_channel_get0_ssl(QUIC_CHANNEL *ch)
 {
     return ch->tls;
+}
+
+static int ch_init_new_stream(QUIC_CHANNEL *ch, QUIC_STREAM *qs,
+                              int can_send, int can_recv)
+{
+    uint64_t rxfc_wnd;
+    int server_init = ossl_quic_stream_is_server_init(qs);
+    int local_init = (ch->is_server == server_init);
+    int is_uni = !ossl_quic_stream_is_bidi(qs);
+
+    if (can_send && (qs->sstream = ossl_quic_sstream_new(INIT_APP_BUF_LEN)) == NULL)
+        goto err;
+
+    if (can_recv && (qs->rstream = ossl_quic_rstream_new(NULL, NULL, 0)) == NULL)
+        goto err;
+
+    /* TXFC */
+    if (!ossl_quic_txfc_init(&qs->txfc, &ch->conn_txfc))
+        goto err;
+
+    if (ch->got_remote_transport_params) {
+        /*
+         * If we already got peer TPs we need to apply the initial CWM credit
+         * now. If we didn't already get peer TPs this will be done
+         * automatically for all extant streams when we do.
+         */
+        if (can_send) {
+            uint64_t cwm;
+
+            if (is_uni)
+                cwm = ch->rx_init_max_stream_data_uni;
+            else if (local_init)
+                cwm = ch->rx_init_max_stream_data_bidi_local;
+            else
+                cwm = ch->rx_init_max_stream_data_bidi_remote;
+
+            ossl_quic_txfc_bump_cwm(&qs->txfc, cwm);
+        }
+    }
+
+    /* RXFC */
+    if (!can_recv)
+        rxfc_wnd = 0;
+    else if (is_uni)
+        rxfc_wnd = ch->tx_init_max_stream_data_uni;
+    else if (local_init)
+        rxfc_wnd = ch->tx_init_max_stream_data_bidi_local;
+    else
+        rxfc_wnd = ch->tx_init_max_stream_data_bidi_remote;
+
+    if (!ossl_quic_rxfc_init(&qs->rxfc, &ch->conn_rxfc,
+                             rxfc_wnd,
+                             DEFAULT_STREAM_RXFC_MAX_WND_MUL * rxfc_wnd,
+                             get_time, ch))
+        goto err;
+
+    return 1;
+
+err:
+    ossl_quic_sstream_free(qs->sstream);
+    qs->sstream = NULL;
+    ossl_quic_rstream_free(qs->rstream);
+    qs->rstream = NULL;
+    return 0;
+}
+
+QUIC_STREAM *ossl_quic_channel_new_stream_local(QUIC_CHANNEL *ch, int is_uni)
+{
+    QUIC_STREAM *qs;
+    int type;
+    uint64_t stream_id, *p_next_ordinal;
+
+    type = ch->is_server ? QUIC_STREAM_INITIATOR_SERVER
+                         : QUIC_STREAM_INITIATOR_CLIENT;
+
+    if (is_uni) {
+        p_next_ordinal = &ch->next_local_stream_ordinal_uni;
+        type |= QUIC_STREAM_DIR_UNI;
+    } else {
+        p_next_ordinal = &ch->next_local_stream_ordinal_bidi;
+        type |= QUIC_STREAM_DIR_BIDI;
+    }
+
+    if (*p_next_ordinal >= ((uint64_t)1) << 62)
+        return NULL;
+
+    stream_id = ((*p_next_ordinal) << 2) | type;
+
+    if ((qs = ossl_quic_stream_map_alloc(&ch->qsm, stream_id, type)) == NULL)
+        return NULL;
+
+    /* Locally-initiated stream, so we always want a send buffer. */
+    if (!ch_init_new_stream(ch, qs, /*can_send=*/1, /*can_recv=*/!is_uni))
+        goto err;
+
+
+    ++*p_next_ordinal;
+    return qs;
+
+err:
+    ossl_quic_stream_map_release(&ch->qsm, qs);
+    return NULL;
+}
+
+QUIC_STREAM *ossl_quic_channel_new_stream_remote(QUIC_CHANNEL *ch,
+                                                 uint64_t stream_id)
+{
+    uint64_t peer_role;
+    int is_uni;
+    QUIC_STREAM *qs;
+
+    peer_role = ch->is_server
+        ? QUIC_STREAM_INITIATOR_CLIENT
+        : QUIC_STREAM_INITIATOR_SERVER;
+
+    if ((stream_id & QUIC_STREAM_INITIATOR_MASK) != peer_role)
+        return NULL;
+
+    is_uni = ((stream_id & QUIC_STREAM_DIR_MASK) == QUIC_STREAM_DIR_UNI);
+
+    qs = ossl_quic_stream_map_alloc(&ch->qsm, stream_id,
+                                    stream_id & (QUIC_STREAM_INITIATOR_MASK
+                                                 | QUIC_STREAM_DIR_MASK));
+    if (qs == NULL)
+        return NULL;
+
+    if (!ch_init_new_stream(ch, qs, /*can_send=*/!is_uni, /*can_recv=*/1))
+        goto err;
+
+    if (ch->incoming_stream_auto_reject)
+        ossl_quic_channel_reject_stream(ch, qs);
+    else
+        ossl_quic_stream_map_push_accept_queue(&ch->qsm, qs);
+
+    return qs;
+
+err:
+    ossl_quic_stream_map_release(&ch->qsm, qs);
+    return NULL;
+}
+
+void ossl_quic_channel_set_incoming_stream_auto_reject(QUIC_CHANNEL *ch,
+                                                       int enable,
+                                                       uint64_t aec)
+{
+    ch->incoming_stream_auto_reject     = (enable != 0);
+    ch->incoming_stream_auto_reject_aec = aec;
+}
+
+void ossl_quic_channel_reject_stream(QUIC_CHANNEL *ch, QUIC_STREAM *qs)
+{
+    ossl_quic_stream_map_stop_sending_recv_part(&ch->qsm, qs,
+                                                ch->incoming_stream_auto_reject_aec);
+
+    ossl_quic_stream_map_reset_stream_send_part(&ch->qsm, qs,
+                                                ch->incoming_stream_auto_reject_aec);
+    qs->deleted = 1;
+
+    ossl_quic_stream_map_update_state(&ch->qsm, qs);
 }

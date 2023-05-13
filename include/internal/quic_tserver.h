@@ -71,7 +71,8 @@ int ossl_quic_tserver_is_handshake_confirmed(const QUIC_TSERVER *srv);
 /* Returns 1 if the server is in any terminating or terminated state */
 int ossl_quic_tserver_is_term_any(const QUIC_TSERVER *srv);
 
-QUIC_TERMINATE_CAUSE ossl_quic_tserver_get_terminate_cause(const QUIC_TSERVER *srv);
+const QUIC_TERMINATE_CAUSE *
+ossl_quic_tserver_get_terminate_cause(const QUIC_TSERVER *srv);
 
 /* Returns 1 if the server is in a terminated state */
 int ossl_quic_tserver_is_terminated(const QUIC_TSERVER *srv);
@@ -86,6 +87,7 @@ int ossl_quic_tserver_is_terminated(const QUIC_TSERVER *srv);
  * ossl_quic_tserver_has_read_ended() to identify this condition.
  */
 int ossl_quic_tserver_read(QUIC_TSERVER *srv,
+                           uint64_t stream_id,
                            unsigned char *buf,
                            size_t buf_len,
                            size_t *bytes_read);
@@ -93,10 +95,10 @@ int ossl_quic_tserver_read(QUIC_TSERVER *srv,
 /*
  * Returns 1 if the read part of the stream has ended normally.
  */
-int ossl_quic_tserver_has_read_ended(QUIC_TSERVER *srv);
+int ossl_quic_tserver_has_read_ended(QUIC_TSERVER *srv, uint64_t stream_id);
 
 /*
- * Attempts to write to stream 0. Writes the number of bytes consumed to
+ * Attempts to write to the given stream. Writes the number of bytes consumed to
  * *bytes_written and returns 1 on success. If there is no space currently
  * available to write any bytes, 0 is written to *consumed and 1 is returned
  * (this is considered a success case).
@@ -107,6 +109,7 @@ int ossl_quic_tserver_has_read_ended(QUIC_TSERVER *srv);
  * Returns 0 if connection is not currently active.
  */
 int ossl_quic_tserver_write(QUIC_TSERVER *srv,
+                            uint64_t stream_id,
                             const unsigned char *buf,
                             size_t buf_len,
                             size_t *bytes_written);
@@ -114,9 +117,33 @@ int ossl_quic_tserver_write(QUIC_TSERVER *srv,
 /*
  * Signals normal end of the stream.
  */
-int ossl_quic_tserver_conclude(QUIC_TSERVER *srv);
+int ossl_quic_tserver_conclude(QUIC_TSERVER *srv, uint64_t stream_id);
+
+/*
+ * Create a server-initiated stream. The stream ID of the newly
+ * created stream is written to *stream_id.
+ */
+int ossl_quic_tserver_stream_new(QUIC_TSERVER *srv,
+                                 int is_uni,
+                                 uint64_t *stream_id);
 
 BIO *ossl_quic_tserver_get0_rbio(QUIC_TSERVER *srv);
+
+/*
+ * Returns 1 if the peer has sent a STOP_SENDING frame for a stream.
+ * app_error_code is written if this returns 1.
+ */
+int ossl_quic_tserver_stream_has_peer_stop_sending(QUIC_TSERVER *srv,
+                                                   uint64_t stream_id,
+                                                   uint64_t *app_error_code);
+
+/*
+ * Returns 1 if the peer has sent a RESET_STREAM frame for a stream.
+ * app_error_code is written if this returns 1.
+ */
+int ossl_quic_tserver_stream_has_peer_reset_stream(QUIC_TSERVER *srv,
+                                                   uint64_t stream_id,
+                                                   uint64_t *app_error_code);
 
 # endif
 
