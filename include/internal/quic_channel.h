@@ -220,6 +220,8 @@ void ossl_quic_channel_raise_protocol_error(QUIC_CHANNEL *ch,
 /* For RXDP use. */
 void ossl_quic_channel_on_remote_conn_close(QUIC_CHANNEL *ch,
                                             OSSL_QUIC_FRAME_CONN_CLOSE *f);
+void ossl_quic_channel_on_new_conn_id(QUIC_CHANNEL *ch,
+                                      OSSL_QUIC_FRAME_NEW_CONN_ID *f);
 
 /*
  * Queries and Accessors
@@ -316,6 +318,10 @@ void ossl_quic_channel_set_incoming_stream_auto_reject(QUIC_CHANNEL *ch,
  * accepted.
  */
 void ossl_quic_channel_reject_stream(QUIC_CHANNEL *ch, QUIC_STREAM *qs);
+
+/* Replace local connection ID in TXP and DEMUX for testing purposes. */
+int ossl_quic_channel_replace_local_cid(QUIC_CHANNEL *ch,
+                                        const QUIC_CONN_ID *conn_id);
 
 # endif
 

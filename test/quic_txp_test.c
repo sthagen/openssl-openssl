@@ -391,12 +391,11 @@ static int schedule_cfq_new_conn_id(struct helper *h)
     QUIC_CFQ_ITEM *cfq_item;
     WPACKET wpkt;
     BUF_MEM *buf_mem = NULL;
-    char have_wpkt = 0;
     size_t l = 0;
     OSSL_QUIC_FRAME_NEW_CONN_ID ncid = {0};
 
-    ncid.seq_num         = 1234;
-    ncid.retire_prior_to = 2345;
+    ncid.seq_num         = 2345;
+    ncid.retire_prior_to = 1234;
     ncid.conn_id         = cid_1;
     memcpy(ncid.stateless_reset_token, reset_token_1, sizeof(reset_token_1));
 
@@ -406,9 +405,12 @@ static int schedule_cfq_new_conn_id(struct helper *h)
     if (!TEST_true(WPACKET_init(&wpkt, buf_mem)))
         goto err;
 
-    have_wpkt = 1;
-    if (!TEST_true(ossl_quic_wire_encode_frame_new_conn_id(&wpkt, &ncid)))
+    if (!TEST_true(ossl_quic_wire_encode_frame_new_conn_id(&wpkt, &ncid))) {
+        WPACKET_cleanup(&wpkt);
         goto err;
+    }
+
+    WPACKET_finish(&wpkt);
 
     if (!TEST_true(WPACKET_get_total_written(&wpkt, &l)))
         goto err;
@@ -423,15 +425,15 @@ static int schedule_cfq_new_conn_id(struct helper *h)
 
     rc = 1;
 err:
-    if (have_wpkt)
-        WPACKET_cleanup(&wpkt);
+    if (!rc)
+        BUF_MEM_free(buf_mem);
     return rc;
 }
 
 static int check_cfq_new_conn_id(struct helper *h)
 {
-    if (!TEST_uint64_t_eq(h->frame.new_conn_id.seq_num, 1234)
-        || !TEST_uint64_t_eq(h->frame.new_conn_id.retire_prior_to, 2345)
+    if (!TEST_uint64_t_eq(h->frame.new_conn_id.seq_num, 2345)
+        || !TEST_uint64_t_eq(h->frame.new_conn_id.retire_prior_to, 1234)
         || !TEST_mem_eq(&h->frame.new_conn_id.conn_id, sizeof(cid_1),
                         &cid_1, sizeof(cid_1))
         || !TEST_mem_eq(&h->frame.new_conn_id.stateless_reset_token,
@@ -470,7 +472,6 @@ static int schedule_cfq_new_token(struct helper *h)
     QUIC_CFQ_ITEM *cfq_item;
     WPACKET wpkt;
     BUF_MEM *buf_mem = NULL;
-    char have_wpkt = 0;
     size_t l = 0;
 
     if (!TEST_ptr(buf_mem = BUF_MEM_new()))
@@ -479,10 +480,13 @@ static int schedule_cfq_new_token(struct helper *h)
     if (!TEST_true(WPACKET_init(&wpkt, buf_mem)))
         goto err;
 
-    have_wpkt = 1;
     if (!TEST_true(ossl_quic_wire_encode_frame_new_token(&wpkt, token_1,
-                                                         sizeof(token_1))))
+                                                         sizeof(token_1)))) {
+        WPACKET_cleanup(&wpkt);
         goto err;
+    }
+
+    WPACKET_finish(&wpkt);
 
     if (!TEST_true(WPACKET_get_total_written(&wpkt, &l)))
         goto err;
@@ -497,8 +501,8 @@ static int schedule_cfq_new_token(struct helper *h)
 
     rc = 1;
 err:
-    if (have_wpkt)
-        WPACKET_cleanup(&wpkt);
+    if (!rc)
+        BUF_MEM_free(buf_mem);
     return rc;
 }
 
