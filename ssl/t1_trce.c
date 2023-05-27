@@ -1268,13 +1268,14 @@ static int ssl_print_server_keyex(BIO *bio, int indent, const SSL_CONNECTION *sc
     return !msglen;
 }
 
-static int ssl_print_certificate(BIO *bio, int indent,
+static int ssl_print_certificate(BIO *bio, const SSL_CONNECTION *sc, int indent,
                                  const unsigned char **pmsg, size_t *pmsglen)
 {
     size_t msglen = *pmsglen;
     size_t clen;
     X509 *x;
     const unsigned char *p = *pmsg, *q;
+    SSL_CTX *ctx = SSL_CONNECTION_GET_CTX(sc);
 
     if (msglen < 3)
         return 0;
@@ -1284,8 +1285,12 @@ static int ssl_print_certificate(BIO *bio, int indent,
     q = p + 3;
     BIO_indent(bio, indent, 80);
     BIO_printf(bio, "ASN.1Cert, length=%d", (int)clen);
-    x = d2i_X509(NULL, &q, clen);
-    if (!x)
+    x = X509_new_ex(ctx->libctx, ctx->propq);
+    if (x != NULL && d2i_X509(&x, &q, clen) == NULL) {
+        X509_free(x);
+        x = NULL;
+    }
+    if (x ==  NULL)
         BIO_puts(bio, "<UNPARSEABLE CERTIFICATE>\n");
     else {
         BIO_puts(bio, "\n------details-----\n");
@@ -1362,7 +1367,7 @@ static int ssl_print_certificates(BIO *bio, const SSL_CONNECTION *sc, int server
     BIO_indent(bio, indent, 80);
     BIO_printf(bio, "certificate_list, length=%d\n", (int)clen);
     while (clen > 0) {
-        if (!ssl_print_certificate(bio, indent + 2, &msg, &clen))
+        if (!ssl_print_certificate(bio, sc, indent + 2, &msg, &clen))
             return 0;
         if (SSL_CONNECTION_IS_TLS13(sc)
             && !ssl_print_extensions(bio, indent + 2, server,
@@ -1702,6 +1707,19 @@ void SSL_trace(int write_p, int version, int content_type,
     const unsigned char *msg = buf;
     BIO *bio = arg;
     SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(ssl);
+#ifndef OPENSSL_NO_QUIC
+    QUIC_CONNECTION *qc = QUIC_CONNECTION_FROM_SSL(ssl);
+
+    if (qc != NULL) {
+        if (ossl_quic_trace(write_p, version, content_type, buf, msglen, ssl,
+                            arg))
+            return;
+        /*
+         * Otherwise ossl_quic_trace didn't handle this content_type so we
+         * fallback to standard TLS handling
+         */
+    }
+#endif
 
     if (sc == NULL)
         return;
@@ -1720,7 +1738,7 @@ void SSL_trace(int write_p, int version, int content_type,
             }
             hvers = msg[1] << 8 | msg[2];
             BIO_puts(bio, write_p ? "Sent" : "Received");
-            BIO_printf(bio, " Record\nHeader:\n  Version = %s (0x%x)\n",
+            BIO_printf(bio, " TLS Record\nHeader:\n  Version = %s (0x%x)\n",
                        ssl_trace_str(hvers, ssl_version_tbl), hvers);
             if (SSL_CONNECTION_IS_DTLS(sc)) {
                 BIO_printf(bio,

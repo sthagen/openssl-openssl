@@ -176,7 +176,8 @@ static int helper_init(struct helper *h)
 
     if (!TEST_true(ossl_quic_stream_map_init(&h->qsm, NULL, NULL,
                                              &h->max_streams_bidi_rxfc,
-                                             &h->max_streams_uni_rxfc)))
+                                             &h->max_streams_uni_rxfc,
+                                             /*is_server=*/0)))
         goto err;
 
     h->have_qsm = 1;
@@ -1336,7 +1337,7 @@ static int run_script(const struct script_op *script)
                     goto err;
                 break;
             case OSSL_QUIC_FRAME_TYPE_CRYPTO:
-                if (!TEST_true(ossl_quic_wire_decode_frame_crypto(&h.pkt, &h.frame.crypto)))
+                if (!TEST_true(ossl_quic_wire_decode_frame_crypto(&h.pkt, 0, &h.frame.crypto)))
                     goto err;
                 break;
 
@@ -1348,7 +1349,7 @@ static int run_script(const struct script_op *script)
             case OSSL_QUIC_FRAME_TYPE_STREAM_OFF_FIN:
             case OSSL_QUIC_FRAME_TYPE_STREAM_OFF_LEN:
             case OSSL_QUIC_FRAME_TYPE_STREAM_OFF_LEN_FIN:
-                if (!TEST_true(ossl_quic_wire_decode_frame_stream(&h.pkt, &h.frame.stream)))
+                if (!TEST_true(ossl_quic_wire_decode_frame_stream(&h.pkt, 0, &h.frame.stream)))
                     goto err;
                 break;
 

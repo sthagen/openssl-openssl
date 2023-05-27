@@ -67,8 +67,10 @@ QUIC_TSERVER *ossl_quic_tserver_new(const QUIC_TSERVER_ARGS *args,
 
     srv->args = *args;
 
+#if defined(OPENSSL_THREADS)
     if ((srv->mutex = ossl_crypto_mutex_new()) == NULL)
         goto err;
+#endif
 
     srv->ctx = SSL_CTX_new_ex(srv->args.libctx, srv->args.propq, TLS_method());
     if (srv->ctx == NULL)
@@ -106,7 +108,9 @@ QUIC_TSERVER *ossl_quic_tserver_new(const QUIC_TSERVER_ARGS *args,
 err:
     if (srv != NULL) {
         ossl_quic_channel_free(srv->ch);
+#if defined(OPENSSL_THREADS)
         ossl_crypto_mutex_free(&srv->mutex);
+#endif
     }
 
     OPENSSL_free(srv);
@@ -123,7 +127,9 @@ void ossl_quic_tserver_free(QUIC_TSERVER *srv)
     BIO_free(srv->args.net_wbio);
     SSL_free(srv->tls);
     SSL_CTX_free(srv->ctx);
+#if defined(OPENSSL_THREADS)
     ossl_crypto_mutex_free(&srv->mutex);
+#endif
     OPENSSL_free(srv);
 }
 
@@ -403,4 +409,17 @@ int ossl_quic_tserver_set_new_local_cid(QUIC_TSERVER *srv,
 {
     /* Replace existing local connection ID in the QUIC_CHANNEL */
     return ossl_quic_channel_replace_local_cid(srv->ch, conn_id);
+}
+
+uint64_t ossl_quic_tserver_pop_incoming_stream(QUIC_TSERVER *srv)
+{
+    QUIC_STREAM_MAP *qsm = ossl_quic_channel_get_qsm(srv->ch);
+    QUIC_STREAM *qs = ossl_quic_stream_map_peek_accept_queue(qsm);
+
+    if (qs == NULL)
+        return UINT64_MAX;
+
+    ossl_quic_stream_map_remove_from_accept_queue(qsm, qs, ossl_time_zero());
+
+    return qs->id;
 }

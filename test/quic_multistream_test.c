@@ -13,8 +13,24 @@
 #include "internal/quic_tserver.h"
 #include "internal/quic_ssl.h"
 #include "testutil.h"
+#if defined(OPENSSL_THREADS)
+# include "internal/thread_arch.h"
+#endif
 
 static const char *certfile, *keyfile;
+
+#if defined(OPENSSL_THREADS)
+struct child_thread_args {
+    struct helper *h;
+    const struct script_op *script;
+    int thread_idx;
+
+    CRYPTO_THREAD *t;
+    CRYPTO_MUTEX *m;
+    int testresult;
+    int done;
+};
+#endif
 
 typedef struct stream_info {
     const char      *name;
@@ -37,9 +53,20 @@ struct helper {
     SSL                     *c_conn;
     LHASH_OF(STREAM_INFO)   *c_streams;
 
+#if defined(OPENSSL_THREADS)
+    struct child_thread_args    *threads;
+    size_t                      num_threads;
+#endif
+
     OSSL_TIME       start_time;
     int             init, blocking, check_spin_again;
     int             free_order;
+};
+
+struct helper_local {
+    struct helper           *h;
+    LHASH_OF(STREAM_INFO)   *c_streams;
+    int                     thread_idx;
 };
 
 struct script_op {
@@ -67,7 +94,7 @@ struct script_op {
 #define OPK_C_ATTACH                                13
 #define OPK_C_NEW_STREAM                            14
 #define OPK_S_NEW_STREAM                            15
-#define OPK_C_ACCEPT_STREAM                         16
+#define OPK_C_ACCEPT_STREAM_WAIT                    16
 #define OPK_C_ACCEPT_STREAM_NONE                    17
 #define OPK_C_FREE_STREAM                           18
 #define OPK_C_SET_DEFAULT_STREAM_MODE               19
@@ -81,6 +108,11 @@ struct script_op {
 #define OPK_S_WRITE_FAIL                            27
 #define OPK_C_READ_FAIL                             28
 #define OPK_C_STREAM_RESET                          29
+#define OPK_S_ACCEPT_STREAM_WAIT                    30
+#define OPK_NEW_THREAD                              31
+#define OPK_BEGIN_REPEAT                            32
+#define OPK_END_REPEAT                              33
+#define OPK_S_UNBIND_STREAM_ID                      34
 
 #define EXPECT_CONN_CLOSE_APP       (1U << 0)
 #define EXPECT_CONN_CLOSE_REMOTE    (1U << 1)
@@ -93,6 +125,8 @@ struct script_op {
     (((ordinal) << 2) | QUIC_STREAM_INITIATOR_CLIENT | QUIC_STREAM_DIR_UNI)
 #define S_UNI_ID(ordinal) \
     (((ordinal) << 2) | QUIC_STREAM_INITIATOR_SERVER | QUIC_STREAM_DIR_UNI)
+
+#define ANY_ID UINT64_MAX
 
 #define OP_END  \
     {OPK_END}
@@ -130,8 +164,8 @@ struct script_op {
     {OPK_S_NEW_STREAM, NULL, 0, NULL, #stream_name, (expect_id)},
 #define OP_S_NEW_STREAM_UNI(stream_name, expect_id) \
     {OPK_S_NEW_STREAM, NULL, 1, NULL, #stream_name, (expect_id)},
-#define OP_C_ACCEPT_STREAM(stream_name) \
-    {OPK_C_ACCEPT_STREAM, NULL, 0, NULL, #stream_name},
+#define OP_C_ACCEPT_STREAM_WAIT(stream_name) \
+    {OPK_C_ACCEPT_STREAM_WAIT, NULL, 0, NULL, #stream_name},
 #define OP_C_ACCEPT_STREAM_NONE() \
     {OPK_C_ACCEPT_STREAM_NONE, NULL, 0, NULL, NULL},
 #define OP_C_FREE_STREAM(stream_name) \
@@ -164,6 +198,16 @@ struct script_op {
     {OPK_C_READ_FAIL, NULL, 0, NULL, #stream_name},
 #define OP_C_STREAM_RESET(stream_name, aec)  \
     {OPK_C_STREAM_RESET, NULL, 0, NULL, #stream_name, (aec)},
+#define OP_S_ACCEPT_STREAM_WAIT(stream_name)  \
+    {OPK_S_ACCEPT_STREAM_WAIT, NULL, 0, NULL, #stream_name},
+#define OP_NEW_THREAD(num_threads, script) \
+    {OPK_NEW_THREAD, (script), (num_threads), NULL, NULL, 0 },
+#define OP_BEGIN_REPEAT(n)  \
+    {OPK_BEGIN_REPEAT, NULL, (n)},
+#define OP_END_REPEAT() \
+    {OPK_END_REPEAT},
+#define OP_S_UNBIND_STREAM_ID(stream_name) \
+    {OPK_S_UNBIND_STREAM_ID, NULL, 0, NULL, #stream_name},
 
 static int check_rejected(struct helper *h, const struct script_op *op)
 {
@@ -228,8 +272,43 @@ static void helper_cleanup_streams(LHASH_OF(STREAM_INFO) **lh)
     *lh = NULL;
 }
 
+#if defined(OPENSSL_THREADS)
+static CRYPTO_THREAD_RETVAL run_script_child_thread(void *arg);
+
+static int join_threads(struct child_thread_args *threads, size_t num_threads)
+{
+    int ok = 1;
+    size_t i;
+    CRYPTO_THREAD_RETVAL rv;
+
+    for (i = 0; i < num_threads; ++i) {
+        if (threads[i].t != NULL) {
+            ossl_crypto_thread_native_join(threads[i].t, &rv);
+
+            if (!threads[i].testresult)
+                /* Do not log failure here, worker will do it. */
+                ok = 0;
+
+            ossl_crypto_thread_native_clean(threads[i].t);
+            threads[i].t = NULL;
+        }
+
+        ossl_crypto_mutex_free(&threads[i].m);
+    }
+
+    return ok;
+}
+#endif
+
 static void helper_cleanup(struct helper *h)
 {
+#if defined(OPENSSL_THREADS)
+    join_threads(h->threads, h->num_threads);
+    OPENSSL_free(h->threads);
+    h->threads = NULL;
+    h->num_threads = 0;
+#endif
+
     if (h->free_order == 0) {
         /* order 0: streams, then conn */
         helper_cleanup_streams(&h->c_streams);
@@ -367,6 +446,38 @@ err:
     return 0;
 }
 
+static int helper_local_init(struct helper_local *hl, struct helper *h,
+                             int thread_idx)
+{
+    hl->h           = h;
+    hl->c_streams   = NULL;
+    hl->thread_idx  = thread_idx;
+
+    if (!TEST_ptr(h))
+        return 0;
+
+    if (thread_idx < 0) {
+        hl->c_streams = h->c_streams;
+    } else {
+        if (!TEST_ptr(hl->c_streams = lh_STREAM_INFO_new(stream_info_hash,
+                                                         stream_info_cmp)))
+            return 0;
+    }
+
+    return 1;
+}
+
+static void helper_local_cleanup(struct helper_local *hl)
+{
+    if (hl->h == NULL)
+        return;
+
+    if (hl->thread_idx >= 0)
+        helper_cleanup_streams(&hl->c_streams);
+
+    hl->h = NULL;
+}
+
 static STREAM_INFO *get_stream_info(LHASH_OF(STREAM_INFO) *lh,
                                     const char *stream_name)
 {
@@ -393,10 +504,11 @@ static STREAM_INFO *get_stream_info(LHASH_OF(STREAM_INFO) *lh,
     return info;
 }
 
-static int helper_set_c_stream(struct helper *h, const char *stream_name,
-                               SSL *c_stream)
+static int helper_local_set_c_stream(struct helper_local *hl,
+                                     const char *stream_name,
+                                     SSL *c_stream)
 {
-    STREAM_INFO *info = get_stream_info(h->c_streams, stream_name);
+    STREAM_INFO *info = get_stream_info(hl->c_streams, stream_name);
 
     if (info == NULL)
         return 0;
@@ -406,14 +518,15 @@ static int helper_set_c_stream(struct helper *h, const char *stream_name,
     return 1;
 }
 
-static SSL *helper_get_c_stream(struct helper *h, const char *stream_name)
+static SSL *helper_local_get_c_stream(struct helper_local *hl,
+                                      const char *stream_name)
 {
     STREAM_INFO *info;
 
     if (!strcmp(stream_name, "DEFAULT"))
-        return h->c_conn;
+        return hl->h->c_conn;
 
-    info = get_stream_info(h->c_streams, stream_name);
+    info = get_stream_info(hl->c_streams, stream_name);
     if (info == NULL)
         return NULL;
 
@@ -459,25 +572,33 @@ static int is_want(SSL *s, int ret)
     return ec == SSL_ERROR_WANT_READ || ec == SSL_ERROR_WANT_WRITE;
 }
 
-static int run_script(const struct script_op *script, int free_order)
+static int run_script_worker(struct helper *h, const struct script_op *script,
+                             int thread_idx)
 {
-    size_t op_idx = 0;
     int testresult = 0;
-    int no_advance = 0, first = 1;
-    const struct script_op *op = NULL;
-    struct helper h;
     unsigned char *tmp_buf = NULL;
     int connect_started = 0;
-    OSSL_TIME op_start_time = ossl_time_zero(), op_deadline = ossl_time_zero();
     size_t offset = 0;
+    size_t op_idx = 0;
+    const struct script_op *op = NULL;
+    int no_advance = 0, first = 1;
+#if defined(OPENSSL_THREADS)
+    int end_wait_warning = 0;
+#endif
+    OSSL_TIME op_start_time = ossl_time_zero(), op_deadline = ossl_time_zero();
+    struct helper_local hl;
+#define REPEAT_SLOTS 8
+    size_t repeat_stack_idx[REPEAT_SLOTS], repeat_stack_done[REPEAT_SLOTS];
+    size_t repeat_stack_limit[REPEAT_SLOTS];
+    size_t repeat_stack_len = 0;
 
-    if (!TEST_true(helper_init(&h, free_order)))
+    if (!TEST_true(helper_local_init(&hl, h, thread_idx)))
         goto out;
 
 #define SPIN_AGAIN() { no_advance = 1; continue; }
 
     for (;;) {
-        SSL *c_tgt              = h.c_conn;
+        SSL *c_tgt              = h->c_conn;
         uint64_t s_stream_id    = UINT64_MAX;
 
         if (no_advance) {
@@ -493,31 +614,114 @@ static int run_script(const struct script_op *script, int free_order)
         }
 
         if (!TEST_int_le(ossl_time_compare(ossl_time_now(), op_deadline), 0)) {
-            TEST_error("op %zu timed out", op_idx + 1);
+            TEST_error("op %zu timed out on thread %d", op_idx + 1, thread_idx);
             goto out;
         }
 
         op = &script[op_idx];
 
         if (op->stream_name != NULL) {
-            c_tgt       = helper_get_c_stream(&h, op->stream_name);
-            s_stream_id = helper_get_s_stream(&h, op->stream_name);
+            c_tgt = helper_local_get_c_stream(&hl, op->stream_name);
+            if (thread_idx < 0)
+                s_stream_id = helper_get_s_stream(h, op->stream_name);
+            else
+                s_stream_id = UINT64_MAX;
         }
 
-        ossl_quic_tserver_tick(h.s);
-        if (connect_started)
-            SSL_tick(h.c_conn);
+        if (thread_idx < 0)
+            ossl_quic_tserver_tick(h->s);
+
+        if (thread_idx >= 0 || connect_started)
+            SSL_tick(h->c_conn);
+
+        if (thread_idx >= 0) {
+            /* Only allow certain opcodes on child threads. */
+            switch (op->op) {
+                case OPK_END:
+                case OPK_C_ACCEPT_STREAM_WAIT:
+                case OPK_C_NEW_STREAM:
+                case OPK_C_READ_EXPECT:
+                case OPK_C_EXPECT_FIN:
+                case OPK_C_WRITE:
+                case OPK_C_CONCLUDE:
+                case OPK_C_FREE_STREAM:
+                case OPK_BEGIN_REPEAT:
+                case OPK_END_REPEAT:
+                    break;
+
+                default:
+                    TEST_error("opcode %d not allowed on child thread", op->op);
+                    goto out;
+            }
+        }
 
         switch (op->op) {
         case OPK_END:
+            if (!TEST_size_t_eq(repeat_stack_len, 0))
+                goto out;
+
+#if defined(OPENSSL_THREADS)
+            if (thread_idx < 0) {
+                int done;
+                size_t i;
+
+                for (i = 0; i < h->num_threads; ++i) {
+                    if (h->threads[i].m == NULL)
+                        continue;
+
+                    ossl_crypto_mutex_lock(h->threads[i].m);
+                    done = h->threads[i].done;
+                    ossl_crypto_mutex_unlock(h->threads[i].m);
+
+                    if (!done) {
+                        if (!end_wait_warning) {
+                            TEST_info("still waiting for other threads to finish (%zu)", i);
+                            end_wait_warning = 1;
+                        }
+
+                        SPIN_AGAIN();
+                    }
+                }
+            }
+#endif
+
+            TEST_info("script finished on thread %d", thread_idx);
             testresult = 1;
             goto out;
 
+        case OPK_BEGIN_REPEAT:
+            if (!TEST_size_t_lt(repeat_stack_len, OSSL_NELEM(repeat_stack_idx)))
+                goto out;
+
+            if (!TEST_size_t_gt(op->arg1, 0))
+                goto out;
+
+            repeat_stack_idx[repeat_stack_len] = op_idx + 1;
+            repeat_stack_done[repeat_stack_len] = 0;
+            repeat_stack_limit[repeat_stack_len] = op->arg1;
+            ++repeat_stack_len;
+            break;
+
+        case OPK_END_REPEAT:
+            if (!TEST_size_t_gt(repeat_stack_len, 0))
+                goto out;
+
+            if (++repeat_stack_done[repeat_stack_len - 1]
+                == repeat_stack_limit[repeat_stack_len - 1]) {
+                --repeat_stack_len;
+            } else {
+                op_idx = repeat_stack_idx[repeat_stack_len - 1];
+                no_advance = 1;
+                continue;
+            }
+
+            break;
+
         case OPK_CHECK:
             {
-                int ok = op->check_func(&h, op);
-                if (h.check_spin_again) {
-                    h.check_spin_again = 0;
+                int ok = op->check_func(h, op);
+                if (h->check_spin_again) {
+                    h->check_spin_again = 0;
                     SPIN_AGAIN();
                 }
 
@@ -539,7 +743,7 @@ static int run_script(const struct script_op *script, int free_order)
                 tmp_buf[0] = (unsigned char)alpn_len;
 
                 /* 0 is the success case for SSL_set_alpn_protos(). */
-                if (!TEST_false(SSL_set_alpn_protos(h.c_conn, tmp_buf,
+                if (!TEST_false(SSL_set_alpn_protos(h->c_conn, tmp_buf,
                                                     alpn_len + 1)))
                     goto out;
 
@@ -554,12 +758,12 @@ static int run_script(const struct script_op *script, int free_order)
 
                 connect_started = 1;
 
-                ret = SSL_connect(h.c_conn);
+                ret = SSL_connect(h->c_conn);
                 if (!TEST_true(ret == 1
-                               || (!h.blocking && is_want(h.c_conn, ret))))
+                               || (!h->blocking && is_want(h->c_conn, ret))))
                     goto out;
 
-                if (!h.blocking && ret != 1)
+                if (!h->blocking && ret != 1)
                     SPIN_AGAIN();
             }
             break;
@@ -585,7 +789,7 @@ static int run_script(const struct script_op *script, int free_order)
                 if (!TEST_uint64_t_ne(s_stream_id, UINT64_MAX))
                     goto out;
 
-                if (!TEST_true(ossl_quic_tserver_write(h.s, s_stream_id,
+                if (!TEST_true(ossl_quic_tserver_write(h->s, s_stream_id,
                                                        op->arg0, op->arg1,
                                                        &bytes_written))
                     || !TEST_size_t_eq(bytes_written, op->arg1))
@@ -605,7 +809,7 @@ static int run_script(const struct script_op *script, int free_order)
                 if (!TEST_uint64_t_ne(s_stream_id, UINT64_MAX))
                     goto out;
 
-                ossl_quic_tserver_conclude(h.s, s_stream_id);
+                ossl_quic_tserver_conclude(h->s, s_stream_id);
             }
             break;
 
@@ -660,7 +864,7 @@ static int run_script(const struct script_op *script, int free_order)
                     && !TEST_ptr(tmp_buf = OPENSSL_malloc(op->arg1)))
                     goto out;
 
-                if (!TEST_true(ossl_quic_tserver_read(h.s, s_stream_id,
+                if (!TEST_true(ossl_quic_tserver_read(h->s, s_stream_id,
                                                       tmp_buf + offset,
                                                       op->arg1 - offset,
                                                       &bytes_read)))
@@ -704,7 +908,7 @@ static int run_script(const struct script_op *script, int free_order)
                 if (!TEST_uint64_t_ne(s_stream_id, UINT64_MAX))
                     goto out;
 
-                if (!ossl_quic_tserver_has_read_ended(h.s, s_stream_id))
+                if (!ossl_quic_tserver_has_read_ended(h->s, s_stream_id))
                     SPIN_AGAIN();
             }
             break;
@@ -716,10 +920,10 @@ static int run_script(const struct script_op *script, int free_order)
                 if (!TEST_ptr_null(c_tgt))
                     goto out; /* don't overwrite existing stream with same name */
 
-                if (!TEST_ptr(c_stream = ossl_quic_detach_stream(h.c_conn)))
+                if (!TEST_ptr(c_stream = ossl_quic_detach_stream(h->c_conn)))
                     goto out;
 
-                if (!TEST_true(helper_set_c_stream(&h, op->stream_name, c_stream)))
+                if (!TEST_true(helper_local_set_c_stream(&hl, op->stream_name, c_stream)))
                     goto out;
             }
             break;
@@ -729,10 +933,10 @@ static int run_script(const struct script_op *script, int free_order)
                 if (!TEST_ptr(c_tgt))
                     goto out;
 
-                if (!TEST_true(ossl_quic_attach_stream(h.c_conn, c_tgt)))
+                if (!TEST_true(ossl_quic_attach_stream(h->c_conn, c_tgt)))
                     goto out;
 
-                if (!TEST_true(helper_set_c_stream(&h, op->stream_name, NULL)))
+                if (!TEST_true(helper_local_set_c_stream(&hl, op->stream_name, NULL)))
                     goto out;
             }
             break;
@@ -748,7 +952,7 @@ static int run_script(const struct script_op *script, int free_order)
                 if (op->arg1 != 0)
                     flags |= SSL_STREAM_FLAG_UNI;
 
-                if (!TEST_ptr(c_stream = SSL_new_stream(h.c_conn, flags)))
+                if (!TEST_ptr(c_stream = SSL_new_stream(h->c_conn, flags)))
                     goto out;
 
                 if (op->arg2 != UINT64_MAX
@@ -756,7 +960,7 @@ static int run_script(const struct script_op *script, int free_order)
                                          op->arg2))
                     goto out;
 
-                if (!TEST_true(helper_set_c_stream(&h, op->stream_name, c_stream)))
+                if (!TEST_true(helper_local_set_c_stream(&hl, op->stream_name, c_stream)))
                     goto out;
             }
             break;
@@ -768,7 +972,7 @@ static int run_script(const struct script_op *script, int free_order)
                 if (!TEST_uint64_t_eq(s_stream_id, UINT64_MAX))
                     goto out; /* don't overwrite existing stream with same name */
 
-                if (!TEST_true(ossl_quic_tserver_stream_new(h.s,
+                if (!TEST_true(ossl_quic_tserver_stream_new(h->s,
                                                             op->arg1 > 0,
                                                             &stream_id)))
                     goto out;
@@ -777,24 +981,40 @@ static int run_script(const struct script_op *script, int free_order)
                     && !TEST_uint64_t_eq(stream_id, op->arg2))
                     goto out;
 
-                if (!TEST_true(helper_set_s_stream(&h, op->stream_name,
+                if (!TEST_true(helper_set_s_stream(h, op->stream_name,
                                                    stream_id)))
                     goto out;
             }
             break;
 
-        case OPK_C_ACCEPT_STREAM:
+        case OPK_C_ACCEPT_STREAM_WAIT:
             {
                 SSL *c_stream;
 
                 if (!TEST_ptr_null(c_tgt))
                     goto out; /* don't overwrite existing stream with same name */
 
-                if ((c_stream = SSL_accept_stream(h.c_conn, 0)) == NULL)
+                if ((c_stream = SSL_accept_stream(h->c_conn, 0)) == NULL)
                     SPIN_AGAIN();
 
-                if (!TEST_true(helper_set_c_stream(&h, op->stream_name,
-                                                   c_stream)))
+                if (!TEST_true(helper_local_set_c_stream(&hl, op->stream_name,
+                                                          c_stream)))
+                    goto out;
+            }
+            break;
+
+        case OPK_S_ACCEPT_STREAM_WAIT:
+            {
+                uint64_t new_stream_id;
+
+                if (!TEST_uint64_t_eq(s_stream_id, UINT64_MAX))
+                    goto out;
+
+                new_stream_id = ossl_quic_tserver_pop_incoming_stream(h->s);
+                if (new_stream_id == UINT64_MAX)
+                    SPIN_AGAIN();
+
+                if (!TEST_true(helper_set_s_stream(h, op->stream_name, new_stream_id)))
                     goto out;
             }
             break;
@@ -803,7 +1023,7 @@ static int run_script(const struct script_op *script, int free_order)
             {
                 SSL *c_stream;
 
-                if (!TEST_ptr_null(c_stream = SSL_accept_stream(h.c_conn, 0))) {
+                if (!TEST_ptr_null(c_stream = SSL_accept_stream(h->c_conn, 0))) {
                     SSL_free(c_stream);
                     goto out;
                 }
@@ -816,7 +1036,7 @@ static int run_script(const struct script_op *script, int free_order)
                     || !TEST_true(!SSL_is_connection(c_tgt)))
                     goto out;
 
-                if (!TEST_true(helper_set_c_stream(&h, op->stream_name, NULL)))
+                if (!TEST_true(helper_local_set_c_stream(&hl, op->stream_name, NULL)))
                     goto out;
 
                 SSL_free(c_tgt);
@@ -886,10 +1106,10 @@ static int run_script(const struct script_op *script, int free_order)
                 int expect_remote = (op->arg1 & EXPECT_CONN_CLOSE_REMOTE) != 0;
                 uint64_t error_code = op->arg2;
 
-                if (!ossl_quic_tserver_is_term_any(h.s))
+                if (!ossl_quic_tserver_is_term_any(h->s))
                     SPIN_AGAIN();
 
-                if (!TEST_ptr(tc = ossl_quic_tserver_get_terminate_cause(h.s)))
+                if (!TEST_ptr(tc = ossl_quic_tserver_get_terminate_cause(h->s)))
                     goto out;
 
                 if (!TEST_uint64_t_eq(error_code, tc->error_code)
@@ -904,7 +1124,17 @@ static int run_script(const struct script_op *script, int free_order)
                 if (!TEST_uint64_t_eq(s_stream_id, UINT64_MAX))
                     goto out;
 
-                if (!TEST_true(helper_set_s_stream(&h, op->stream_name, op->arg2)))
+                if (!TEST_true(helper_set_s_stream(h, op->stream_name, op->arg2)))
+                    goto out;
+            }
+            break;
+
+        case OPK_S_UNBIND_STREAM_ID:
+            {
+                if (!TEST_uint64_t_ne(s_stream_id, UINT64_MAX))
+                    goto out;
+
+                if (!TEST_true(helper_set_s_stream(h, op->stream_name, UINT64_MAX)))
                     goto out;
             }
             break;
@@ -928,7 +1158,7 @@ static int run_script(const struct script_op *script, int free_order)
                 if (!TEST_uint64_t_ne(s_stream_id, UINT64_MAX))
                     goto out;
 
-                if (!TEST_false(ossl_quic_tserver_write(h.s, s_stream_id,
+                if (!TEST_false(ossl_quic_tserver_write(h->s, s_stream_id,
                                                        (const unsigned char *)"apple", 5,
                                                        &bytes_written)))
                     goto out;
@@ -962,6 +1192,49 @@ static int run_script(const struct script_op *script, int free_order)
             }
             break;
 
+        case OPK_NEW_THREAD:
+            {
+#if !defined(OPENSSL_THREADS)
+                /*
+                 * If this test script requires threading and we do not have
+                 * support for it, skip the rest of it.
+                 */
+                TEST_skip("threading not supported, skipping");
+                testresult = 1;
+                goto out;
+#else
+                size_t i;
+
+                if (!TEST_ptr_null(h->threads)) {
+                    TEST_error("max one NEW_THREAD operation per script");
+                    goto out;
+                }
+
+                h->threads = OPENSSL_zalloc(op->arg1 * sizeof(struct child_thread_args));
+                if (!TEST_ptr(h->threads))
+                    goto out;
+
+                h->num_threads = op->arg1;
+
+                for (i = 0; i < op->arg1; ++i) {
+                    h->threads[i].h            = h;
+                    h->threads[i].script       = op->arg0;
+                    h->threads[i].thread_idx   = i;
+
+                    h->threads[i].m = ossl_crypto_mutex_new();
+                    if (!TEST_ptr(h->threads[i].m))
+                        goto out;
+
+                    h->threads[i].t
+                        = ossl_crypto_thread_native_start(run_script_child_thread,
+                                                          &h->threads[i], 1);
+                    if (!TEST_ptr(h->threads[i].t))
+                        goto out;
+                }
+#endif
+            }
+            break;
+
         default:
             TEST_error("unknown op");
             goto out;
@@ -969,13 +1242,62 @@ static int run_script(const struct script_op *script, int free_order)
     }
 
 out:
-    if (!testresult)
-        TEST_error("failed at script op %zu\n", op_idx + 1);
+    if (!testresult) {
+        size_t i;
+
+        TEST_error("failed at script op %zu, thread %d\n",
+                   op_idx + 1, thread_idx);
+
+        for (i = 0; i < repeat_stack_len; ++i)
+            TEST_info("while repeating, iteration %zu of %zu, starting at script op %zu",
+                      repeat_stack_done[i],
+                      repeat_stack_limit[i],
+                      repeat_stack_idx[i]);
+    }
 
     OPENSSL_free(tmp_buf);
+    helper_local_cleanup(&hl);
+    return testresult;
+}
+
+static int run_script(const struct script_op *script, int free_order)
+{
+    int testresult = 0;
+    struct helper h;
+
+    if (!TEST_true(helper_init(&h, free_order)))
+        goto out;
+
+    if (!TEST_true(run_script_worker(&h, script, -1)))
+        goto out;
+
+#if defined(OPENSSL_THREADS)
+    if (!TEST_true(join_threads(h.threads, h.num_threads)))
+        goto out;
+#endif
+
+    testresult = 1;
+out:
     helper_cleanup(&h);
     return testresult;
 }
+
+#if defined(OPENSSL_THREADS)
+static CRYPTO_THREAD_RETVAL run_script_child_thread(void *arg)
+{
+    int testresult;
+    struct child_thread_args *args = arg;
+
+    testresult = run_script_worker(args->h, args->script,
+                                   args->thread_idx);
+
+    ossl_crypto_mutex_lock(args->m);
+    args->testresult    = testresult;
+    args->done          = 1;
+    ossl_crypto_mutex_unlock(args->m);
+    return 1;
+}
+#endif
 
 /* 1. Simple single-stream test */
 static const struct script_op script_1[] = {
@@ -1029,7 +1351,7 @@ static const struct script_op script_2[] = {
     OP_S_WRITE              (d, "frog", 4)
     OP_S_CONCLUDE           (d)
 
-    OP_C_ACCEPT_STREAM      (d)
+    OP_C_ACCEPT_STREAM_WAIT (d)
     OP_C_ACCEPT_STREAM_NONE ()
     OP_C_READ_EXPECT        (d, "frog", 4)
     OP_C_EXPECT_FIN         (d)
@@ -1038,7 +1360,7 @@ static const struct script_op script_2[] = {
     OP_S_WRITE              (e, "mixture", 7)
     OP_S_CONCLUDE           (e)
 
-    OP_C_ACCEPT_STREAM      (e)
+    OP_C_ACCEPT_STREAM_WAIT (e)
     OP_C_READ_EXPECT        (e, "mixture", 7)
     OP_C_EXPECT_FIN         (e)
     OP_C_WRITE              (e, "ramble", 6)
@@ -1050,7 +1372,7 @@ static const struct script_op script_2[] = {
     OP_S_WRITE              (f, "yonder", 6)
     OP_S_CONCLUDE           (f)
 
-    OP_C_ACCEPT_STREAM      (f)
+    OP_C_ACCEPT_STREAM_WAIT (f)
     OP_C_ACCEPT_STREAM_NONE ()
     OP_C_READ_EXPECT        (f, "yonder", 6)
     OP_C_EXPECT_FIN         (f)
@@ -1122,7 +1444,7 @@ static const struct script_op script_4[] = {
 
     OP_C_READ_FAIL          (DEFAULT)
 
-    OP_C_ACCEPT_STREAM      (a)
+    OP_C_ACCEPT_STREAM_WAIT (a)
     OP_C_READ_EXPECT        (a, "apple", 5)
 
     OP_C_ATTACH             (a)
@@ -1159,7 +1481,7 @@ static const struct script_op script_6[] = {
     OP_S_NEW_STREAM_BIDI    (a, S_BIDI_ID(0))
     OP_S_WRITE              (a, "apple", 5)
 
-    OP_C_ACCEPT_STREAM      (a)
+    OP_C_ACCEPT_STREAM_WAIT (a)
     OP_C_FREE_STREAM        (a)
     OP_C_ACCEPT_STREAM_NONE ()
 
@@ -1228,6 +1550,232 @@ static const struct script_op script_10[] = {
     OP_END
 };
 
+/* 11. Many threads accepted on the same client connection */
+static const struct script_op script_11_child[] = {
+    OP_C_ACCEPT_STREAM_WAIT (a)
+    OP_C_READ_EXPECT        (a, "foo", 3)
+    OP_C_EXPECT_FIN         (a)
+
+    OP_END
+};
+
+static const struct script_op script_11[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_NEW_THREAD           (5, script_11_child)
+
+    OP_S_NEW_STREAM_BIDI    (a, ANY_ID)
+    OP_S_WRITE              (a, "foo", 3)
+    OP_S_CONCLUDE           (a)
+
+    OP_S_NEW_STREAM_BIDI    (b, ANY_ID)
+    OP_S_WRITE              (b, "foo", 3)
+    OP_S_CONCLUDE           (b)
+
+    OP_S_NEW_STREAM_BIDI    (c, ANY_ID)
+    OP_S_WRITE              (c, "foo", 3)
+    OP_S_CONCLUDE           (c)
+
+    OP_S_NEW_STREAM_BIDI    (d, ANY_ID)
+    OP_S_WRITE              (d, "foo", 3)
+    OP_S_CONCLUDE           (d)
+
+    OP_S_NEW_STREAM_BIDI    (e, ANY_ID)
+    OP_S_WRITE              (e, "foo", 3)
+    OP_S_CONCLUDE           (e)
+
+    OP_END
+};
+
+/* 12. Many threads initiated on the same client connection */
+static const struct script_op script_12_child[] = {
+    OP_C_NEW_STREAM_BIDI    (a, ANY_ID)
+    OP_C_WRITE              (a, "foo", 3)
+    OP_C_CONCLUDE           (a)
+    OP_C_FREE_STREAM        (a)
+
+    OP_END
+};
+
+static const struct script_op script_12[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_NEW_THREAD           (5, script_12_child)
+
+    OP_S_BIND_STREAM_ID     (a, C_BIDI_ID(0))
+    OP_S_READ_EXPECT        (a, "foo", 3)
+    OP_S_EXPECT_FIN         (a)
+    OP_S_BIND_STREAM_ID     (b, C_BIDI_ID(1))
+    OP_S_READ_EXPECT        (b, "foo", 3)
+    OP_S_EXPECT_FIN         (b)
+    OP_S_BIND_STREAM_ID     (c, C_BIDI_ID(2))
+    OP_S_READ_EXPECT        (c, "foo", 3)
+    OP_S_EXPECT_FIN         (c)
+    OP_S_BIND_STREAM_ID     (d, C_BIDI_ID(3))
+    OP_S_READ_EXPECT        (d, "foo", 3)
+    OP_S_EXPECT_FIN         (d)
+    OP_S_BIND_STREAM_ID     (e, C_BIDI_ID(4))
+    OP_S_READ_EXPECT        (e, "foo", 3)
+    OP_S_EXPECT_FIN         (e)
+
+    OP_END
+};
+
+/* 13. Many threads accepted on the same client connection (stress test) */
+static const struct script_op script_13_child[] = {
+    OP_BEGIN_REPEAT         (10)
+
+    OP_C_ACCEPT_STREAM_WAIT (a)
+    OP_C_READ_EXPECT        (a, "foo", 3)
+    OP_C_EXPECT_FIN         (a)
+    OP_C_FREE_STREAM        (a)
+
+    OP_END_REPEAT           ()
+
+    OP_END
+};
+
+static const struct script_op script_13[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_NEW_THREAD           (5, script_13_child)
+
+    OP_BEGIN_REPEAT         (50)
+
+    OP_S_NEW_STREAM_BIDI    (a, ANY_ID)
+    OP_S_WRITE              (a, "foo", 3)
+    OP_S_CONCLUDE           (a)
+    OP_S_UNBIND_STREAM_ID   (a)
+
+    OP_END_REPEAT           ()
+
+    OP_END
+};
+
+/* 14. Many threads initiating on the same client connection (stress test) */
+static const struct script_op script_14_child[] = {
+    OP_BEGIN_REPEAT         (10)
+
+    OP_C_NEW_STREAM_BIDI    (a, ANY_ID)
+    OP_C_WRITE              (a, "foo", 3)
+    OP_C_CONCLUDE           (a)
+    OP_C_FREE_STREAM        (a)
+
+    OP_END_REPEAT           ()
+
+    OP_END
+};
+
+static const struct script_op script_14[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_NEW_THREAD           (5, script_14_child)
+
+    OP_BEGIN_REPEAT         (50)
+
+    OP_S_ACCEPT_STREAM_WAIT (a)
+    OP_S_READ_EXPECT        (a, "foo", 3)
+    OP_S_EXPECT_FIN         (a)
+    OP_S_UNBIND_STREAM_ID   (a)
+
+    OP_END_REPEAT           ()
+
+    OP_END
+};
+
+/* 15. Client sending large number of streams, MAX_STREAMS test */
+static const struct script_op script_15[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    /*
+     * This will cause a protocol violation to be raised by the server if we are
+     * not handling the stream limit correctly on the TX side.
+     */
+    OP_BEGIN_REPEAT         (200)
+
+    OP_C_NEW_STREAM_BIDI    (a, ANY_ID)
+    OP_C_WRITE              (a, "foo", 3)
+    OP_C_CONCLUDE           (a)
+    OP_C_FREE_STREAM        (a)
+
+    OP_END_REPEAT           ()
+
+    /* Prove the connection is still good. */
+    OP_S_NEW_STREAM_BIDI    (a, S_BIDI_ID(0))
+    OP_S_WRITE              (a, "bar", 3)
+    OP_S_CONCLUDE           (a)
+
+    OP_C_ACCEPT_STREAM_WAIT (a)
+    OP_C_READ_EXPECT        (a, "bar", 3)
+    OP_C_EXPECT_FIN         (a)
+
+    /*
+     * Drain the queue of incoming streams. We should be able to get all 200
+     * even though only 100 can be initiated at a time.
+     */
+    OP_BEGIN_REPEAT         (200)
+
+    OP_S_ACCEPT_STREAM_WAIT (b)
+    OP_S_READ_EXPECT        (b, "foo", 3)
+    OP_S_EXPECT_FIN         (b)
+    OP_S_UNBIND_STREAM_ID   (b)
+
+    OP_END_REPEAT           ()
+
+    OP_END
+};
+
+/* 16. Server sending large number of streams, MAX_STREAMS test */
+static const struct script_op script_16[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    /*
+     * This will cause a protocol violation to be raised by the client if we are
+     * not handling the stream limit correctly on the TX side.
+     */
+    OP_BEGIN_REPEAT         (200)
+
+    OP_S_NEW_STREAM_BIDI    (a, ANY_ID)
+    OP_S_WRITE              (a, "foo", 3)
+    OP_S_CONCLUDE           (a)
+    OP_S_UNBIND_STREAM_ID   (a)
+
+    OP_END_REPEAT           ()
+
+    /* Prove that the connection is still good. */
+    OP_C_NEW_STREAM_BIDI    (a, ANY_ID)
+    OP_C_WRITE              (a, "bar", 3)
+    OP_C_CONCLUDE           (a)
+
+    OP_S_ACCEPT_STREAM_WAIT (b)
+    OP_S_READ_EXPECT        (b, "bar", 3)
+    OP_S_EXPECT_FIN         (b)
+
+    /* Drain the queue of incoming streams. */
+    OP_BEGIN_REPEAT         (200)
+
+    OP_C_ACCEPT_STREAM_WAIT (b)
+    OP_C_READ_EXPECT        (b, "foo", 3)
+    OP_C_EXPECT_FIN         (b)
+    OP_C_FREE_STREAM        (b)
+
+    OP_END_REPEAT           ()
+
+    OP_END
+};
+
 static const struct script_op *const scripts[] = {
     script_1,
     script_2,
@@ -1239,6 +1787,12 @@ static const struct script_op *const scripts[] = {
     script_8,
     script_9,
     script_10,
+    script_11,
+    script_12,
+    script_13,
+    script_14,
+    script_15,
+    script_16,
 };
 
 static int test_script(int idx)

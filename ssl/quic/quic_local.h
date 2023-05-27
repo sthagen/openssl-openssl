@@ -84,6 +84,13 @@ struct quic_xso_st {
 
     /* SSL_set_mode */
     uint32_t                        ssl_mode;
+
+    /*
+     * Last 'normal' error during an app-level I/O operation, used by
+     * SSL_get_error(); used to track data-path errors like SSL_ERROR_WANT_READ
+     * and SSL_ERROR_WANT_WRITE.
+     */
+    int                             last_error;
 };
 
 struct quic_conn_st {
@@ -205,6 +212,9 @@ void ossl_quic_conn_raise_protocol_error(QUIC_CONNECTION *qc,
 
 void ossl_quic_conn_on_remote_conn_close(QUIC_CONNECTION *qc,
                                          OSSL_QUIC_FRAME_CONN_CLOSE *f);
+
+int ossl_quic_trace(int write_p, int version, int content_type,
+                    const void *buf, size_t msglen, SSL *ssl, void *arg);
 
 #  define OSSL_QUIC_ANY_VERSION 0xFFFFF
 

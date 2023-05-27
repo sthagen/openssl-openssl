@@ -12,6 +12,7 @@
 #include "internal/common.h"
 #include "internal/sockets.h"
 #include "internal/quic_tserver.h"
+#include "internal/quic_thread_assist.h"
 #include "internal/quic_ssl.h"
 #include "internal/time.h"
 #include "testutil.h"
@@ -64,7 +65,6 @@ static int do_test(int use_thread_assist, int use_fake_time, int use_inject)
     union BIO_sock_info_u s_info = {0};
     SSL_CTX *c_ctx = NULL;
     SSL *c_ssl = NULL;
-    short port = 8186;
     int c_connected = 0, c_write_done = 0, c_begin_read = 0, s_read_done = 0;
     int c_wait_eos = 0, c_done_eos = 0;
     int c_start_idle_test = 0, c_done_idle_test = 0;
@@ -75,6 +75,13 @@ static int do_test(int use_thread_assist, int use_fake_time, int use_inject)
     unsigned char alpn[] = { 8, 'o', 's', 's', 'l', 't', 'e', 's', 't' };
     OSSL_TIME (*now_cb)(void *arg) = use_fake_time ? fake_now : real_now;
     size_t limit_ms = 1000;
+
+#if defined(OPENSSL_NO_QUIC_THREAD_ASSIST)
+    if (use_thread_assist) {
+        TEST_skip("thread assisted mode not enabled");
+        return 1;
+    }
+#endif
 
     ina.s_addr = htonl(0x7f000001UL);
 
@@ -89,8 +96,7 @@ static int do_test(int use_thread_assist, int use_fake_time, int use_inject)
     if (!TEST_ptr(s_addr_ = BIO_ADDR_new()))
         goto err;
 
-    if (!TEST_true(BIO_ADDR_rawmake(s_addr_, AF_INET, &ina, sizeof(ina),
-                                    htons(port))))
+    if (!TEST_true(BIO_ADDR_rawmake(s_addr_, AF_INET, &ina, sizeof(ina), 0)))
         goto err;
 
     if (!TEST_true(BIO_bind(s_fd, s_addr_, 0)))

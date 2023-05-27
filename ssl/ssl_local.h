@@ -36,6 +36,7 @@
 # include "internal/bio.h"
 # include "internal/ktls.h"
 # include "internal/time.h"
+# include "internal/ssl.h"
 # include "record/record.h"
 
 # ifdef OPENSSL_BUILD_SHLIBSSL
@@ -939,8 +940,7 @@ struct ssl_ctx_st {
     int read_ahead;
 
     /* callback that allows applications to peek at protocol messages */
-    void (*msg_callback) (int write_p, int version, int content_type,
-                          const void *buf, size_t len, SSL *ssl, void *arg);
+    ossl_msg_cb msg_callback;
     void *msg_callback_arg;
 
     uint32_t verify_mode;

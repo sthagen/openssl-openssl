@@ -186,7 +186,8 @@ static int ch_init(QUIC_CHANNEL *ch)
 
     if (!ossl_quic_stream_map_init(&ch->qsm, get_stream_limit, ch,
                                    &ch->max_streams_bidi_rxfc,
-                                   &ch->max_streams_uni_rxfc))
+                                   &ch->max_streams_uni_rxfc,
+                                   ch->is_server))
         goto err;
 
     ch->have_qsm = 1;
@@ -207,6 +208,7 @@ static int ch_init(QUIC_CHANNEL *ch)
     txp_args.cc_data                = ch->cc_data;
     txp_args.now                    = get_time;
     txp_args.now_arg                = ch;
+
     for (pn_space = QUIC_PN_SPACE_INITIAL; pn_space < QUIC_PN_SPACE_NUM; ++pn_space) {
         ch->crypto_send[pn_space] = ossl_quic_sstream_new(INIT_CRYPTO_BUF_LEN);
         if (ch->crypto_send[pn_space] == NULL)
@@ -1589,7 +1591,7 @@ static void ch_default_packet_handler(QUIC_URXE *e, void *arg)
      * operation to fail if we get a 1-RTT packet. This is fine since we only
      * care about Initial packets.
      */
-    if (!ossl_quic_wire_decode_pkt_hdr(&pkt, SIZE_MAX, 1, &hdr, NULL))
+    if (!ossl_quic_wire_decode_pkt_hdr(&pkt, SIZE_MAX, 1, 0, &hdr, NULL))
         goto undesirable;
 
     switch (hdr.version) {
@@ -2426,7 +2428,6 @@ QUIC_STREAM *ossl_quic_channel_new_stream_local(QUIC_CHANNEL *ch, int is_uni)
     if (!ch_init_new_stream(ch, qs, /*can_send=*/1, /*can_recv=*/!is_uni))
         goto err;
 
-
     ++*p_next_ordinal;
     return qs;
 
@@ -2507,4 +2508,25 @@ int ossl_quic_channel_replace_local_cid(QUIC_CHANNEL *ch,
     if (!ossl_qrx_add_dst_conn_id(ch->qrx, &ch->cur_local_cid))
         return 0;
     return 1;
+}
+
+void ossl_quic_channel_set_msg_callback(QUIC_CHANNEL *ch,
+                                        ossl_msg_cb msg_callback,
+                                        SSL *msg_callback_ssl)
+{
+    ch->msg_callback = msg_callback;
+    ch->msg_callback_ssl = msg_callback_ssl;
+    ossl_qtx_set_msg_callback(ch->qtx, msg_callback, msg_callback_ssl);
+    ossl_quic_tx_packetiser_set_msg_callback(ch->txp, msg_callback,
+                                             msg_callback_ssl);
+    ossl_qrx_set_msg_callback(ch->qrx, msg_callback, msg_callback_ssl);
+}
+
+void ossl_quic_channel_set_msg_callback_arg(QUIC_CHANNEL *ch,
+                                            void *msg_callback_arg)
+{
+    ch->msg_callback_arg = msg_callback_arg;
+    ossl_qtx_set_msg_callback_arg(ch->qtx, msg_callback_arg);
+    ossl_quic_tx_packetiser_set_msg_callback_arg(ch->txp, msg_callback_arg);
+    ossl_qrx_set_msg_callback_arg(ch->qrx, msg_callback_arg);
 }

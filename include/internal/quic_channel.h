@@ -323,6 +323,13 @@ void ossl_quic_channel_reject_stream(QUIC_CHANNEL *ch, QUIC_STREAM *qs);
 int ossl_quic_channel_replace_local_cid(QUIC_CHANNEL *ch,
                                         const QUIC_CONN_ID *conn_id);
 
+/* Setters for the msg_callback and msg_callback_arg */
+void ossl_quic_channel_set_msg_callback(QUIC_CHANNEL *ch,
+                                        ossl_msg_cb msg_callback,
+                                        SSL *msg_callback_ssl);
+void ossl_quic_channel_set_msg_callback_arg(QUIC_CHANNEL *ch,
+                                            void *msg_callback_arg);
+
 # endif
 
 #endif

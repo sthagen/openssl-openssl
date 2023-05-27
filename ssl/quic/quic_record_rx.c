@@ -7,6 +7,7 @@
  * https://www.openssl.org/source/license.html
  */
 
+#include <openssl/ssl.h>
 #include "internal/quic_record_rx.h"
 #include "quic_record_shared.h"
 #include "internal/common.h"
@@ -145,6 +146,11 @@ struct ossl_qrx_st {
 
     /* Initial key phase. For debugging use only; always 0 in real use. */
     unsigned char                   init_key_phase_bit;
+
+    /* Message callback related arguments */
+    ossl_msg_cb msg_callback;
+    void *msg_callback_arg;
+    SSL *msg_callback_ssl;
 };
 
 static void qrx_on_rx(QUIC_URXE *urxe, void *arg);
@@ -225,6 +231,11 @@ void ossl_qrx_inject_urxe(OSSL_QRX *qrx, QUIC_URXE *urxe)
     urxe->hpr_removed   = 0;
     urxe->deferred      = 0;
     ossl_list_urxe_insert_tail(&qrx->urx_pending, urxe);
+
+    if (qrx->msg_callback != NULL)
+        qrx->msg_callback(0, OSSL_QUIC1_VERSION, SSL3_RT_QUIC_DATAGRAM, urxe + 1,
+                          urxe->data_len, qrx->msg_callback_ssl,
+                          qrx->msg_callback_arg);
 }
 
 static void qrx_on_rx(QUIC_URXE *urxe, void *arg)
@@ -713,7 +724,7 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
     need_second_decode = !pkt_is_marked(&urxe->hpr_removed, pkt_idx);
     if (!ossl_quic_wire_decode_pkt_hdr(pkt,
                                        qrx->short_conn_id_len,
-                                       need_second_decode, &rxe->hdr, &ptrs))
+                                       need_second_decode, 0, &rxe->hdr, &ptrs))
         goto malformed;
 
     /*
@@ -825,13 +836,18 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
 
         /* Decode the now unprotected header. */
         if (ossl_quic_wire_decode_pkt_hdr(pkt, qrx->short_conn_id_len,
-                                          0, &rxe->hdr, NULL) != 1)
+                                          0, 0, &rxe->hdr, NULL) != 1)
             goto malformed;
     }
 
     /* Validate header and decode PN. */
     if (!qrx_validate_hdr(qrx, rxe))
         goto malformed;
+
+    if (qrx->msg_callback != NULL)
+        qrx->msg_callback(0, OSSL_QUIC1_VERSION, SSL3_RT_QUIC_PACKET, sop,
+                          eop - sop - rxe->hdr.len, qrx->msg_callback_ssl,
+                          qrx->msg_callback_arg);
 
     /*
      * The AAD data is the entire (unprotected) packet header including the PN.
@@ -982,7 +998,7 @@ static int qrx_process_datagram(OSSL_QRX *qrx, QUIC_URXE *e,
 
     for (; PACKET_remaining(&pkt) > 0; ++pkt_idx) {
         /*
-         * A packet smallest than the minimum possible QUIC packet size is not
+         * A packet smaller than the minimum possible QUIC packet size is not
          * considered valid. We also ignore more than a certain number of
          * packets within the same datagram.
          */
@@ -1093,6 +1109,7 @@ int ossl_qrx_read_pkt(OSSL_QRX *qrx, OSSL_QRX_PKT **ppkt)
         = BIO_ADDR_family(&rxe->local) != AF_UNSPEC ? &rxe->local : NULL;
     rxe->pkt.qrx            = qrx;
     *ppkt = &rxe->pkt;
+
     return 1;
 }
 
@@ -1187,4 +1204,16 @@ uint64_t ossl_qrx_get_max_forged_pkt_count(OSSL_QRX *qrx,
 
     return el == NULL ? UINT64_MAX
         : ossl_qrl_get_suite_max_forged_pkt(el->suite_id);
+}
+
+void ossl_qrx_set_msg_callback(OSSL_QRX *qrx, ossl_msg_cb msg_callback,
+                               SSL *msg_callback_ssl)
+{
+    qrx->msg_callback = msg_callback;
+    qrx->msg_callback_ssl = msg_callback_ssl;
+}
+
+void ossl_qrx_set_msg_callback_arg(OSSL_QRX *qrx, void *msg_callback_arg)
+{
+    qrx->msg_callback_arg = msg_callback_arg;
 }

@@ -167,6 +167,13 @@ void ossl_quic_tx_packetiser_schedule_ack_eliciting(OSSL_QUIC_TX_PACKETISER *txp
 int ossl_quic_tx_packetiser_schedule_conn_close(OSSL_QUIC_TX_PACKETISER *txp,
                                                 const OSSL_QUIC_FRAME_CONN_CLOSE *f);
 
+/* Setters for the msg_callback and msg_callback_arg */
+void ossl_quic_tx_packetiser_set_msg_callback(OSSL_QUIC_TX_PACKETISER *txp,
+                                              ossl_msg_cb msg_callback,
+                                              SSL *msg_callback_ssl);
+void ossl_quic_tx_packetiser_set_msg_callback_arg(OSSL_QUIC_TX_PACKETISER *txp,
+                                                  void *msg_callback_arg);
+
 # endif
 
 #endif

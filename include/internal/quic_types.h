@@ -11,6 +11,7 @@
 # define OSSL_QUIC_TYPES_H
 
 # include <openssl/ssl.h>
+# include <internal/ssl.h>
 # include <assert.h>
 # include <string.h>
 
