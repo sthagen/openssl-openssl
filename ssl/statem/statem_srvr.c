@@ -547,12 +547,14 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
 
     case TLS_ST_SW_FINISHED:
         st->hand_state = TLS_ST_EARLY_DATA;
+        s->ts_msg_write = ossl_time_now();
         return WRITE_TRAN_CONTINUE;
 
     case TLS_ST_EARLY_DATA:
         return WRITE_TRAN_FINISHED;
 
     case TLS_ST_SR_FINISHED:
+        s->ts_msg_read = ossl_time_now();
         /*
          * Technically we have finished the handshake at this point, but we're
          * going to remain "in_init" for now and write out any session tickets
@@ -702,9 +704,11 @@ WRITE_TRAN ossl_statem_server_write_transition(SSL_CONNECTION *s)
         return WRITE_TRAN_CONTINUE;
 
     case TLS_ST_SW_SRVR_DONE:
+        s->ts_msg_write = ossl_time_now();
         return WRITE_TRAN_FINISHED;
 
     case TLS_ST_SR_FINISHED:
+        s->ts_msg_read = ossl_time_now();
         if (s->hit) {
             st->hand_state = TLS_ST_OK;
             return WRITE_TRAN_CONTINUE;
@@ -3050,8 +3054,7 @@ static int tls_process_cke_rsa(SSL_CONNECTION *s, PACKET *pkt)
     }
 
     /* Also cleanses rsa_decrypt (on success or failure) */
-    if (!ssl_generate_master_secret(s, rsa_decrypt,
-                                    SSL_MAX_MASTER_KEY_LENGTH, 0)) {
+    if (!ssl_generate_master_secret(s, rsa_decrypt, outlen, 0)) {
         /* SSLfatal() already called */
         goto err;
     }
@@ -3216,7 +3219,7 @@ static int tls_process_cke_gost(SSL_CONNECTION *s, PACKET *pkt)
     EVP_PKEY *client_pub_pkey = NULL, *pk = NULL;
     unsigned char premaster_secret[32];
     const unsigned char *start;
-    size_t outlen = 32, inlen;
+    size_t outlen = sizeof(premaster_secret), inlen;
     unsigned long alg_a;
     GOST_KX_MESSAGE *pKX = NULL;
     const unsigned char *ptr;
@@ -3291,8 +3294,7 @@ static int tls_process_cke_gost(SSL_CONNECTION *s, PACKET *pkt)
         goto err;
     }
     /* Generate master secret */
-    if (!ssl_generate_master_secret(s, premaster_secret,
-                                    sizeof(premaster_secret), 0)) {
+    if (!ssl_generate_master_secret(s, premaster_secret, outlen, 0)) {
         /* SSLfatal() already called */
         goto err;
     }
@@ -3321,7 +3323,7 @@ static int tls_process_cke_gost18(SSL_CONNECTION *s, PACKET *pkt)
     EVP_PKEY *pk = NULL;
     unsigned char premaster_secret[32];
     const unsigned char *start = NULL;
-    size_t outlen = 32, inlen = 0;
+    size_t outlen = sizeof(premaster_secret), inlen = 0;
     int ret = 0;
     int cipher_nid = ossl_gost18_cke_cipher_nid(s);
     SSL_CTX *sctx = SSL_CONNECTION_GET_CTX(s);
@@ -3375,8 +3377,7 @@ static int tls_process_cke_gost18(SSL_CONNECTION *s, PACKET *pkt)
         goto err;
     }
     /* Generate master secret */
-    if (!ssl_generate_master_secret(s, premaster_secret,
-         sizeof(premaster_secret), 0)) {
+    if (!ssl_generate_master_secret(s, premaster_secret, outlen, 0)) {
          /* SSLfatal() already called */
          goto err;
     }

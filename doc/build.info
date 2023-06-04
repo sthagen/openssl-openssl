@@ -1591,6 +1591,10 @@ DEPEND[html/man3/OSSL_CMP_HDR_get0_transactionID.html]=man3/OSSL_CMP_HDR_get0_tr
 GENERATE[html/man3/OSSL_CMP_HDR_get0_transactionID.html]=man3/OSSL_CMP_HDR_get0_transactionID.pod
 DEPEND[man/man3/OSSL_CMP_HDR_get0_transactionID.3]=man3/OSSL_CMP_HDR_get0_transactionID.pod
 GENERATE[man/man3/OSSL_CMP_HDR_get0_transactionID.3]=man3/OSSL_CMP_HDR_get0_transactionID.pod
+DEPEND[html/man3/OSSL_CMP_ITAV_new_caCerts.html]=man3/OSSL_CMP_ITAV_new_caCerts.pod
+GENERATE[html/man3/OSSL_CMP_ITAV_new_caCerts.html]=man3/OSSL_CMP_ITAV_new_caCerts.pod
+DEPEND[man/man3/OSSL_CMP_ITAV_new_caCerts.3]=man3/OSSL_CMP_ITAV_new_caCerts.pod
+GENERATE[man/man3/OSSL_CMP_ITAV_new_caCerts.3]=man3/OSSL_CMP_ITAV_new_caCerts.pod
 DEPEND[html/man3/OSSL_CMP_ITAV_set0.html]=man3/OSSL_CMP_ITAV_set0.pod
 GENERATE[html/man3/OSSL_CMP_ITAV_set0.html]=man3/OSSL_CMP_ITAV_set0.pod
 DEPEND[man/man3/OSSL_CMP_ITAV_set0.3]=man3/OSSL_CMP_ITAV_set0.pod
@@ -2535,6 +2539,10 @@ DEPEND[html/man3/SSL_get_error.html]=man3/SSL_get_error.pod
 GENERATE[html/man3/SSL_get_error.html]=man3/SSL_get_error.pod
 DEPEND[man/man3/SSL_get_error.3]=man3/SSL_get_error.pod
 GENERATE[man/man3/SSL_get_error.3]=man3/SSL_get_error.pod
+DEPEND[html/man3/SSL_get_event_timeout.html]=man3/SSL_get_event_timeout.pod
+GENERATE[html/man3/SSL_get_event_timeout.html]=man3/SSL_get_event_timeout.pod
+DEPEND[man/man3/SSL_get_event_timeout.3]=man3/SSL_get_event_timeout.pod
+GENERATE[man/man3/SSL_get_event_timeout.3]=man3/SSL_get_event_timeout.pod
 DEPEND[html/man3/SSL_get_extms_support.html]=man3/SSL_get_extms_support.pod
 GENERATE[html/man3/SSL_get_extms_support.html]=man3/SSL_get_extms_support.pod
 DEPEND[man/man3/SSL_get_extms_support.3]=man3/SSL_get_extms_support.pod
@@ -2543,6 +2551,10 @@ DEPEND[html/man3/SSL_get_fd.html]=man3/SSL_get_fd.pod
 GENERATE[html/man3/SSL_get_fd.html]=man3/SSL_get_fd.pod
 DEPEND[man/man3/SSL_get_fd.3]=man3/SSL_get_fd.pod
 GENERATE[man/man3/SSL_get_fd.3]=man3/SSL_get_fd.pod
+DEPEND[html/man3/SSL_get_handshake_rtt.html]=man3/SSL_get_handshake_rtt.pod
+GENERATE[html/man3/SSL_get_handshake_rtt.html]=man3/SSL_get_handshake_rtt.pod
+DEPEND[man/man3/SSL_get_handshake_rtt.3]=man3/SSL_get_handshake_rtt.pod
+GENERATE[man/man3/SSL_get_handshake_rtt.3]=man3/SSL_get_handshake_rtt.pod
 DEPEND[html/man3/SSL_get_peer_cert_chain.html]=man3/SSL_get_peer_cert_chain.pod
 GENERATE[html/man3/SSL_get_peer_cert_chain.html]=man3/SSL_get_peer_cert_chain.pod
 DEPEND[man/man3/SSL_get_peer_cert_chain.3]=man3/SSL_get_peer_cert_chain.pod
@@ -2587,10 +2599,6 @@ DEPEND[html/man3/SSL_get_stream_read_state.html]=man3/SSL_get_stream_read_state.
 GENERATE[html/man3/SSL_get_stream_read_state.html]=man3/SSL_get_stream_read_state.pod
 DEPEND[man/man3/SSL_get_stream_read_state.3]=man3/SSL_get_stream_read_state.pod
 GENERATE[man/man3/SSL_get_stream_read_state.3]=man3/SSL_get_stream_read_state.pod
-DEPEND[html/man3/SSL_get_tick_timeout.html]=man3/SSL_get_tick_timeout.pod
-GENERATE[html/man3/SSL_get_tick_timeout.html]=man3/SSL_get_tick_timeout.pod
-DEPEND[man/man3/SSL_get_tick_timeout.3]=man3/SSL_get_tick_timeout.pod
-GENERATE[man/man3/SSL_get_tick_timeout.3]=man3/SSL_get_tick_timeout.pod
 DEPEND[html/man3/SSL_get_verify_result.html]=man3/SSL_get_verify_result.pod
 GENERATE[html/man3/SSL_get_verify_result.html]=man3/SSL_get_verify_result.pod
 DEPEND[man/man3/SSL_get_verify_result.3]=man3/SSL_get_verify_result.pod
@@ -2603,6 +2611,10 @@ DEPEND[html/man3/SSL_group_to_name.html]=man3/SSL_group_to_name.pod
 GENERATE[html/man3/SSL_group_to_name.html]=man3/SSL_group_to_name.pod
 DEPEND[man/man3/SSL_group_to_name.3]=man3/SSL_group_to_name.pod
 GENERATE[man/man3/SSL_group_to_name.3]=man3/SSL_group_to_name.pod
+DEPEND[html/man3/SSL_handle_events.html]=man3/SSL_handle_events.pod
+GENERATE[html/man3/SSL_handle_events.html]=man3/SSL_handle_events.pod
+DEPEND[man/man3/SSL_handle_events.3]=man3/SSL_handle_events.pod
+GENERATE[man/man3/SSL_handle_events.3]=man3/SSL_handle_events.pod
 DEPEND[html/man3/SSL_in_init.html]=man3/SSL_in_init.pod
 GENERATE[html/man3/SSL_in_init.html]=man3/SSL_in_init.pod
 DEPEND[man/man3/SSL_in_init.3]=man3/SSL_in_init.pod
@@ -2723,10 +2735,6 @@ DEPEND[html/man3/SSL_stream_reset.html]=man3/SSL_stream_reset.pod
 GENERATE[html/man3/SSL_stream_reset.html]=man3/SSL_stream_reset.pod
 DEPEND[man/man3/SSL_stream_reset.3]=man3/SSL_stream_reset.pod
 GENERATE[man/man3/SSL_stream_reset.3]=man3/SSL_stream_reset.pod
-DEPEND[html/man3/SSL_tick.html]=man3/SSL_tick.pod
-GENERATE[html/man3/SSL_tick.html]=man3/SSL_tick.pod
-DEPEND[man/man3/SSL_tick.3]=man3/SSL_tick.pod
-GENERATE[man/man3/SSL_tick.3]=man3/SSL_tick.pod
 DEPEND[html/man3/SSL_want.html]=man3/SSL_want.pod
 GENERATE[html/man3/SSL_want.html]=man3/SSL_want.pod
 DEPEND[man/man3/SSL_want.3]=man3/SSL_want.pod
@@ -3289,6 +3297,7 @@ html/man3/OSSL_ALGORITHM.html \
 html/man3/OSSL_CALLBACK.html \
 html/man3/OSSL_CMP_CTX_new.html \
 html/man3/OSSL_CMP_HDR_get0_transactionID.html \
+html/man3/OSSL_CMP_ITAV_new_caCerts.html \
 html/man3/OSSL_CMP_ITAV_set0.html \
 html/man3/OSSL_CMP_MSG_get0_header.html \
 html/man3/OSSL_CMP_MSG_http_perform.html \
@@ -3525,8 +3534,10 @@ html/man3/SSL_get_conn_close_info.html \
 html/man3/SSL_get_current_cipher.html \
 html/man3/SSL_get_default_timeout.html \
 html/man3/SSL_get_error.html \
+html/man3/SSL_get_event_timeout.html \
 html/man3/SSL_get_extms_support.html \
 html/man3/SSL_get_fd.html \
+html/man3/SSL_get_handshake_rtt.html \
 html/man3/SSL_get_peer_cert_chain.html \
 html/man3/SSL_get_peer_certificate.html \
 html/man3/SSL_get_peer_signature_nid.html \
@@ -3538,10 +3549,10 @@ html/man3/SSL_get_session.html \
 html/man3/SSL_get_shared_sigalgs.html \
 html/man3/SSL_get_stream_id.html \
 html/man3/SSL_get_stream_read_state.html \
-html/man3/SSL_get_tick_timeout.html \
 html/man3/SSL_get_verify_result.html \
 html/man3/SSL_get_version.html \
 html/man3/SSL_group_to_name.html \
+html/man3/SSL_handle_events.html \
 html/man3/SSL_in_init.html \
 html/man3/SSL_inject_net_dgram.html \
 html/man3/SSL_key_update.html \
@@ -3572,7 +3583,6 @@ html/man3/SSL_shutdown.html \
 html/man3/SSL_state_string.html \
 html/man3/SSL_stream_conclude.html \
 html/man3/SSL_stream_reset.html \
-html/man3/SSL_tick.html \
 html/man3/SSL_want.html \
 html/man3/SSL_write.html \
 html/man3/TS_RESP_CTX_new.html \
@@ -3924,6 +3934,7 @@ man/man3/OSSL_ALGORITHM.3 \
 man/man3/OSSL_CALLBACK.3 \
 man/man3/OSSL_CMP_CTX_new.3 \
 man/man3/OSSL_CMP_HDR_get0_transactionID.3 \
+man/man3/OSSL_CMP_ITAV_new_caCerts.3 \
 man/man3/OSSL_CMP_ITAV_set0.3 \
 man/man3/OSSL_CMP_MSG_get0_header.3 \
 man/man3/OSSL_CMP_MSG_http_perform.3 \
@@ -4160,8 +4171,10 @@ man/man3/SSL_get_conn_close_info.3 \
 man/man3/SSL_get_current_cipher.3 \
 man/man3/SSL_get_default_timeout.3 \
 man/man3/SSL_get_error.3 \
+man/man3/SSL_get_event_timeout.3 \
 man/man3/SSL_get_extms_support.3 \
 man/man3/SSL_get_fd.3 \
+man/man3/SSL_get_handshake_rtt.3 \
 man/man3/SSL_get_peer_cert_chain.3 \
 man/man3/SSL_get_peer_certificate.3 \
 man/man3/SSL_get_peer_signature_nid.3 \
@@ -4173,10 +4186,10 @@ man/man3/SSL_get_session.3 \
 man/man3/SSL_get_shared_sigalgs.3 \
 man/man3/SSL_get_stream_id.3 \
 man/man3/SSL_get_stream_read_state.3 \
-man/man3/SSL_get_tick_timeout.3 \
 man/man3/SSL_get_verify_result.3 \
 man/man3/SSL_get_version.3 \
 man/man3/SSL_group_to_name.3 \
+man/man3/SSL_handle_events.3 \
 man/man3/SSL_in_init.3 \
 man/man3/SSL_inject_net_dgram.3 \
 man/man3/SSL_key_update.3 \
@@ -4207,7 +4220,6 @@ man/man3/SSL_shutdown.3 \
 man/man3/SSL_state_string.3 \
 man/man3/SSL_stream_conclude.3 \
 man/man3/SSL_stream_reset.3 \
-man/man3/SSL_tick.3 \
 man/man3/SSL_want.3 \
 man/man3/SSL_write.3 \
 man/man3/TS_RESP_CTX_new.3 \

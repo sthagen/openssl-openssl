@@ -4747,6 +4747,21 @@ const char *SSL_get_version(const SSL *s)
     return ssl_protocol_to_string(sc->version);
 }
 
+__owur int SSL_get_handshake_rtt(const SSL *s, uint64_t *rtt)
+{
+    const SSL_CONNECTION *sc = SSL_CONNECTION_FROM_CONST_SSL(s);
+
+    if (sc == NULL)
+        return -1;
+    if (sc->ts_msg_write.t <= 0 || sc->ts_msg_read.t <= 0)
+        return 0; /* data not (yet) available */
+    if (sc->ts_msg_read.t < sc->ts_msg_write.t)
+        return -1;
+
+    *rtt = ossl_time2us(ossl_time_subtract(sc->ts_msg_read, sc->ts_msg_write));
+    return 1;
+}
+
 static int dup_ca_names(STACK_OF(X509_NAME) **dst, STACK_OF(X509_NAME) *src)
 {
     STACK_OF(X509_NAME) *sk;
@@ -7124,13 +7139,13 @@ int SSL_CTX_set0_tmp_dh_pkey(SSL_CTX *ctx, EVP_PKEY *dhpkey)
 }
 
 /* QUIC-specific methods which are supported on QUIC connections only. */
-int SSL_tick(SSL *s)
+int SSL_handle_events(SSL *s)
 {
     SSL_CONNECTION *sc;
 
 #ifndef OPENSSL_NO_QUIC
     if (IS_QUIC(s))
-        return ossl_quic_tick(s);
+        return ossl_quic_handle_events(s);
 #endif
 
     sc = SSL_CONNECTION_FROM_SSL_ONLY(s);
@@ -7148,22 +7163,25 @@ int SSL_tick(SSL *s)
     return 1;
 }
 
-int SSL_get_tick_timeout(SSL *s, struct timeval *tv)
+int SSL_get_event_timeout(SSL *s, struct timeval *tv, int *is_infinite)
 {
     SSL_CONNECTION *sc;
 
 #ifndef OPENSSL_NO_QUIC
     if (IS_QUIC(s))
-        return ossl_quic_get_tick_timeout(s, tv);
+        return ossl_quic_get_event_timeout(s, tv, is_infinite);
 #endif
 
     sc = SSL_CONNECTION_FROM_SSL_ONLY(s);
     if (sc != NULL && SSL_CONNECTION_IS_DTLS(sc)
-        && DTLSv1_get_timeout(s, tv))
+        && DTLSv1_get_timeout(s, tv)) {
+        *is_infinite = 0;
         return 1;
+    }
 
-    tv->tv_sec  = -1;
+    tv->tv_sec  = 1000000;
     tv->tv_usec = 0;
+    *is_infinite = 1;
     return 1;
 }
 

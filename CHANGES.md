@@ -25,6 +25,13 @@ OpenSSL 3.2
 
 ### Changes between 3.1 and 3.2 [xx XXX xxxx]
 
+ * TLS round-trip time calculation was added by a Brigham Young University
+   Capstone team partnering with Sandia National Laboratories. A new function
+   in ssl_lib titled SSL_get_handshake_rtt will calculate and retrieve this
+   value.
+
+   *Jairus Christensen*
+
  * Added the "-quic" option to s_client to enable connectivity to QUIC servers.
    QUIC requires the use of ALPN, so this must be specified via the "-alpn"
    option. Use of the "advanced" s_client command command via the "-adv" option
@@ -276,6 +283,16 @@ OpenSSL 3.1
 -----------
 
 ### Changes between 3.1.0 and 3.1.1 [xx XXX xxxx]
+
+ * Multiple algorithm implementation fixes for ARM BE platforms.
+
+   *Liu-ErMeng*
+
+ * Added a -pedantic option to fipsinstall that adjusts the various
+   settings to ensure strict FIPS compliance rather than backwards
+   compatibility.
+
+   *Paul Dale*
 
  * Fixed buffer overread in AES-XTS decryption on ARM 64 bit platforms which
    happens if the buffer size is 4 mod 5 in 16 byte AES blocks. This can

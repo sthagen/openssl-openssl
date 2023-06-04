@@ -820,8 +820,8 @@ int ossl_quic_conn_set_initial_peer_addr(SSL *s,
  * QUIC Front-End I/O API: Asynchronous I/O Management
  * ===================================================
  *
- *   (BIO/)SSL_tick                 => ossl_quic_tick
- *   (BIO/)SSL_get_tick_timeout     => ossl_quic_get_tick_timeout
+ *   (BIO/)SSL_handle_events        => ossl_quic_handle_events
+ *   (BIO/)SSL_get_event_timeout    => ossl_quic_get_event_timeout
  *   (BIO/)SSL_get_poll_fd          => ossl_quic_get_poll_fd
  *
  */
@@ -839,9 +839,9 @@ static int xso_blocking_mode(const QUIC_XSO *xso)
         && xso->conn->can_poll_net_wbio;
 }
 
-/* SSL_tick; ticks the reactor. */
+/* SSL_handle_events; performs QUIC I/O and timeout processing. */
 QUIC_TAKES_LOCK
-int ossl_quic_tick(SSL *s)
+int ossl_quic_handle_events(SSL *s)
 {
     QCTX ctx;
 
@@ -855,13 +855,14 @@ int ossl_quic_tick(SSL *s)
 }
 
 /*
- * SSL_get_tick_timeout. Get the time in milliseconds until the SSL object
- * should be ticked by the application by calling SSL_tick(). tv is set to 0 if
- * the object should be ticked immediately and tv->tv_sec is set to -1 if no
- * timeout is currently active.
+ * SSL_get_event_timeout. Get the time in milliseconds until the SSL object
+ * should next have events handled by the application by calling
+ * SSL_handle_events(). tv is set to 0 if the object should have events handled
+ * immediately. If no timeout is currently active, *is_infinite is set to 1 and
+ * the value of *tv is undefined.
  */
 QUIC_TAKES_LOCK
-int ossl_quic_get_tick_timeout(SSL *s, struct timeval *tv)
+int ossl_quic_get_event_timeout(SSL *s, struct timeval *tv, int *is_infinite)
 {
     QCTX ctx;
     OSSL_TIME deadline = ossl_time_infinite();
@@ -875,13 +876,21 @@ int ossl_quic_get_tick_timeout(SSL *s, struct timeval *tv)
         = ossl_quic_reactor_get_tick_deadline(ossl_quic_channel_get_reactor(ctx.qc->ch));
 
     if (ossl_time_is_infinite(deadline)) {
-        tv->tv_sec  = -1;
+        *is_infinite = 1;
+
+        /*
+         * Robustness against faulty applications that don't check *is_infinite;
+         * harmless long timeout.
+         */
+        tv->tv_sec  = 1000000;
         tv->tv_usec = 0;
+
         quic_unlock(ctx.qc);
         return 1;
     }
 
     *tv = ossl_time_to_timeval(ossl_time_subtract(deadline, ossl_time_now()));
+    *is_infinite = 0;
     quic_unlock(ctx.qc);
     return 1;
 }
@@ -1049,6 +1058,18 @@ long ossl_quic_ctrl(SSL *s, int cmd, long larg, void *parg)
         /* This ctrl also needs to be passed to the internal SSL object */
         return SSL_ctrl(ctx.qc->tls, cmd, larg, parg);
 
+    case DTLS_CTRL_GET_TIMEOUT: /* DTLSv1_get_timeout */
+        {
+            int is_infinite;
+
+            if (!ossl_quic_get_event_timeout(s, parg, &is_infinite))
+                return 0;
+
+            return !is_infinite;
+        }
+    case DTLS_CTRL_HANDLE_TIMEOUT: /* DTLSv1_handle_timeout */
+        /* For legacy compatibility with DTLS calls. */
+        return ossl_quic_handle_events(s) == 1 ? 1 : -1;
     default:
         /* Probably a TLS related ctrl. Defer to our internal SSL object */
         return SSL_ctrl(ctx.qc->tls, cmd, larg, parg);
