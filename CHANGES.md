@@ -229,24 +229,13 @@ OpenSSL 3.2
 
    *Hugo Landau*
 
- * The `SSL_CERT_PATH` and `SSL_CERT_URI` environment variables are introduced.
-   `SSL_CERT_URI` can be used to specify a URI for a root certificate store. The
-   `SSL_CERT_PATH` environment variable specifies a delimiter-separated list of
-   paths which are searched for root certificates.
-
-   The existing `SSL_CERT_DIR` environment variable is deprecated.
-   `SSL_CERT_DIR` was previously used to specify either a delimiter-separated
-   list of paths or an URI, which is ambiguous. Setting `SSL_CERT_PATH` causes
-   `SSL_CERT_DIR` to be ignored for the purposes of determining root certificate
-   directories, and setting `SSL_CERT_URI` causes `SSL_CERT_DIR` to be ignored
-   for the purposes of determining root certificate stores.
-
-   *Hugo Landau*
-
  * Support for loading root certificates from the Windows certificate store
    has been added. The support is in the form of a store which recognises the
-   URI string of `org.openssl.winstore://`. This store is enabled by default and
-   can be disabled using the new compile-time option `no-winstore`.
+   URI string of `org.openssl.winstore://`. This URI scheme currently takes no
+   arguments. This store is built by default and can be disabled using the new
+   compile-time option `no-winstore`. This store is not currently used by
+   default and must be loaded explicitly using the above store URI. It is
+   expected to be loaded by default in the future.
 
    *Hugo Landau*
 
@@ -7457,7 +7446,7 @@ OpenSSL 1.0.1
 
  * Alternate chains certificate forgery
 
-   During certificate verfification, OpenSSL will attempt to find an
+   During certificate verification, OpenSSL will attempt to find an
    alternative certificate chain if the first attempt to build such a chain
    fails. An error in the implementation of this logic can mean that an
    attacker could cause certain checks on untrusted certificates to be
@@ -8816,7 +8805,7 @@ OpenSSL 1.0.0
 
    3. Check DSA/ECDSA signatures use DER.
 
-   Reencode DSA/ECDSA signatures and compare with the original received
+   Re-encode DSA/ECDSA signatures and compare with the original received
    signature. Return an error if there is a mismatch.
 
    This will reject various cases including garbage after signature
@@ -8863,7 +8852,7 @@ OpenSSL 1.0.0
 
  * Add additional DigestInfo checks.
 
-   Reencode DigestInto in DER and check against the original when
+   Re-encode DigestInto in DER and check against the original when
    verifying RSA signature: this will reject any improperly encoded
    DigestInfo structures.
 

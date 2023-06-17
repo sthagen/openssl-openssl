@@ -75,6 +75,11 @@ struct ossl_quic_tx_packetiser_st {
     void *msg_callback_arg;
     SSL *msg_callback_ssl;
 
+    /* Callbacks. */
+    void            (*ack_tx_cb)(const OSSL_QUIC_FRAME_ACK *ack,
+                                 uint32_t pn_space,
+                                 void *arg);
+    void            *ack_tx_cb_arg;
 };
 
 /*
@@ -352,7 +357,7 @@ static int txp_generate_for_el(OSSL_QUIC_TX_PACKETISER *txp, uint32_t enc_level,
                                int is_last_in_dgram,
                                int dgram_contains_initial,
                                int chosen_for_conn_close,
-                               int *sent_ack_eliciting);
+                               QUIC_TXP_STATUS *status);
 static size_t txp_determine_pn_len(OSSL_QUIC_TX_PACKETISER *txp);
 static int txp_determine_ppl_from_pl(OSSL_QUIC_TX_PACKETISER *txp,
                                      size_t pl,
@@ -368,7 +373,7 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
                                       size_t pkt_overhead,
                                       QUIC_PKT_HDR *phdr,
                                       int chosen_for_conn_close,
-                                      int *sent_ack_eliciting);
+                                      QUIC_TXP_STATUS *status);
 
 OSSL_QUIC_TX_PACKETISER *ossl_quic_tx_packetiser_new(const OSSL_QUIC_TX_PACKETISER_ARGS *args)
 {
@@ -474,6 +479,16 @@ int ossl_quic_tx_packetiser_set_peer(OSSL_QUIC_TX_PACKETISER *txp,
     return 1;
 }
 
+void ossl_quic_tx_packetiser_set_ack_tx_cb(OSSL_QUIC_TX_PACKETISER *txp,
+                                           void (*cb)(const OSSL_QUIC_FRAME_ACK *ack,
+                                                      uint32_t pn_space,
+                                                      void *arg),
+                                           void *cb_arg)
+{
+    txp->ack_tx_cb      = cb;
+    txp->ack_tx_cb_arg  = cb_arg;
+}
+
 int ossl_quic_tx_packetiser_discard_enc_level(OSSL_QUIC_TX_PACKETISER *txp,
                                               uint32_t enc_level)
 {
@@ -502,6 +517,12 @@ void ossl_quic_tx_packetiser_schedule_ack_eliciting(OSSL_QUIC_TX_PACKETISER *txp
                                                     uint32_t pn_space)
 {
     txp->force_ack_eliciting |= (1UL << pn_space);
+}
+
+void ossl_quic_tx_packetiser_schedule_ack(OSSL_QUIC_TX_PACKETISER *txp,
+                                          uint32_t pn_space)
+{
+    txp->want_ack |= (1UL << pn_space);
 }
 
 #define TXP_ERR_INTERNAL     0  /* Internal (e.g. alloc) error */
@@ -538,12 +559,14 @@ int ossl_quic_tx_packetiser_has_pending(OSSL_QUIC_TX_PACKETISER *txp,
  */
 int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
                                      uint32_t archetype,
-                                     int *sent_ack_eliciting)
+                                     QUIC_TXP_STATUS *status)
 {
     uint32_t enc_level, conn_close_enc_level = QUIC_ENC_LEVEL_NUM;
     int have_pkt_for_el[QUIC_ENC_LEVEL_NUM], is_last_in_dgram, cc_can_send;
     size_t num_el_in_dgram = 0, pkts_done = 0;
     int rc;
+
+    status->sent_ack_eliciting = 0;
 
     /*
      * If CC says we cannot send we still may be able to send any queued probes.
@@ -580,7 +603,7 @@ int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
                                  is_last_in_dgram,
                                  have_pkt_for_el[QUIC_ENC_LEVEL_INITIAL],
                                  enc_level == conn_close_enc_level,
-                                 sent_ack_eliciting);
+                                 status);
 
         if (rc != TXP_ERR_SUCCESS) {
             /*
@@ -934,7 +957,7 @@ static int txp_generate_for_el(OSSL_QUIC_TX_PACKETISER *txp, uint32_t enc_level,
                                int is_last_in_dgram,
                                int dgram_contains_initial,
                                int chosen_for_conn_close,
-                               int *sent_ack_eliciting)
+                               QUIC_TXP_STATUS *status)
 {
     int must_pad = dgram_contains_initial && is_last_in_dgram;
     size_t min_dpl, min_pl, min_ppl, cmpl, cmppl, running_total;
@@ -1047,7 +1070,7 @@ static int txp_generate_for_el(OSSL_QUIC_TX_PACKETISER *txp, uint32_t enc_level,
     return txp_generate_for_el_actual(txp, enc_level, archetype, min_ppl, cmppl,
                                       pkt_overhead, &phdr,
                                       chosen_for_conn_close,
-                                      sent_ack_eliciting);
+                                      status);
 }
 
 /* Determine how many bytes we should use for the encoded PN. */
@@ -1245,6 +1268,9 @@ static int txp_generate_pre_token(OSSL_QUIC_TX_PACKETISER *txp,
 
             if (ack->num_ack_ranges > 0)
                 tpkt->ackm_pkt.largest_acked = ack->ack_ranges[0].end;
+
+            if (txp->ack_tx_cb != NULL)
+                txp->ack_tx_cb(&ack2, pn_space, txp->ack_tx_cb_arg);
         } else {
             tx_helper_rollback(h);
         }
@@ -1896,7 +1922,7 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
                                       size_t pkt_overhead,
                                       QUIC_PKT_HDR *phdr,
                                       int chosen_for_conn_close,
-                                      int *sent_ack_eliciting)
+                                      QUIC_TXP_STATUS *status)
 {
     int rc = TXP_ERR_SUCCESS;
     struct archetype_data a;
@@ -1933,7 +1959,7 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
         goto fatal_err;
 
     /* Maximum PN reached? */
-    if (txp->next_pn[pn_space] >= (((QUIC_PN)1) << 62))
+    if (!ossl_quic_pn_valid(txp->next_pn[pn_space]))
         goto fatal_err;
 
     if ((tpkt = ossl_quic_txpim_pkt_alloc(txp->args.txpim)) == NULL)
@@ -2177,7 +2203,7 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
     tpkt->ackm_pkt.is_ack_eliciting = have_ack_eliciting;
     tpkt->ackm_pkt.is_pto_probe     = 0;
     tpkt->ackm_pkt.is_mtu_probe     = 0;
-    tpkt->ackm_pkt.time             = ossl_time_now();
+    tpkt->ackm_pkt.time             = txp->args.now(txp->args.now_arg);
 
     /* Packet Information for QTX */
     pkt.hdr         = phdr;
@@ -2188,18 +2214,6 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
         ? NULL : &txp->args.peer;
     pkt.pn          = txp->next_pn[pn_space];
     pkt.flags       = OSSL_QTX_PKT_FLAG_COALESCE; /* always try to coalesce */
-
-    /* Do TX key update if needed. */
-    if (enc_level == QUIC_ENC_LEVEL_1RTT) {
-        uint64_t cur_pkt_count, max_pkt_count;
-
-        cur_pkt_count = ossl_qtx_get_cur_epoch_pkt_count(txp->args.qtx, enc_level);
-        max_pkt_count = ossl_qtx_get_max_epoch_pkt_count(txp->args.qtx, enc_level);
-
-        if (cur_pkt_count >= max_pkt_count / 2)
-            if (!ossl_qtx_trigger_key_update(txp->args.qtx))
-                goto fatal_err;
-    }
 
     if (!ossl_assert(h.bytes_appended > 0))
         goto fatal_err;
@@ -2314,8 +2328,7 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
             --probe_info->pto[pn_space];
     }
 
-    if (have_ack_eliciting)
-        *sent_ack_eliciting = 1;
+    status->sent_ack_eliciting = 1;
 
     /* Done. */
     tx_helper_cleanup(&h);
@@ -2395,4 +2408,13 @@ void ossl_quic_tx_packetiser_set_msg_callback_arg(OSSL_QUIC_TX_PACKETISER *txp,
                                                   void *msg_callback_arg)
 {
     txp->msg_callback_arg = msg_callback_arg;
+}
+
+QUIC_PN ossl_quic_tx_packetiser_get_next_pn(OSSL_QUIC_TX_PACKETISER *txp,
+                                            uint32_t pn_space)
+{
+    if (pn_space >= QUIC_PN_SPACE_NUM)
+        return UINT64_MAX;
+
+    return txp->next_pn[pn_space];
 }

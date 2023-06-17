@@ -59,6 +59,21 @@ static int block_until_pred(QUIC_CONNECTION *qc,
                                               qc->mutex);
 }
 
+static OSSL_TIME get_time(QUIC_CONNECTION *qc)
+{
+    if (qc->override_now_cb != NULL)
+        return qc->override_now_cb(qc->override_now_cb_arg);
+    else
+        return ossl_time_now();
+}
+
+static OSSL_TIME get_time_cb(void *arg)
+{
+    QUIC_CONNECTION *qc = arg;
+
+    return get_time(qc);
+}
+
 /*
  * QCTX is a utility structure which provides information we commonly wish to
  * unwrap upon an API call being dispatched to us, namely:
@@ -490,17 +505,22 @@ int ossl_quic_clear(SSL *s)
     return 1;
 }
 
-void ossl_quic_conn_set_override_now_cb(SSL *s,
-                                        OSSL_TIME (*now_cb)(void *arg),
-                                        void *now_cb_arg)
+int ossl_quic_conn_set_override_now_cb(SSL *s,
+                                       OSSL_TIME (*now_cb)(void *arg),
+                                       void *now_cb_arg)
 {
     QCTX ctx;
 
     if (!expect_quic(s, &ctx))
-        return;
+        return 0;
+
+    quic_lock(ctx.qc);
 
     ctx.qc->override_now_cb     = now_cb;
     ctx.qc->override_now_cb_arg = now_cb_arg;
+
+    quic_unlock(ctx.qc);
+    return 1;
 }
 
 void ossl_quic_conn_force_assist_thread_wake(SSL *s)
@@ -889,7 +909,7 @@ int ossl_quic_get_event_timeout(SSL *s, struct timeval *tv, int *is_infinite)
         return 1;
     }
 
-    *tv = ossl_time_to_timeval(ossl_time_subtract(deadline, ossl_time_now()));
+    *tv = ossl_time_to_timeval(ossl_time_subtract(deadline, get_time(ctx.qc)));
     *is_infinite = 0;
     quic_unlock(ctx.qc);
     return 1;
@@ -1146,8 +1166,8 @@ static int create_channel(QUIC_CONNECTION *qc)
     args.is_server  = qc->as_server;
     args.tls        = qc->tls;
     args.mutex      = qc->mutex;
-    args.now_cb     = qc->override_now_cb;
-    args.now_cb_arg = qc->override_now_cb_arg;
+    args.now_cb     = get_time_cb;
+    args.now_cb_arg = qc;
 
     qc->ch = ossl_quic_channel_new(&args);
     if (qc->ch == NULL)
@@ -1538,6 +1558,7 @@ SSL *ossl_quic_conn_stream_new(SSL *s, uint64_t flags)
  *   (BIO/)SSL_write            => ossl_quic_write
  *         SSL_pending          => ossl_quic_pending
  *         SSL_stream_conclude  => ossl_quic_conn_stream_conclude
+ *         SSL_key_update       => ossl_quic_key_update
  */
 
 /* SSL_get_error */
@@ -2669,6 +2690,56 @@ int ossl_quic_get_conn_close_info(SSL *ssl,
 }
 
 /*
+ * SSL_key_update
+ * --------------
+ */
+int ossl_quic_key_update(SSL *ssl, int update_type)
+{
+    QCTX ctx;
+
+    if (!expect_quic_conn_only(ssl, &ctx))
+        return 0;
+
+    switch (update_type) {
+    case SSL_KEY_UPDATE_NOT_REQUESTED:
+        /*
+         * QUIC signals peer key update implicily by triggering a local
+         * spontaneous TXKU. Silently upgrade this to SSL_KEY_UPDATE_REQUESTED.
+         */
+    case SSL_KEY_UPDATE_REQUESTED:
+        break;
+
+    default:
+        /* Unknown type - error. */
+        return 0;
+    }
+
+    quic_lock(ctx.qc);
+
+    /* Attempt to perform a TXKU. */
+    if (!ossl_quic_channel_trigger_txku(ctx.qc->ch)) {
+        quic_unlock(ctx.qc);
+        return 0;
+    }
+
+    quic_unlock(ctx.qc);
+    return 1;
+}
+
+/*
+ * SSL_get_key_update_type
+ * -----------------------
+ */
+int ossl_quic_get_key_update_type(const SSL *s)
+{
+    /*
+     * We always handle key updates immediately so a key update is never
+     * pending.
+     */
+    return SSL_KEY_UPDATE_NONE;
+}
+
+/*
  * QUIC Front-End I/O API: SSL_CTX Management
  * ==========================================
  */
@@ -2725,4 +2796,19 @@ int ossl_quic_num_ciphers(void)
 const SSL_CIPHER *ossl_quic_get_cipher(unsigned int u)
 {
     return NULL;
+}
+
+/*
+ * Internal Testing APIs
+ * =====================
+ */
+
+QUIC_CHANNEL *ossl_quic_conn_get_channel(SSL *s)
+{
+    QCTX ctx;
+
+    if (!expect_quic_conn_only(s, &ctx))
+        return NULL;
+
+    return ctx.qc->ch;
 }

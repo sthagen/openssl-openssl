@@ -14,6 +14,7 @@
 # include <openssl/bio.h>
 # include "internal/quic_record_rx.h" /* OSSL_QRX */
 # include "internal/quic_ackm.h"      /* OSSL_ACKM */
+# include "internal/quic_channel.h"   /* QUIC_CHANNEL */
 
 # ifndef OPENSSL_NO_QUIC
 
@@ -33,6 +34,8 @@ __owur long ossl_quic_ctx_ctrl(SSL_CTX *ctx, int cmd, long larg, void *parg);
 __owur long ossl_quic_callback_ctrl(SSL *s, int cmd, void (*fp) (void));
 __owur long ossl_quic_ctx_callback_ctrl(SSL_CTX *ctx, int cmd, void (*fp) (void));
 __owur size_t ossl_quic_pending(const SSL *s);
+__owur int ossl_quic_key_update(SSL *s, int update_type);
+__owur int ossl_quic_get_key_update_type(const SSL *s);
 __owur int ossl_quic_num_ciphers(void);
 __owur const SSL_CIPHER *ossl_quic_get_cipher(unsigned int u);
 int ossl_quic_renegotiate_check(SSL *ssl, int initok);
@@ -93,12 +96,13 @@ __owur int ossl_quic_get_conn_close_info(SSL *ssl,
                                          size_t info_len);
 
 /*
- * Used to override ossl_time_now() for debug purposes. Must be called before
+ * Used to override ossl_time_now() for debug purposes. While this may be
+ * overridden at any time, expect strange results if you change it after
  * connecting.
  */
-void ossl_quic_conn_set_override_now_cb(SSL *s,
-                                        OSSL_TIME (*now_cb)(void *arg),
-                                        void *now_cb_arg);
+int ossl_quic_conn_set_override_now_cb(SSL *s,
+                                       OSSL_TIME (*now_cb)(void *arg),
+                                       void *now_cb_arg);
 
 /*
  * Condvar waiting in the assist thread doesn't support time faking as it relies
@@ -106,6 +110,9 @@ void ossl_quic_conn_set_override_now_cb(SSL *s,
  * spurious wakeup instead.
  */
 void ossl_quic_conn_force_assist_thread_wake(SSL *s);
+
+/* For use by tests only. */
+QUIC_CHANNEL *ossl_quic_conn_get_channel(SSL *s);
 
 # endif
 
