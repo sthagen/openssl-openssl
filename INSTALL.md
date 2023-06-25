@@ -583,6 +583,11 @@ access to algorithm internals that are not normally accessible.
 Additional information related to ACVP can be found at
 <https://github.com/usnistgov/ACVP>.
 
+### no-apps
+
+Do not build apps, e.g. the openssl program. This is handy for minimization.
+This option also disables tests.
+
 ### no-asm
 
 Do not use assembler code.
@@ -805,6 +810,10 @@ Don't build support for GOST based ciphersuites.
 Note that if this feature is enabled then GOST ciphersuites are only available
 if the GOST algorithms are also available through loading an externally supplied
 engine.
+
+### no-http
+
+Disable HTTP support.
 
 ### no-legacy
 
