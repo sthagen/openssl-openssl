@@ -91,9 +91,13 @@ static BIO *create_socket_bio(const char *hostname, const char *port)
     return bio;
 }
 
-/* Server hostname and port details */
-#define HOSTNAME "www.example.com"
-#define PORT     "443"
+/* Server hostname and port details. Must be in quotes */
+#ifndef HOSTNAME
+# define HOSTNAME "www.example.com"
+#endif
+#ifndef PORT
+# define PORT     "443"
+#endif
 
 /*
  * Simple application to send a basic HTTP/1.0 request to a server and
@@ -153,7 +157,7 @@ int main(void)
 
     /*
      * Create the underlying transport socket/BIO and associate it with the
-     * connection
+     * connection.
      */
     bio = create_socket_bio(HOSTNAME, PORT);
     if (bio == NULL) {
@@ -227,7 +231,7 @@ int main(void)
     if (SSL_get_error(ssl, 0) != SSL_ERROR_ZERO_RETURN) {
         /*
          * Some error occurred other than a graceful close down by the
-         * peer
+         * peer.
          */
         printf ("Failed reading remaining data\n");
         goto end;

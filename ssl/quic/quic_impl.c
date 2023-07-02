@@ -339,6 +339,7 @@ SSL *ossl_quic_new(SSL_CTX *ctx)
     qc->default_stream_mode     = SSL_DEFAULT_STREAM_MODE_AUTO_BIDI;
     qc->default_ssl_mode        = qc->ssl.ctx->mode;
     qc->default_blocking        = 1;
+    qc->blocking                = 1;
     qc->incoming_stream_policy  = SSL_INCOMING_STREAM_POLICY_AUTO;
     qc->last_error              = SSL_ERROR_NONE;
 
@@ -580,7 +581,7 @@ static void qc_set_default_xso_keep_ref(QUIC_CONNECTION *qc, QUIC_XSO *xso,
              */
             assert(*old_xso == NULL);
 
-            CRYPTO_DOWN_REF(&qc->ssl.references, &refs, &qc->ssl.lock);
+            CRYPTO_DOWN_REF(&qc->ssl.references, &refs);
             assert(refs > 0);
         }
     }
@@ -2310,7 +2311,7 @@ int ossl_quic_attach_stream(SSL *conn, SSL *stream)
      * It is a caller error for the XSO being attached as a default XSO to have
      * more than one ref.
      */
-    if (!CRYPTO_GET_REF(&xso->ssl.references, &nref, &xso->ssl.lock)) {
+    if (!CRYPTO_GET_REF(&xso->ssl.references, &nref)) {
         quic_unlock(ctx.qc);
         return QUIC_RAISE_NON_NORMAL_ERROR(&ctx, ERR_R_INTERNAL_ERROR,
                                            "ref");
