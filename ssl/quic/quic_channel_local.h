@@ -399,6 +399,12 @@ struct quic_channel_st {
      * If set, RXKU is expected (because we initiated a spontaneous TXKU).
      */
     unsigned int                    rxku_expected                       : 1;
+
+    /* Permanent net error encountered */
+    unsigned int                    net_error                           : 1;
+
+    /* Saved error stack in case permanent error was encountered */
+    ERR_STATE                       *err_state;
 };
 
 # endif

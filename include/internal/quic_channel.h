@@ -216,6 +216,14 @@ void ossl_quic_channel_raise_protocol_error(QUIC_CHANNEL *ch,
                                             uint64_t error_code,
                                             uint64_t frame_type,
                                             const char *reason);
+/*
+ * Returns 1 if permanent net error was detected on the QUIC_CHANNEL,
+ * 0 otherwise.
+ */
+int ossl_quic_channel_net_error(QUIC_CHANNEL *ch);
+
+/* Restore saved error state (best effort) */
+void ossl_quic_channel_restore_err_state(QUIC_CHANNEL *ch);
 
 /* For RXDP use. */
 void ossl_quic_channel_on_remote_conn_close(QUIC_CHANNEL *ch,
@@ -340,6 +348,7 @@ uint64_t ossl_quic_channel_get_rx_key_epoch(QUIC_CHANNEL *ch);
 
 /* Artificially trigger a spontaneous TXKU if possible. */
 int ossl_quic_channel_trigger_txku(QUIC_CHANNEL *ch);
+int ossl_quic_channel_has_pending(const QUIC_CHANNEL *ch);
 
 # endif
 

@@ -85,6 +85,9 @@ struct quic_xso_st {
     /* SSL_set_mode */
     uint32_t                        ssl_mode;
 
+    /* SSL_set_options */
+    uint64_t                        ssl_options;
+
     /*
      * Last 'normal' error during an app-level I/O operation, used by
      * SSL_get_error(); used to track data-path errors like SSL_ERROR_WANT_READ
@@ -185,6 +188,9 @@ struct quic_conn_st {
     /* SSL_set_mode. This is not used directly but inherited by new XSOs. */
     uint32_t                        default_ssl_mode;
 
+    /* SSL_set_options. This is not used directly but inherited by new XSOs. */
+    uint64_t                        default_ssl_options;
+
     /* SSL_set_incoming_stream_policy. */
     int                             incoming_stream_policy;
     uint64_t                        incoming_stream_aec;
@@ -217,6 +223,10 @@ int ossl_quic_trace(int write_p, int version, int content_type,
                     const void *buf, size_t msglen, SSL *ssl, void *arg);
 
 #  define OSSL_QUIC_ANY_VERSION 0xFFFFF
+#  define IS_QUIC_METHOD(m) \
+    ((m) == OSSL_QUIC_client_method() || \
+     (m) == OSSL_QUIC_client_thread_method())
+#  define IS_QUIC_CTX(ctx)          IS_QUIC_METHOD((ctx)->method)
 
 #  define QUIC_CONNECTION_FROM_SSL_int(ssl, c)   \
      ((ssl) == NULL ? NULL                       \
@@ -247,6 +257,8 @@ int ossl_quic_trace(int write_p, int version, int content_type,
 #  define QUIC_XSO_FROM_SSL_int(ssl, c) NULL
 #  define SSL_CONNECTION_FROM_QUIC_SSL_int(ssl, c) NULL
 #  define IS_QUIC(ssl) 0
+#  define IS_QUIC_CTX(ctx) 0
+#  define IS_QUIC_METHOD(m) 0
 # endif
 
 # define QUIC_CONNECTION_FROM_SSL(ssl) \

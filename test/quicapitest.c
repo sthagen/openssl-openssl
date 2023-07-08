@@ -17,6 +17,7 @@
 #include "helpers/quictestlib.h"
 #include "testutil.h"
 #include "testutil/output.h"
+#include "../ssl/ssl_local.h"
 
 static OSSL_LIB_CTX *libctx = NULL;
 static OSSL_PROVIDER *defctxnull = NULL;
@@ -27,10 +28,19 @@ static char *datadir = NULL;
 
 static int is_fips = 0;
 
+/* The ssltrace test assumes some options are switched on/off */
+#if !defined(OPENSSL_NO_SSL_TRACE) && !defined(OPENSSL_NO_EC) \
+    && defined(OPENSSL_NO_ZLIB) && defined(OPENSSL_NO_BROTLI) \
+    && defined(OPENSSL_NO_ZSTD) && !defined(OPENSSL_NO_ECX) \
+    && !defined(OPENSSL_NO_DH)
+# define DO_SSL_TRACE_TEST
+#endif
+
 /*
  * Test that we read what we've written.
  * Test 0: Non-blocking
  * Test 1: Blocking
+ * Test 2: Blocking, introduce socket error, test error handling.
  */
 static int test_quic_write_read(int idx)
 {
@@ -45,18 +55,18 @@ static int test_quic_write_read(int idx)
     int ssock = 0, csock = 0;
     uint64_t sid = UINT64_MAX;
 
-    if (idx == 1 && !qtest_supports_blocking())
+    if (idx >= 1 && !qtest_supports_blocking())
         return TEST_skip("Blocking tests not supported in this build");
 
     if (!TEST_ptr(cctx)
             || !TEST_true(qtest_create_quic_objects(libctx, cctx, cert, privkey,
-                                                    idx, &qtserv, &clientquic,
-                                                    NULL))
+                                                    idx == 1 ? QTEST_FLAG_BLOCK : 0,
+                                                    &qtserv, &clientquic, NULL))
             || !TEST_true(SSL_set_tlsext_host_name(clientquic, "localhost"))
             || !TEST_true(qtest_create_quic_connection(qtserv, clientquic)))
         goto end;
 
-    if (idx == 1) {
+    if (idx >= 1) {
         if (!TEST_true(BIO_get_fd(ossl_quic_tserver_get0_rbio(qtserv), &ssock)))
             goto end;
         if (!TEST_int_gt(csock = SSL_get_rfd(clientquic), 0))
@@ -70,7 +80,7 @@ static int test_quic_write_read(int idx)
         if (!TEST_true(SSL_write_ex(clientquic, msg, msglen, &numbytes))
             || !TEST_size_t_eq(numbytes, msglen))
             goto end;
-        if (idx == 1) {
+        if (idx >= 1) {
             do {
                 if (!TEST_true(wait_until_sock_readable(ssock)))
                     goto end;
@@ -86,12 +96,29 @@ static int test_quic_write_read(int idx)
                 goto end;
         }
 
+        if (idx >= 2 && j > 0)
+            /* Introduce permanent socket error */
+            BIO_closesocket(csock);
+
         ossl_quic_tserver_tick(qtserv);
         if (!TEST_true(ossl_quic_tserver_write(qtserv, sid, (unsigned char *)msg,
                                                msglen, &numbytes)))
             goto end;
         ossl_quic_tserver_tick(qtserv);
         SSL_handle_events(clientquic);
+
+        if (idx >= 2 && j > 0) {
+            if (!TEST_false(SSL_read_ex(clientquic, buf, 1, &numbytes))
+                    || !TEST_int_eq(SSL_get_error(clientquic, 0),
+                                    SSL_ERROR_SYSCALL)
+                    || !TEST_false(SSL_write_ex(clientquic, msg, msglen,
+                                                &numbytes))
+                    || !TEST_int_eq(SSL_get_error(clientquic, 0),
+                                    SSL_ERROR_SYSCALL))
+                goto end;
+            break;
+        }
+
         /*
          * In blocking mode the SSL_read_ex call will block until the socket is
          * readable and has our data. In non-blocking mode we're doing everything
@@ -207,7 +234,7 @@ static int test_version(void)
     return testresult;
 }
 
-#if !defined(OPENSSL_NO_SSL_TRACE) && !defined(OPENSSL_NO_EC) && defined(OPENSSL_NO_ZLIB)
+#if defined(DO_SSL_TRACE_TEST)
 static void strip_line_ends(char *str)
 {
     size_t i;
@@ -313,6 +340,270 @@ static int test_ssl_trace(void)
 }
 #endif
 
+static int ensure_valid_ciphers(const STACK_OF(SSL_CIPHER) *ciphers)
+{
+    size_t i;
+
+    /* Ensure ciphersuite list is suitably subsetted. */
+    for (i = 0; i < (size_t)sk_SSL_CIPHER_num(ciphers); ++i) {
+        const SSL_CIPHER *cipher = sk_SSL_CIPHER_value(ciphers, i);
+        switch (SSL_CIPHER_get_id(cipher)) {
+            case TLS1_3_CK_AES_128_GCM_SHA256:
+            case TLS1_3_CK_AES_256_GCM_SHA384:
+            case TLS1_3_CK_CHACHA20_POLY1305_SHA256:
+                break;
+            default:
+                TEST_error("forbidden cipher: %s", SSL_CIPHER_get_name(cipher));
+                return 0;
+        }
+    }
+
+    return 1;
+}
+
+/*
+ * Test that handshake-layer APIs which shouldn't work don't work with QUIC.
+ */
+static int test_quic_forbidden_apis_ctx(void)
+{
+    int testresult = 0;
+    SSL_CTX *ctx = NULL;
+
+    if (!TEST_ptr(ctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_client_method())))
+        goto err;
+
+    /* This function returns 0 on success and 1 on error, and should fail. */
+    if (!TEST_true(SSL_CTX_set_tlsext_use_srtp(ctx, "SRTP_AEAD_AES_128_GCM")))
+        goto err;
+
+    /*
+     * List of ciphersuites we do and don't allow in QUIC.
+     */
+#define QUIC_CIPHERSUITES \
+    "TLS_AES_128_GCM_SHA256:"           \
+    "TLS_AES_256_GCM_SHA384:"           \
+    "TLS_CHACHA20_POLY1305_SHA256"
+
+#define NON_QUIC_CIPHERSUITES           \
+    "TLS_AES_128_CCM_SHA256:"           \
+    "TLS_AES_256_CCM_SHA384:"           \
+    "TLS_AES_128_CCM_8_SHA256"
+
+    /* Set TLSv1.3 ciphersuite list for the SSL_CTX. */
+    if (!TEST_true(SSL_CTX_set_ciphersuites(ctx,
+                                            QUIC_CIPHERSUITES ":"
+                                            NON_QUIC_CIPHERSUITES)))
+        goto err;
+
+    /*
+     * Forbidden ciphersuites should show up in SSL_CTX accessors, they are only
+     * filtered in SSL_get1_supported_ciphers, so we don't check for
+     * non-inclusion here.
+     */
+
+    testresult = 1;
+err:
+    SSL_CTX_free(ctx);
+    return testresult;
+}
+
+static int test_quic_forbidden_apis(void)
+{
+    int testresult = 0;
+    SSL_CTX *ctx = NULL;
+    SSL *ssl = NULL;
+    STACK_OF(SSL_CIPHER) *ciphers = NULL;
+
+    if (!TEST_ptr(ctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_client_method())))
+        goto err;
+
+    if (!TEST_ptr(ssl = SSL_new(ctx)))
+        goto err;
+
+    /* This function returns 0 on success and 1 on error, and should fail. */
+    if (!TEST_true(SSL_set_tlsext_use_srtp(ssl, "SRTP_AEAD_AES_128_GCM")))
+        goto err;
+
+    /* Set TLSv1.3 ciphersuite list for the SSL_CTX. */
+    if (!TEST_true(SSL_set_ciphersuites(ssl,
+                                        QUIC_CIPHERSUITES ":"
+                                        NON_QUIC_CIPHERSUITES)))
+        goto err;
+
+    /* Non-QUIC ciphersuites must not appear in supported ciphers list. */
+    if (!TEST_ptr(ciphers = SSL_get1_supported_ciphers(ssl))
+        || !TEST_true(ensure_valid_ciphers(ciphers)))
+        goto err;
+
+    testresult = 1;
+err:
+    sk_SSL_CIPHER_free(ciphers);
+    SSL_free(ssl);
+    SSL_CTX_free(ctx);
+    return testresult;
+}
+
+static int test_quic_forbidden_options(void)
+{
+    int testresult = 0;
+    SSL_CTX *ctx = NULL;
+    SSL *ssl = NULL;
+    char buf[16];
+    size_t len;
+
+    if (!TEST_ptr(ctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_client_method())))
+        goto err;
+
+    /* QUIC options restrictions do not affect SSL_CTX */
+    SSL_CTX_set_options(ctx, UINT64_MAX);
+
+    if (!TEST_uint64_t_eq(SSL_CTX_get_options(ctx), UINT64_MAX))
+        goto err;
+
+    /* Set options on CTX which should not be inherited (tested below). */
+    SSL_CTX_set_read_ahead(ctx, 1);
+    SSL_CTX_set_max_early_data(ctx, 1);
+    SSL_CTX_set_recv_max_early_data(ctx, 1);
+    SSL_CTX_set_quiet_shutdown(ctx, 1);
+
+    if (!TEST_ptr(ssl = SSL_new(ctx)))
+        goto err;
+
+    /* Only permitted options get transferred to SSL object */
+    if (!TEST_uint64_t_eq(SSL_get_options(ssl), OSSL_QUIC_PERMITTED_OPTIONS))
+        goto err;
+
+    /* Try again using SSL_set_options */
+    SSL_set_options(ssl, UINT64_MAX);
+
+    if (!TEST_uint64_t_eq(SSL_get_options(ssl), OSSL_QUIC_PERMITTED_OPTIONS))
+        goto err;
+
+    /* Clear everything */
+    SSL_clear_options(ssl, UINT64_MAX);
+
+    if (!TEST_uint64_t_eq(SSL_get_options(ssl), 0))
+        goto err;
+
+    /* Readahead */
+    if (!TEST_false(SSL_get_read_ahead(ssl)))
+        goto err;
+
+    SSL_set_read_ahead(ssl, 1);
+    if (!TEST_false(SSL_get_read_ahead(ssl)))
+        goto err;
+
+    /* Block padding */
+    if (!TEST_true(SSL_set_block_padding(ssl, 0))
+        || !TEST_true(SSL_set_block_padding(ssl, 1))
+        || !TEST_false(SSL_set_block_padding(ssl, 2)))
+        goto err;
+
+    /* Max fragment length */
+    if (!TEST_true(SSL_set_tlsext_max_fragment_length(ssl, TLSEXT_max_fragment_length_DISABLED))
+        || !TEST_false(SSL_set_tlsext_max_fragment_length(ssl, TLSEXT_max_fragment_length_512)))
+        goto err;
+
+    /* Max early data */
+    if (!TEST_false(SSL_set_recv_max_early_data(ssl, 1))
+        || !TEST_false(SSL_set_max_early_data(ssl, 1)))
+        goto err;
+
+    /* Read/Write */
+    if (!TEST_false(SSL_read_early_data(ssl, buf, sizeof(buf), &len))
+        || !TEST_false(SSL_write_early_data(ssl, buf, sizeof(buf), &len)))
+        goto err;
+
+    /* Buffer Management */
+    if (!TEST_true(SSL_alloc_buffers(ssl))
+        || !TEST_false(SSL_free_buffers(ssl)))
+        goto err;
+
+    /* Pipelining */
+    if (!TEST_false(SSL_set_max_send_fragment(ssl, 2))
+        || !TEST_false(SSL_set_split_send_fragment(ssl, 2))
+        || !TEST_false(SSL_set_max_pipelines(ssl, 2)))
+        goto err;
+
+    /* HRR */
+    if  (!TEST_false(SSL_stateless(ssl)))
+        goto err;
+
+    /* Quiet Shutdown */
+    if (!TEST_false(SSL_get_quiet_shutdown(ssl)))
+        goto err;
+
+    /* No duplication */
+    if (!TEST_ptr_null(SSL_dup(ssl)))
+        goto err;
+
+    /* No clear */
+    if (!TEST_false(SSL_clear(ssl)))
+        goto err;
+
+    testresult = 1;
+err:
+    SSL_free(ssl);
+    SSL_CTX_free(ctx);
+    return testresult;
+}
+
+static int test_quic_set_fd(int idx)
+{
+    int testresult = 0;
+    SSL_CTX *ctx = NULL;
+    SSL *ssl = NULL;
+    int fd = -1, resfd = -1;
+    BIO *bio = NULL;
+
+    if (!TEST_ptr(ctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_client_method())))
+        goto err;
+
+    if (!TEST_ptr(ssl = SSL_new(ctx)))
+        goto err;
+
+    if (!TEST_int_ge(fd = BIO_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP, 0), 0))
+        goto err;
+
+    if (idx == 0) {
+        if (!TEST_true(SSL_set_fd(ssl, fd)))
+            goto err;
+        if (!TEST_ptr(bio = SSL_get_rbio(ssl)))
+            goto err;
+        if (!TEST_ptr_eq(bio, SSL_get_wbio(ssl)))
+            goto err;
+    } else if (idx == 1) {
+        if (!TEST_true(SSL_set_rfd(ssl, fd)))
+            goto err;
+        if (!TEST_ptr(bio = SSL_get_rbio(ssl)))
+            goto err;
+        if (!TEST_ptr_null(SSL_get_wbio(ssl)))
+            goto err;
+    } else {
+        if (!TEST_true(SSL_set_wfd(ssl, fd)))
+            goto err;
+        if (!TEST_ptr(bio = SSL_get_wbio(ssl)))
+            goto err;
+        if (!TEST_ptr_null(SSL_get_rbio(ssl)))
+            goto err;
+    }
+
+    if (!TEST_int_eq(BIO_method_type(bio), BIO_TYPE_DGRAM))
+        goto err;
+
+    if (!TEST_true(BIO_get_fd(bio, &resfd))
+        || !TEST_int_eq(resfd, fd))
+        goto err;
+
+    testresult = 1;
+err:
+    SSL_free(ssl);
+    SSL_CTX_free(ctx);
+    if (fd >= 0)
+        BIO_closesocket(fd);
+    return testresult;
+}
+
 OPT_TEST_DECLARE_USAGE("provider config certsdir datadir\n")
 
 int setup_tests(void)
@@ -368,13 +659,16 @@ int setup_tests(void)
     if (privkey == NULL)
         goto err;
 
-    ADD_ALL_TESTS(test_quic_write_read, 2);
+    ADD_ALL_TESTS(test_quic_write_read, 3);
     ADD_TEST(test_ciphersuites);
     ADD_TEST(test_version);
-#if !defined(OPENSSL_NO_SSL_TRACE) && !defined(OPENSSL_NO_EC) && defined(OPENSSL_NO_ZLIB)
+#if defined(DO_SSL_TRACE_TEST)
     ADD_TEST(test_ssl_trace);
 #endif
-
+    ADD_TEST(test_quic_forbidden_apis_ctx);
+    ADD_TEST(test_quic_forbidden_apis);
+    ADD_TEST(test_quic_forbidden_options);
+    ADD_ALL_TESTS(test_quic_set_fd, 3);
     return 1;
  err:
     cleanup_tests();
