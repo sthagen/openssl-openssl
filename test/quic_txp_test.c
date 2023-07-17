@@ -1033,7 +1033,7 @@ static ossl_unused int check_stream_13(struct helper *h)
 {
     if (!TEST_uint64_t_eq(h->frame.reset_stream.stream_id, 42)
         || !TEST_uint64_t_eq(h->frame.reset_stream.app_error_code, 4568)
-        || !TEST_uint64_t_eq(h->frame.reset_stream.final_size, 8))
+        || !TEST_uint64_t_eq(h->frame.reset_stream.final_size, 0))
         return 0;
 
     return 1;
@@ -1055,7 +1055,6 @@ static const struct script_op script_13[] = {
     OP_EXPECT_FRAME(OSSL_QUIC_FRAME_TYPE_RESET_STREAM)
     OP_CHECK(check_stream_13)
     OP_NEXT_FRAME()
-    OP_EXPECT_FRAME(OSSL_QUIC_FRAME_TYPE_STREAM)
     OP_EXPECT_NO_FRAME()
     OP_RX_PKT_NONE()
     OP_TXP_GENERATE_NONE(TX_PACKETISER_ARCHETYPE_NORMAL)
@@ -1218,7 +1217,7 @@ static void skip_padding(struct helper *h)
 {
     uint64_t frame_type;
 
-    if (!ossl_quic_wire_peek_frame_header(&h->pkt, &frame_type))
+    if (!ossl_quic_wire_peek_frame_header(&h->pkt, &frame_type, NULL))
         return; /* EOF */
 
     if (frame_type == OSSL_QUIC_FRAME_TYPE_PADDING)
@@ -1297,7 +1296,7 @@ static int run_script(const struct script_op *script)
             break;
         case OPK_NEXT_FRAME:
             skip_padding(&h);
-            if (!ossl_quic_wire_peek_frame_header(&h.pkt, &h.frame_type)) {
+            if (!ossl_quic_wire_peek_frame_header(&h.pkt, &h.frame_type, NULL)) {
                 h.frame_type = UINT64_MAX;
                 break;
             }
@@ -1431,7 +1430,9 @@ static int run_script(const struct script_op *script)
                     || !TEST_true(ossl_quic_rxfc_init(&s->rxfc, &h.conn_rxfc,
                                                       1 * 1024 * 1024,
                                                       16 * 1024 * 1024,
-                                                      fake_now, NULL))) {
+                                                      fake_now, NULL))
+                    || !TEST_ptr(s->rstream = ossl_quic_rstream_new(&s->rxfc,
+                                                                    NULL, 1024))) {
                     ossl_quic_sstream_free(s->sstream);
                     ossl_quic_stream_map_release(h.args.qsm, s);
                     goto err;

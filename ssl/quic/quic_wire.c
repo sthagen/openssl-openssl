@@ -318,7 +318,8 @@ int ossl_quic_wire_encode_frame_streams_blocked(WPACKET *pkt,
 int ossl_quic_wire_encode_frame_new_conn_id(WPACKET *pkt,
                                             const OSSL_QUIC_FRAME_NEW_CONN_ID *f)
 {
-    if (f->conn_id.id_len > QUIC_MAX_CONN_ID_LEN)
+    if (f->conn_id.id_len < 1
+        || f->conn_id.id_len > QUIC_MAX_CONN_ID_LEN)
         return 0;
 
     if (!encode_frame_hdr(pkt, OSSL_QUIC_FRAME_TYPE_NEW_CONN_ID)
@@ -439,9 +440,10 @@ int ossl_quic_wire_encode_transport_param_cid(WPACKET *wpkt,
  * QUIC Wire Format Decoding
  * =========================
  */
-int ossl_quic_wire_peek_frame_header(PACKET *pkt, uint64_t *type)
+int ossl_quic_wire_peek_frame_header(PACKET *pkt, uint64_t *type,
+                                     int *was_minimal)
 {
-    return PACKET_peek_quic_vlint(pkt, type);
+    return PACKET_peek_quic_vlint_ex(pkt, type, was_minimal);
 }
 
 int ossl_quic_wire_skip_frame_header(PACKET *pkt, uint64_t *type)
@@ -682,6 +684,14 @@ int ossl_quic_wire_decode_frame_stream(PACKET *pkt,
             f->len = PACKET_remaining(pkt);
     }
 
+    /*
+     * RFC 9000 s. 19.8: "The largest offset delivered on a stream -- the sum of
+     * the offset and data length -- cannot exceed 2**62 - 1, as it is not
+     * possible to provide flow control credit for that data."
+     */
+    if (f->offset + f->len > (((uint64_t)1) << 62) - 1)
+        return 0;
+
     if (nodata) {
         f->data = NULL;
     } else {
@@ -773,6 +783,7 @@ int ossl_quic_wire_decode_frame_new_conn_id(PACKET *pkt,
             || !PACKET_get_quic_vlint(pkt, &f->retire_prior_to)
             || f->seq_num < f->retire_prior_to
             || !PACKET_get_1(pkt, &len)
+            || len < 1
             || len > QUIC_MAX_CONN_ID_LEN)
         return 0;
 
@@ -934,5 +945,41 @@ int ossl_quic_wire_decode_transport_param_cid(PACKET *pkt,
 
     cid->id_len = (unsigned char)len;
     memcpy(cid->id, body, cid->id_len);
+    return 1;
+}
+
+int ossl_quic_wire_decode_transport_param_preferred_addr(PACKET *pkt,
+                                                         QUIC_PREFERRED_ADDR *p)
+{
+    const unsigned char *body;
+    uint64_t id;
+    size_t len = 0;
+    PACKET pkt2;
+    unsigned int ipv4_port, ipv6_port, cidl;
+
+    body = ossl_quic_wire_decode_transport_param_bytes(pkt, &id, &len);
+    if (body == NULL
+        || len < QUIC_MIN_ENCODED_PREFERRED_ADDR_LEN
+        || len > QUIC_MAX_ENCODED_PREFERRED_ADDR_LEN
+        || id != QUIC_TPARAM_PREFERRED_ADDR)
+        return 0;
+
+    if (!PACKET_buf_init(&pkt2, body, len))
+        return 0;
+
+    if (!PACKET_copy_bytes(&pkt2, p->ipv4, sizeof(p->ipv4))
+        || !PACKET_get_net_2(&pkt2, &ipv4_port)
+        || !PACKET_copy_bytes(&pkt2, p->ipv6, sizeof(p->ipv6))
+        || !PACKET_get_net_2(&pkt2, &ipv6_port)
+        || !PACKET_get_1(&pkt2, &cidl)
+        || cidl > QUIC_MAX_CONN_ID_LEN
+        || !PACKET_copy_bytes(&pkt2, p->cid.id, cidl)
+        || !PACKET_copy_bytes(&pkt2, p->stateless_reset_token,
+                              sizeof(p->stateless_reset_token)))
+        return 0;
+
+    p->ipv4_port    = (uint16_t)ipv4_port;
+    p->ipv6_port    = (uint16_t)ipv6_port;
+    p->cid.id_len   = (unsigned char)cidl;
     return 1;
 }

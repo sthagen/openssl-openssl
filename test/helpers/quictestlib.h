@@ -44,6 +44,10 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
 /* Where QTEST_FLAG_FAKE_TIME is used, add millis to the current time */
 void qtest_add_time(uint64_t millis);
 
+QTEST_FAULT *qtest_create_injector(QUIC_TSERVER *ts);
+
+BIO_METHOD *qtest_get_bio_method(void);
+
 /*
  * Free up a Fault Injector instance
  */
@@ -75,6 +79,12 @@ int qtest_check_server_transport_err(QUIC_TSERVER *qtserv, uint64_t code);
 int qtest_check_server_protocol_err(QUIC_TSERVER *qtserv);
 
 /*
+ * Confirm the server has received a frame encoding error. Equivalent to calling
+ * qtest_check_server_transport_err with a code of QUIC_ERR_FRAME_ENCODING_ERROR
+ */
+int qtest_check_server_frame_encoding_err(QUIC_TSERVER *qtserv);
+
+/*
  * Enable tests to listen for pre-encryption QUIC packets being sent
  */
 typedef int (*qtest_fault_on_packet_plain_cb)(QTEST_FAULT *fault,
@@ -102,7 +112,7 @@ int qtest_fault_resize_plain_packet(QTEST_FAULT *fault, size_t newlen);
  * Prepend frame data into a packet. To be called from a packet_plain_listener
  * callback
  */
-int qtest_fault_prepend_frame(QTEST_FAULT *fault, unsigned char *frame,
+int qtest_fault_prepend_frame(QTEST_FAULT *fault, const unsigned char *frame,
                               size_t frame_len);
 
 /*

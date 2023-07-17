@@ -64,8 +64,6 @@ struct qtest_fault {
 static void packet_plain_finish(void *arg);
 static void handshake_finish(void *arg);
 
-static BIO_METHOD *get_bio_method(void);
-
 static OSSL_TIME fake_now;
 
 static OSSL_TIME fake_now_cb(void *arg)
@@ -88,9 +86,12 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
     *qtserv = NULL;
     if (fault != NULL)
         *fault = NULL;
-    *cssl = SSL_new(clientctx);
-    if (!TEST_ptr(*cssl))
-        return 0;
+
+    if (*cssl == NULL) {
+        *cssl = SSL_new(clientctx);
+        if (!TEST_ptr(*cssl))
+            return 0;
+    }
 
     /* SSL_set_alpn_protos returns 0 for success! */
     if (!TEST_false(SSL_set_alpn_protos(*cssl, alpn, sizeof(alpn))))
@@ -152,7 +153,7 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
             goto err;
     }
 
-    fisbio = BIO_new(get_bio_method());
+    fisbio = BIO_new(qtest_get_bio_method());
     if (!TEST_ptr(fisbio))
         goto err;
 
@@ -201,6 +202,19 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
 void qtest_add_time(uint64_t millis)
 {
     fake_now = ossl_time_add(fake_now, ossl_ms2time(millis));
+}
+
+QTEST_FAULT *qtest_create_injector(QUIC_TSERVER *ts)
+{
+    QTEST_FAULT *f;
+
+    f = OPENSSL_zalloc(sizeof(*f));
+    if (f == NULL)
+        return NULL;
+
+    f->qtserv = ts;
+    return f;
+
 }
 
 int qtest_supports_blocking(void)
@@ -344,6 +358,7 @@ int qtest_check_server_transport_err(QUIC_TSERVER *qtserv, uint64_t code)
     cause = ossl_quic_tserver_get_terminate_cause(qtserv);
     if  (!TEST_ptr(cause)
             || !TEST_true(cause->remote)
+            || !TEST_false(cause->app)
             || !TEST_uint64_t_eq(cause->error_code, code))
         return 0;
 
@@ -353,6 +368,11 @@ int qtest_check_server_transport_err(QUIC_TSERVER *qtserv, uint64_t code)
 int qtest_check_server_protocol_err(QUIC_TSERVER *qtserv)
 {
     return qtest_check_server_transport_err(qtserv, QUIC_ERR_PROTOCOL_VIOLATION);
+}
+
+int qtest_check_server_frame_encoding_err(QUIC_TSERVER *qtserv)
+{
+    return qtest_check_server_transport_err(qtserv, QUIC_ERR_FRAME_ENCODING_ERROR);
 }
 
 void qtest_fault_free(QTEST_FAULT *fault)
@@ -478,7 +498,7 @@ int qtest_fault_resize_plain_packet(QTEST_FAULT *fault, size_t newlen)
  * Prepend frame data into a packet. To be called from a packet_plain_listener
  * callback
  */
-int qtest_fault_prepend_frame(QTEST_FAULT *fault, unsigned char *frame,
+int qtest_fault_prepend_frame(QTEST_FAULT *fault, const unsigned char *frame,
                               size_t frame_len)
 {
     unsigned char *buf;
@@ -810,7 +830,7 @@ static long pcipher_ctrl(BIO *b, int cmd, long larg, void *parg)
     return BIO_ctrl(next, cmd, larg, parg);
 }
 
-static BIO_METHOD *get_bio_method(void)
+BIO_METHOD *qtest_get_bio_method(void)
 {
     BIO_METHOD *tmp;
 

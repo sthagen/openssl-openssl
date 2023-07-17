@@ -10,6 +10,7 @@
 #include "internal/quic_txp.h"
 #include "internal/quic_fifd.h"
 #include "internal/quic_stream_map.h"
+#include "internal/quic_error.h"
 #include "internal/common.h"
 #include <openssl/err.h>
 
@@ -318,7 +319,7 @@ static int tx_helper_commit(struct tx_helper *h)
         PACKET pkt;
 
         if (!PACKET_buf_init(&pkt, h->txn.data, l)
-                || !ossl_quic_wire_peek_frame_header(&pkt, &ftype)) {
+                || !ossl_quic_wire_peek_frame_header(&pkt, &ftype, NULL)) {
             tx_helper_end(h, 0);
             return 0;
         }
@@ -656,7 +657,7 @@ static const struct archetype_data archetypes[QUIC_ENC_LEVEL_NUM][TX_PACKETISER_
             /*allow_stream_rel                =*/ 0,
             /*allow_conn_fc                   =*/ 0,
             /*allow_conn_close                =*/ 1,
-            /*allow_cfq_other                 =*/ 1,
+            /*allow_cfq_other                 =*/ 0,
             /*allow_new_token                 =*/ 0,
             /*allow_force_ack_eliciting       =*/ 1,
         },
@@ -693,7 +694,7 @@ static const struct archetype_data archetypes[QUIC_ENC_LEVEL_NUM][TX_PACKETISER_
             /*allow_stream_rel                =*/ 0,
             /*allow_conn_fc                   =*/ 0,
             /*allow_conn_close                =*/ 1,
-            /*allow_cfq_other                 =*/ 1,
+            /*allow_cfq_other                 =*/ 0,
             /*allow_new_token                 =*/ 0,
             /*allow_force_ack_eliciting       =*/ 1,
         },
@@ -820,7 +821,37 @@ static int txp_el_pending(OSSL_QUIC_TX_PACKETISER *txp, uint32_t enc_level,
     if (!ossl_qtx_is_enc_level_provisioned(txp->args.qtx, enc_level))
         return 0;
 
-    if (*conn_close_enc_level > enc_level)
+    /*
+     * We can produce CONNECTION_CLOSE frames on any EL in principle, which
+     * means we need to choose which EL we would prefer to use. After a
+     * connection is fully established we have only one provisioned EL and this
+     * is a non-issue. Where multiple ELs are provisioned, it is possible the
+     * peer does not have the keys for the EL yet, which suggests in general it
+     * is preferable to use the lowest EL which is still provisioned.
+     *
+     * However (RFC 9000 s. 12.5) we are also required to not send application
+     * CONNECTION_CLOSE frames in non-1-RTT ELs, so as to not potentially leak
+     * application data on a connection which has yet to be authenticated. Thus
+     * when we have an application CONNECTION_CLOSE frame queued and need to
+     * send it on a non-1-RTT EL, we have to convert it into a transport
+     * CONNECTION_CLOSE frame which contains no application data. Since this
+     * loses information, it suggests we should use the 1-RTT EL to avoid this
+     * if possible, even if a lower EL is also available.
+     *
+     * At the same time, just because we have the 1-RTT EL provisioned locally
+     * does not necessarily mean the peer does, for example if a handshake
+     * CRYPTO frame has been lost. It is fairly important that CONNECTION_CLOSE
+     * is signalled in a way we know our peer can decrypt, as we stop processing
+     * connection retransmission logic for real after connection close and
+     * simply 'blindly' retransmit the same CONNECTION_CLOSE frame.
+     *
+     * This is not a major concern for clients, since if a client has a 1-RTT EL
+     * provisioned the server is guaranteed to also have a 1-RTT EL provisioned.
+     *
+     * TODO(QUIC): Revisit this when server support is added.
+     */
+    if (*conn_close_enc_level > enc_level
+        && *conn_close_enc_level != QUIC_ENC_LEVEL_1RTT)
         *conn_close_enc_level = enc_level;
 
     if (!txp_get_archetype_data(enc_level, archetype, &a))
@@ -984,6 +1015,7 @@ static int txp_generate_for_el(OSSL_QUIC_TX_PACKETISER *txp, uint32_t enc_level,
     phdr.pn_len         = txp_determine_pn_len(txp);
     phdr.partial        = 0;
     phdr.fixed          = 1;
+    phdr.reserved       = 0;
     phdr.version        = QUIC_VERSION_1;
     phdr.dst_conn_id    = txp->args.cur_dcid;
     phdr.src_conn_id    = txp->args.cur_scid;
@@ -1161,8 +1193,7 @@ static void on_regen_notify(uint64_t frame_type, uint64_t stream_id,
                 if (s == NULL)
                     return;
 
-                s->want_stop_sending = 1;
-                ossl_quic_stream_map_update_state(txp->args.qsm, s);
+                ossl_quic_stream_map_schedule_stop_sending(txp->args.qsm, s);
             }
             break;
         case OSSL_QUIC_FRAME_TYPE_RESET_STREAM:
@@ -1209,7 +1240,11 @@ static void on_confirm_notify(uint64_t frame_type, uint64_t stream_id,
                 if (s == NULL)
                     return;
 
-                s->acked_reset_stream = 1;
+                /*
+                 * We must already be in RESET_SENT or RESET_RECVD if we are
+                 * here, so we don't need to check state here.
+                 */
+                ossl_quic_stream_map_notify_reset_stream_acked(txp->args.qsm, s);
                 ossl_quic_stream_map_update_state(txp->args.qsm, s);
             }
             break;
@@ -1279,12 +1314,37 @@ static int txp_generate_pre_token(OSSL_QUIC_TX_PACKETISER *txp,
     /* CONNECTION_CLOSE Frames (Regenerate) */
     if (a->allow_conn_close && txp->want_conn_close && chosen_for_conn_close) {
         WPACKET *wpkt = tx_helper_begin(h);
+        OSSL_QUIC_FRAME_CONN_CLOSE f, *pf = &txp->conn_close_frame;
 
         if (wpkt == NULL)
             return 0;
 
-        if (ossl_quic_wire_encode_frame_conn_close(wpkt,
-                                                   &txp->conn_close_frame)) {
+        /*
+         * Application CONNECTION_CLOSE frames may only be sent in the
+         * Application PN space, as otherwise they may be sent before a
+         * connection is authenticated and leak application data. Therefore, if
+         * we need to send a CONNECTION_CLOSE frame in another PN space and were
+         * given an application CONNECTION_CLOSE frame, convert it into a
+         * transport CONNECTION_CLOSE frame, removing any sensitive application
+         * data.
+         *
+         * RFC 9000 s. 10.2.3: "A CONNECTION_CLOSE of type 0x1d MUST be replaced
+         * by a CONNECTION_CLOSE of type 0x1c when sending the frame in Initial
+         * or Handshake packets. Otherwise, information about the application
+         * state might be revealed. Endpoints MUST clear the value of the Reason
+         * Phrase field and SHOULD use the APPLICATION_ERROR code when
+         * converting to a CONNECTION_CLOSE of type 0x1c."
+         */
+        if (pn_space != QUIC_PN_SPACE_APP && pf->is_app) {
+            pf = &f;
+            pf->is_app      = 0;
+            pf->frame_type  = 0;
+            pf->error_code  = QUIC_ERR_APPLICATION_ERROR;
+            pf->reason      = NULL;
+            pf->reason_len  = 0;
+        }
+
+        if (ossl_quic_wire_encode_frame_conn_close(wpkt, pf)) {
             if (!tx_helper_commit(h))
                 return 0;
         } else {
@@ -1783,7 +1843,6 @@ static int txp_generate_stream_related(OSSL_QUIC_TX_PACKETISER *txp,
                                        QUIC_STREAM **tmp_head)
 {
     QUIC_STREAM_ITER it;
-    void *rstream;
     WPACKET *wpkt;
     uint64_t cwm;
     QUIC_STREAM *stream, *snext;
@@ -1801,8 +1860,6 @@ static int txp_generate_stream_related(OSSL_QUIC_TX_PACKETISER *txp,
         stream->txp_drained                  = 0;
         stream->txp_blocked                  = 0;
         stream->txp_txfc_new_credit_consumed = 0;
-
-        rstream = stream->rstream;
 
         /* Stream Abort Frames (STOP_SENDING, RESET_STREAM) */
         if (stream->want_stop_sending) {
@@ -1831,13 +1888,18 @@ static int txp_generate_stream_related(OSSL_QUIC_TX_PACKETISER *txp,
         if (stream->want_reset_stream) {
             OSSL_QUIC_FRAME_RESET_STREAM f;
 
+            if (!ossl_assert(stream->send_state == QUIC_SSTREAM_STATE_RESET_SENT))
+                return 0;
+
             wpkt = tx_helper_begin(h);
             if (wpkt == NULL)
                 return 0; /* alloc error */
 
             f.stream_id         = stream->id;
             f.app_error_code    = stream->reset_stream_aec;
-            f.final_size        = ossl_quic_sstream_get_cur_size(stream->sstream);
+            if (!ossl_quic_stream_send_get_final_size(stream, &f.final_size))
+                return 0; /* should not be possible */
+
             if (!ossl_quic_wire_encode_frame_reset_stream(wpkt, &f)) {
                 tx_helper_rollback(h); /* can't fit */
                 txp_enlink_tmp(tmp_head, stream);
@@ -1850,10 +1912,29 @@ static int txp_generate_stream_related(OSSL_QUIC_TX_PACKETISER *txp,
             *have_ack_eliciting = 1;
             tx_helper_unrestrict(h); /* no longer need PING */
             stream->txp_sent_reset_stream = 1;
+
+            /*
+             * The final size of the stream as indicated by RESET_STREAM is used
+             * to ensure a consistent view of flow control state by both
+             * parties; if we happen to send a RESET_STREAM that consumes more
+             * flow control credit, make sure we account for that.
+             */
+            if (!ossl_assert(f.final_size <= ossl_quic_txfc_get_swm(&stream->txfc)))
+                return 0;
+
+            stream->txp_txfc_new_credit_consumed
+                = f.final_size - ossl_quic_txfc_get_swm(&stream->txfc);
         }
 
-        /* Stream Flow Control Frames (MAX_STREAM_DATA) */
-        if (rstream != NULL
+        /*
+         * Stream Flow Control Frames (MAX_STREAM_DATA)
+         *
+         * RFC 9000 s. 13.3: "An endpoint SHOULD stop sending MAX_STREAM_DATA
+         * frames when the receiving part of the stream enters a "Size Known" or
+         * "Reset Recvd" state." -- In practice, RECV is the only state
+         * in which it makes sense to generate more MAX_STREAM_DATA frames.
+         */
+        if (stream->recv_state == QUIC_RSTREAM_STATE_RECV
             && (stream->want_max_stream_data
                 || ossl_quic_rxfc_has_cwm_changed(&stream->rxfc, 0))) {
 
@@ -1878,9 +1959,22 @@ static int txp_generate_stream_related(OSSL_QUIC_TX_PACKETISER *txp,
             stream->txp_sent_fc = 1;
         }
 
-        /* Stream Data Frames (STREAM) */
-        if (stream->sstream != NULL) {
+        /*
+         * Stream Data Frames (STREAM)
+         *
+         * RFC 9000 s. 3.3: A sender MUST NOT send a STREAM [...] frame for a
+         * stream in the "Reset Sent" state [or any terminal state]. We don't
+         * send any more STREAM frames if we are sending, have sent, or are
+         * planning to send, RESET_STREAM. The other terminal state is Data
+         * Recvd, but txp_generate_stream_frames() is guaranteed to generate
+         * nothing in this case.
+         */
+        if (ossl_quic_stream_has_send_buffer(stream)
+            && !ossl_quic_stream_send_is_reset(stream)) {
             int packet_full = 0, stream_drained = 0;
+
+            if (!ossl_assert(!stream->want_reset_stream))
+                return 0;
 
             if (!txp_generate_stream_frames(txp, h, pn_space, tpkt,
                                             stream->id, stream->sstream,
@@ -2281,8 +2375,16 @@ static int txp_generate_for_el_actual(OSSL_QUIC_TX_PACKETISER *txp,
          */
         ossl_quic_stream_map_update_state(txp->args.qsm, stream);
 
-        if (stream->txp_drained)
+        if (stream->txp_drained) {
             assert(!ossl_quic_sstream_has_pending(stream->sstream));
+
+            /*
+             * Transition to DATA_SENT if stream has a final size and we have
+             * sent all data.
+             */
+            if (ossl_quic_sstream_get_final_size(stream->sstream, NULL))
+                ossl_quic_stream_map_notify_all_data_sent(txp->args.qsm, stream);
+        }
     }
 
     /* We have now sent the packet, so update state accordingly. */

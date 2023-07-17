@@ -66,7 +66,7 @@ static int ch_on_crypto_send(const unsigned char *buf, size_t buf_len,
                              size_t *consumed, void *arg);
 static OSSL_TIME get_time(void *arg);
 static uint64_t get_stream_limit(int uni, void *arg);
-static int rx_early_validate(QUIC_PN pn, int pn_space, void *arg);
+static int rx_late_validate(QUIC_PN pn, int pn_space, void *arg);
 static void rxku_detected(QUIC_PN pn, void *arg);
 static int ch_retry(QUIC_CHANNEL *ch,
                     const unsigned char *retry_token,
@@ -252,9 +252,9 @@ static int ch_init(QUIC_CHANNEL *ch)
     if ((ch->qrx = ossl_qrx_new(&qrx_args)) == NULL)
         goto err;
 
-    if (!ossl_qrx_set_early_validation_cb(ch->qrx,
-                                          rx_early_validate,
-                                          ch))
+    if (!ossl_qrx_set_late_validation_cb(ch->qrx,
+                                         rx_late_validate,
+                                         ch))
         goto err;
 
     if (!ossl_qrx_set_key_update_cb(ch->qrx,
@@ -522,7 +522,7 @@ static uint64_t get_stream_limit(int uni, void *arg)
  * Called by QRX to determine if a packet is potentially invalid before trying
  * to decrypt it.
  */
-static int rx_early_validate(QUIC_PN pn, int pn_space, void *arg)
+static int rx_late_validate(QUIC_PN pn, int pn_space, void *arg)
 {
     QUIC_CHANNEL *ch = arg;
 
@@ -1032,6 +1032,7 @@ static int ch_on_transport_params(const unsigned char *params,
     int got_max_udp_payload_size = 0;
     int got_max_idle_timeout = 0;
     int got_active_conn_id_limit = 0;
+    int got_disable_active_migration = 0;
     QUIC_CONN_ID cid;
     const char *reason = "bad transport parameter";
 
@@ -1343,24 +1344,67 @@ static int ch_on_transport_params(const unsigned char *params,
             break;
 
         case QUIC_TPARAM_PREFERRED_ADDR:
-            /* TODO(QUIC): Handle preferred address. */
-            if (ch->is_server) {
-                reason = TP_REASON_SERVER_ONLY("PREFERRED_ADDR");
-                goto malformed;
-            }
+            {
+                /* TODO(QUIC): Handle preferred address. */
+                QUIC_PREFERRED_ADDR pfa;
 
-            body = ossl_quic_wire_decode_transport_param_bytes(&pkt, &id, &len);
-            if (body == NULL) {
-                reason = TP_REASON_MALFORMED("PREFERRED_ADDR");
-                goto malformed;
-            }
+                /*
+                 * RFC 9000 s. 18.2: "A server that chooses a zero-length
+                 * connection ID MUST NOT provide a preferred address.
+                 * Similarly, a server MUST NOT include a zero-length connection
+                 * ID in this transport parameter. A client MUST treat a
+                 * violation of these requirements as a connection error of type
+                 * TRANSPORT_PARAMETER_ERROR."
+                 */
+                if (ch->is_server) {
+                    reason = TP_REASON_SERVER_ONLY("PREFERRED_ADDR");
+                    goto malformed;
+                }
 
+                if (ch->cur_remote_dcid.id_len == 0) {
+                    reason = "PREFERRED_ADDR provided for zero-length CID";
+                    goto malformed;
+                }
+
+                if (!ossl_quic_wire_decode_transport_param_preferred_addr(&pkt, &pfa)) {
+                    reason = TP_REASON_MALFORMED("PREFERRED_ADDR");
+                    goto malformed;
+                }
+
+                if (pfa.cid.id_len == 0) {
+                    reason = "zero-length CID in PREFERRED_ADDR";
+                    goto malformed;
+                }
+            }
             break;
 
         case QUIC_TPARAM_DISABLE_ACTIVE_MIGRATION:
             /* We do not currently handle migration, so nothing to do. */
+            if (got_disable_active_migration) {
+                /* must not appear more than once */
+                reason = TP_REASON_DUP("DISABLE_ACTIVE_MIGRATION");
+                goto malformed;
+            }
+
+            body = ossl_quic_wire_decode_transport_param_bytes(&pkt, &id, &len);
+            if (body == NULL || len > 0) {
+                reason = TP_REASON_MALFORMED("DISABLE_ACTIVE_MIGRATION");
+                goto malformed;
+            }
+
+            got_disable_active_migration = 1;
+            break;
+
         default:
-            /* Skip over and ignore. */
+            /*
+             * Skip over and ignore.
+             *
+             * RFC 9000 s. 7.4: We SHOULD treat duplicated transport parameters
+             * as a connection error, but we are not required to. Currently,
+             * handle this programmatically by checking for duplicates in the
+             * parameters that we recognise, as above, but don't bother
+             * maintaining a list of duplicates for anything we don't recognise.
+             */
             body = ossl_quic_wire_decode_transport_param_bytes(&pkt, &id,
                                                                &len);
             if (body == NULL)
@@ -1464,7 +1508,7 @@ static int ch_generate_transport_params(QUIC_CHANNEL *ch)
         goto err;
 
     if (!ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_ACTIVE_CONN_ID_LIMIT,
-                                                   2))
+                                                   QUIC_MIN_ACTIVE_CONN_ID_LIMIT))
         goto err;
 
     if (!ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_INITIAL_MAX_DATA,
@@ -1751,12 +1795,39 @@ static int ch_rx(QUIC_CHANNEL *ch)
     return 1;
 }
 
+static int bio_addr_eq(const BIO_ADDR *a, const BIO_ADDR *b)
+{
+    if (BIO_ADDR_family(a) != BIO_ADDR_family(b))
+        return 0;
+
+    switch (BIO_ADDR_family(a)) {
+        case AF_INET:
+            return !memcmp(&a->s_in.sin_addr,
+                           &b->s_in.sin_addr,
+                           sizeof(a->s_in.sin_addr))
+                && a->s_in.sin_port == b->s_in.sin_port;
+        case AF_INET6:
+            return !memcmp(&a->s_in6.sin6_addr,
+                           &b->s_in6.sin6_addr,
+                           sizeof(a->s_in6.sin6_addr))
+                && a->s_in6.sin6_port == b->s_in6.sin6_port;
+        default:
+            return 0; /* not supported */
+    }
+
+    return 1;
+}
+
 /* Handles the packet currently in ch->qrx_pkt->hdr. */
 static void ch_rx_handle_packet(QUIC_CHANNEL *ch)
 {
     uint32_t enc_level;
 
     assert(ch->qrx_pkt != NULL);
+
+    if (!ossl_quic_channel_is_active(ch))
+        /* Do not process packets once we are terminating. */
+        return;
 
     if (ossl_quic_pkt_type_is_encrypted(ch->qrx_pkt->hdr->type)) {
         if (!ch->have_received_enc_pkt) {
@@ -1774,6 +1845,57 @@ static void ch_rx_handle_packet(QUIC_CHANNEL *ch)
         if ((ch->el_discarded & (1U << enc_level)) != 0)
             /* Do not process packets from ELs we have already discarded. */
             return;
+    }
+
+    /*
+     * RFC 9000 s. 9.6: "If a client receives packets from a new server address
+     * when the client has not initiated a migration to that address, the client
+     * SHOULD discard these packets."
+     *
+     * We need to be a bit careful here as due to the BIO abstraction layer an
+     * application is liable to be weird and lie to us about peer addresses.
+     * Only apply this check if we actually are using a real AF_INET or AF_INET6
+     * address.
+     */
+    if (!ch->is_server
+        && ch->qrx_pkt->peer != NULL
+        && (BIO_ADDR_family(&ch->cur_peer_addr) == AF_INET
+            || BIO_ADDR_family(&ch->cur_peer_addr) == AF_INET6)
+        && !bio_addr_eq(ch->qrx_pkt->peer, &ch->cur_peer_addr))
+        return;
+
+    if (!ch->is_server
+        && ch->have_received_enc_pkt
+        && ossl_quic_pkt_type_has_scid(ch->qrx_pkt->hdr->type)) {
+        /*
+         * RFC 9000 s. 7.2: "Once a client has received a valid Initial packet
+         * from the server, it MUST discard any subsequent packet it receives on
+         * that connection with a different SCID."
+         */
+        if (!ossl_quic_conn_id_eq(&ch->qrx_pkt->hdr->src_conn_id,
+                                  &ch->init_scid))
+            return;
+    }
+
+    if (ossl_quic_pkt_type_has_version(ch->qrx_pkt->hdr->type)
+        && ch->qrx_pkt->hdr->version != QUIC_VERSION_1)
+        /*
+         * RFC 9000 s. 5.2.1: If a client receives a packet that uses a
+         * different version than it initially selected, it MUST discard the
+         * packet. We only ever use v1, so require it.
+         */
+        return;
+
+    /*
+     * RFC 9000 s. 17.2: "An endpoint MUST treat receipt of a packet that has a
+     * non-zero value for [the reserved bits] after removing both packet and
+     * header protection as a connection error of type PROTOCOL_VIOLATION."
+     */
+    if (ossl_quic_pkt_type_is_encrypted(ch->qrx_pkt->hdr->type)
+        && ch->qrx_pkt->hdr->reserved != 0) {
+        ossl_quic_channel_raise_protocol_error(ch, QUIC_ERR_PROTOCOL_VIOLATION,
+                                               0, "packet header reserved bits");
+        return;
     }
 
     /* Handle incoming packet. */
@@ -1847,6 +1969,19 @@ static void ch_rx_handle_packet(QUIC_CHANNEL *ch)
              */
             ossl_quic_channel_raise_protocol_error(ch, QUIC_ERR_KEY_UPDATE_ERROR,
                                                    0, "new packet with old keys");
+            break;
+        }
+
+        if (!ch->is_server
+            && ch->qrx_pkt->hdr->type == QUIC_PKT_TYPE_INITIAL
+            && ch->qrx_pkt->hdr->token_len > 0) {
+            /*
+             * RFC 9000 s. 17.2.2: Clients that receive an Initial packet with a
+             * non-zero Token Length field MUST either discard the packet or
+             * generate a connection error of type PROTOCOL_VIOLATION.
+             */
+            ossl_quic_channel_raise_protocol_error(ch, QUIC_ERR_PROTOCOL_VIOLATION,
+                                                   0, "client received initial token");
             break;
         }
 
@@ -1995,7 +2130,19 @@ static int ch_tx(QUIC_CHANNEL *ch)
 
     case TX_PACKETISER_RES_NO_PKT:
         break; /* No packet was sent */
+
     default:
+        /*
+         * One case where TXP can fail is if we reach a TX PN of 2**62 - 1. As
+         * per RFC 9000 s. 12.3, if this happens we MUST close the connection
+         * without sending a CONNECTION_CLOSE frame. This is actually handled as
+         * an emergent consequence of our design, as the TX packetiser will
+         * never transmit another packet when the TX PN reaches the limit.
+         *
+         * Calling the below function terminates the connection; its attempt to
+         * schedule a CONNECTION_CLOSE frame will not actually cause a packet to
+         * be transmitted for this reason.
+         */
         ossl_quic_channel_raise_protocol_error(ch, QUIC_ERR_INTERNAL_ERROR, 0,
                                                "internal error");
         break; /* Internal failure (e.g.  allocation, assertion) */
@@ -2214,6 +2361,13 @@ static int ch_retry(QUIC_CHANNEL *ch,
                     const QUIC_CONN_ID *retry_scid)
 {
     void *buf;
+
+    /*
+     * RFC 9000 s. 17.2.5.1: "A client MUST discard a Retry packet that contains
+     * a SCID field that is identical to the DCID field of its initial packet."
+     */
+    if (ossl_quic_conn_id_eq(&ch->init_dcid, retry_scid))
+        return 0;
 
     /* We change to using the SCID in the Retry packet as the DCID. */
     if (!ossl_quic_tx_packetiser_set_cur_dcid(ch->txp, retry_scid))
@@ -2480,7 +2634,6 @@ void ossl_quic_channel_on_new_conn_id(QUIC_CHANNEL *ch,
         return;
 
     /* We allow only two active connection ids; first check some constraints */
-
     if (ch->cur_remote_dcid.id_len == 0) {
         /* Changing from 0 length connection id is disallowed */
         ossl_quic_channel_raise_protocol_error(ch,
@@ -2543,11 +2696,26 @@ void ossl_quic_channel_on_new_conn_id(QUIC_CHANNEL *ch,
         ch->cur_remote_dcid = f->conn_id;
         ossl_quic_tx_packetiser_set_cur_dcid(ch->txp, &ch->cur_remote_dcid);
     }
+
     /*
      * RFC 9000-5.1.2: Upon receipt of an increased Retire Prior To
      * field, the peer MUST stop using the corresponding connection IDs
      * and retire them with RETIRE_CONNECTION_ID frames before adding the
      * newly provided connection ID to the set of active connection IDs.
+     */
+
+    /*
+     * Note: RFC 9000 s. 19.15 says:
+     *   "An endpoint that receives a NEW_CONNECTION_ID frame with a sequence
+     *    number smaller than the Retire Prior To field of a previously received
+     *    NEW_CONNECTION_ID frame MUST send a correspoonding
+     *    RETIRE_CONNECTION_ID frame that retires the newly received connection
+     *    ID, unless it has already done so for that sequence number."
+     *
+     * Since we currently always queue RETIRE_CONN_ID frames based on the Retire
+     * Prior To field of a NEW_CONNECTION_ID frame immediately upon receiving
+     * that NEW_CONNECTION_ID frame, by definition this will always be met.
+     * This may change in future when we change our CID handling.
      */
     while (new_retire_prior_to > ch->cur_retire_prior_to) {
         if (!ch_enqueue_retire_conn_id(ch, ch->cur_retire_prior_to))
@@ -2947,5 +3115,14 @@ int ossl_quic_channel_trigger_txku(QUIC_CHANNEL *ch)
 
     ch->ku_locally_initiated = 1;
     ch_trigger_txku(ch);
+    return 1;
+}
+
+int ossl_quic_channel_ping(QUIC_CHANNEL *ch)
+{
+    int pn_space = ossl_quic_enc_level_to_pn_space(ch->tx_enc_level);
+
+    ossl_quic_tx_packetiser_schedule_ack_eliciting(ch->txp, pn_space);
+
     return 1;
 }

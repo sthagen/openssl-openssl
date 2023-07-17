@@ -53,8 +53,6 @@ static int depack_do_frame_ping(PACKET *pkt, QUIC_CHANNEL *ch,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
     return 1;
 }
 
@@ -137,6 +135,7 @@ static int depack_do_frame_reset_stream(PACKET *pkt,
 {
     OSSL_QUIC_FRAME_RESET_STREAM frame_data;
     QUIC_STREAM *stream = NULL;
+    uint64_t fce;
 
     if (!ossl_quic_wire_decode_frame_reset_stream(pkt, &frame_data)) {
         ossl_quic_channel_raise_protocol_error(ch,
@@ -146,9 +145,6 @@ static int depack_do_frame_reset_stream(PACKET *pkt,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
-
     if (!depack_do_implicit_stream_create(ch, frame_data.stream_id,
                                           OSSL_QUIC_FRAME_TYPE_RESET_STREAM,
                                           &stream))
@@ -157,7 +153,7 @@ static int depack_do_frame_reset_stream(PACKET *pkt,
     if (stream == NULL)
         return 1; /* old deleted stream, not a protocol violation, ignore */
 
-    if (stream->rstream == NULL) {
+    if (!ossl_quic_stream_has_recv(stream)) {
         ossl_quic_channel_raise_protocol_error(ch,
                                                QUIC_ERR_STREAM_STATE_ERROR,
                                                OSSL_QUIC_FRAME_TYPE_RESET_STREAM,
@@ -166,8 +162,44 @@ static int depack_do_frame_reset_stream(PACKET *pkt,
         return 0;
     }
 
-    stream->peer_reset_stream       = 1;
-    stream->peer_reset_stream_aec   = frame_data.app_error_code;
+    /*
+     * The final size field of the RESET_STREAM frame must be used to determine
+     * how much flow control credit the aborted stream was considered to have
+     * consumed.
+     *
+     * We also need to ensure that if we already have a final size for the
+     * stream, the RESET_STREAM frame's Final Size field matches this; we SHOULD
+     * terminate the connection otherwise (RFC 9000 s. 4.5). The RXFC takes care
+     * of this for us.
+     */
+    if (!ossl_quic_rxfc_on_rx_stream_frame(&stream->rxfc,
+                                           frame_data.final_size, /*is_fin=*/1)) {
+        ossl_quic_channel_raise_protocol_error(ch,
+                                               QUIC_ERR_INTERNAL_ERROR,
+                                               OSSL_QUIC_FRAME_TYPE_RESET_STREAM,
+                                               "internal error (flow control)");
+        return 0;
+    }
+
+    /* Has a flow control error occurred? */
+    fce = ossl_quic_rxfc_get_error(&stream->rxfc, 0);
+    if (fce != QUIC_ERR_NO_ERROR) {
+        ossl_quic_channel_raise_protocol_error(ch,
+                                               fce,
+                                               OSSL_QUIC_FRAME_TYPE_RESET_STREAM,
+                                               "flow control violation");
+        return 0;
+    }
+
+    /*
+     * Depending on the receive part state this is handled either as a reset
+     * transition or a no-op (e.g. if a reset has already been received before,
+     * or the application already retired a FIN). Best effort - there are no
+     * protocol error conditions we need to check for here.
+     */
+    ossl_quic_stream_map_notify_reset_recv_part(&ch->qsm, stream,
+                                                frame_data.app_error_code,
+                                                frame_data.final_size);
 
     ossl_quic_stream_map_update_state(&ch->qsm, stream);
     return 1;
@@ -188,9 +220,6 @@ static int depack_do_frame_stop_sending(PACKET *pkt,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
-
     if (!depack_do_implicit_stream_create(ch, frame_data.stream_id,
                                           OSSL_QUIC_FRAME_TYPE_STOP_SENDING,
                                           &stream))
@@ -199,7 +228,7 @@ static int depack_do_frame_stop_sending(PACKET *pkt,
     if (stream == NULL)
         return 1; /* old deleted stream, not a protocol violation, ignore */
 
-    if (stream->sstream == NULL) {
+    if (!ossl_quic_stream_has_send(stream)) {
         ossl_quic_channel_raise_protocol_error(ch,
                                                QUIC_ERR_STREAM_STATE_ERROR,
                                                OSSL_QUIC_FRAME_TYPE_STOP_SENDING,
@@ -239,9 +268,6 @@ static int depack_do_frame_crypto(PACKET *pkt, QUIC_CHANNEL *ch,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
-
     rstream = ch->crypto_recv[ackm_data->pkt_space];
     if (!ossl_assert(rstream != NULL))
         /*
@@ -274,8 +300,18 @@ static int depack_do_frame_new_token(PACKET *pkt, QUIC_CHANNEL *ch,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
+    if (token_len == 0) {
+        /*
+         * RFC 9000 s. 19.7: "A client MUST treat receipt of a NEW_TOKEN frame
+         * with an empty Token field as a connection error of type
+         * FRAME_ENCODING_ERROR."
+         */
+        ossl_quic_channel_raise_protocol_error(ch,
+                                               QUIC_ERR_FRAME_ENCODING_ERROR,
+                                               OSSL_QUIC_FRAME_TYPE_NEW_TOKEN,
+                                               "zero-length NEW_TOKEN");
+        return 0;
+    }
 
     /* TODO(QUIC): ADD CODE to send |token| to the session manager */
 
@@ -427,6 +463,8 @@ static int depack_do_frame_stream(PACKET *pkt, QUIC_CHANNEL *ch,
     OSSL_QUIC_FRAME_STREAM frame_data;
     QUIC_STREAM *stream;
     uint64_t fce;
+    size_t rs_avail;
+    int rs_fin = 0;
 
     *datalen = 0;
 
@@ -437,9 +475,6 @@ static int depack_do_frame_stream(PACKET *pkt, QUIC_CHANNEL *ch,
                                                "decode error");
         return 0;
     }
-
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
 
     if (!depack_do_implicit_stream_create(ch, frame_data.stream_id,
                                           frame_type, &stream))
@@ -452,7 +487,7 @@ static int depack_do_frame_stream(PACKET *pkt, QUIC_CHANNEL *ch,
          */
         return 1;
 
-    if (stream->rstream == NULL) {
+    if (!ossl_quic_stream_has_recv(stream)) {
         ossl_quic_channel_raise_protocol_error(ch,
                                                QUIC_ERR_STREAM_STATE_ERROR,
                                                frame_type,
@@ -482,6 +517,45 @@ static int depack_do_frame_stream(PACKET *pkt, QUIC_CHANNEL *ch,
         return 0;
     }
 
+    switch (stream->recv_state) {
+    case QUIC_RSTREAM_STATE_RECV:
+    case QUIC_RSTREAM_STATE_SIZE_KNOWN:
+        /*
+         * It only makes sense to process incoming STREAM frames in these
+         * states.
+         */
+        break;
+
+    case QUIC_RSTREAM_STATE_DATA_RECVD:
+    case QUIC_RSTREAM_STATE_DATA_READ:
+    case QUIC_RSTREAM_STATE_RESET_RECVD:
+    case QUIC_RSTREAM_STATE_RESET_READ:
+    default:
+        /*
+         * We have no use for STREAM frames once the receive part reaches any of
+         * these states, so just ignore.
+         */
+        return 1;
+    }
+
+    /* If we are in RECV, auto-transition to SIZE_KNOWN on FIN. */
+    if (frame_data.is_fin
+        && !ossl_quic_stream_recv_get_final_size(stream, NULL)) {
+
+        /* State was already checked above, so can't fail. */
+        ossl_quic_stream_map_notify_size_known_recv_part(&ch->qsm, stream,
+                                                         frame_data.offset
+                                                         + frame_data.len);
+    }
+
+    /*
+     * If we requested STOP_SENDING do not bother buffering the data. Note that
+     * this must happen after RXFC checks above as even if we sent STOP_SENDING
+     * we must still enforce correct flow control (RFC 9000 s. 3.5).
+     */
+    if (stream->stop_sending)
+        return 1; /* not an error - packet reordering, etc. */
+
     /*
      * The receive stream buffer may or may not choose to consume the data
      * without copying by reffing the OSSL_QRX_PKT. In this case
@@ -494,6 +568,19 @@ static int depack_do_frame_stream(PACKET *pkt, QUIC_CHANNEL *ch,
                                       frame_data.len,
                                       frame_data.is_fin))
         return 0;
+
+    /*
+     * rs_fin will be 1 only if we can read all data up to and including the FIN
+     * without any gaps before it; this implies we have received all data. Avoid
+     * calling ossl_quic_rstream_available() where it is not necessary as it is
+     * more expensive.
+     */
+    if (stream->recv_state != QUIC_RSTREAM_STATE_SIZE_KNOWN
+        || !ossl_quic_rstream_available(stream->rstream, &rs_avail, &rs_fin))
+        return 0;
+
+    if (rs_fin)
+        ossl_quic_stream_map_notify_totally_received(&ch->qsm, stream);
 
     *datalen = frame_data.len;
 
@@ -540,9 +627,6 @@ static int depack_do_frame_max_data(PACKET *pkt, QUIC_CHANNEL *ch,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
-
     ossl_quic_txfc_bump_cwm(&ch->conn_txfc, max_data);
     ossl_quic_stream_map_visit(&ch->qsm, update_streams, ch);
     return 1;
@@ -565,9 +649,6 @@ static int depack_do_frame_max_stream_data(PACKET *pkt,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
-
     if (!depack_do_implicit_stream_create(ch, stream_id,
                                           OSSL_QUIC_FRAME_TYPE_MAX_STREAM_DATA,
                                           &stream))
@@ -576,7 +657,7 @@ static int depack_do_frame_max_stream_data(PACKET *pkt,
     if (stream == NULL)
         return 1; /* old deleted stream, not a protocol violation, ignore */
 
-    if (stream->sstream == NULL) {
+    if (!ossl_quic_stream_has_send(stream)) {
         ossl_quic_channel_raise_protocol_error(ch,
                                                QUIC_ERR_STREAM_STATE_ERROR,
                                                OSSL_QUIC_FRAME_TYPE_MAX_STREAM_DATA,
@@ -604,9 +685,6 @@ static int depack_do_frame_max_streams(PACKET *pkt,
                                                "decode error");
         return 0;
     }
-
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
 
     if (max_streams > (((uint64_t)1) << 60)) {
         ossl_quic_channel_raise_protocol_error(ch,
@@ -656,9 +734,6 @@ static int depack_do_frame_data_blocked(PACKET *pkt,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
-
     /* No-op - informative/debugging frame. */
     return 1;
 }
@@ -680,9 +755,6 @@ static int depack_do_frame_stream_data_blocked(PACKET *pkt,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
-
     /*
      * This is an informative/debugging frame, so we don't have to do anything,
      * but it does trigger stream creation.
@@ -691,6 +763,23 @@ static int depack_do_frame_stream_data_blocked(PACKET *pkt,
                                           OSSL_QUIC_FRAME_TYPE_STREAM_DATA_BLOCKED,
                                           &stream))
         return 0; /* error already raised for us */
+
+    if (stream == NULL)
+        return 1; /* old deleted stream, not a protocol violation, ignore */
+
+    if (!ossl_quic_stream_has_recv(stream)) {
+        /*
+         * RFC 9000 s. 19.14: "An endpoint that receives a STREAM_DATA_BLOCKED
+         * frame for a send-only stream MUST terminate the connection with error
+         * STREAM_STATE_ERROR."
+         */
+        ossl_quic_channel_raise_protocol_error(ch,
+                                               QUIC_ERR_STREAM_STATE_ERROR,
+                                               OSSL_QUIC_FRAME_TYPE_STREAM_DATA_BLOCKED,
+                                               "STREAM_DATA_BLOCKED frame for "
+                                               "TX only stream");
+        return 0;
+    }
 
     /* No-op - informative/debugging frame. */
     return 1;
@@ -711,8 +800,19 @@ static int depack_do_frame_streams_blocked(PACKET *pkt,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
+    if (max_data > (((uint64_t)1) << 60)) {
+        /*
+         * RFC 9000 s. 19.14: "This value cannot exceed 2**60, as it is not
+         * possible to encode stream IDs larger than 2**62 - 1. Receipt of a
+         * frame that encodes a larger stream ID MUST be treated as a connection
+         * error of type STREAM_LIMIT_ERROR or FRAME_ENCODING_ERROR."
+         */
+        ossl_quic_channel_raise_protocol_error(ch,
+                                               QUIC_ERR_STREAM_LIMIT_ERROR,
+                                               frame_type,
+                                               "invalid stream count limit");
+        return 0;
+    }
 
     /* No-op - informative/debugging frame. */
     return 1;
@@ -731,9 +831,6 @@ static int depack_do_frame_new_conn_id(PACKET *pkt,
                                                "decode error");
         return 0;
     }
-
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
 
     ossl_quic_channel_on_new_conn_id(ch, &frame_data);
 
@@ -754,10 +851,27 @@ static int depack_do_frame_retire_conn_id(PACKET *pkt,
         return 0;
     }
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
+    /*
+     * RFC 9000 s. 19.16: "An endpoint cannot send this frame if it was provided
+     * with a zero-length connection ID by its peer. An endpoint that provides a
+     * zero-length connection ID MUST treat receipt of a RETIRE_CONNECTION_ID
+     * frame as a connection error of type PROTOCOL_VIOLATION."
+     *
+     * Since we always use a zero-length SCID as a client, there is no case
+     * where it is valid for a server to send this. Our server support is
+     * currently non-conformant and for internal testing use; simply handle it
+     * as a no-op in this case.
+     *
+     * TODO(QUIC): Revise and implement correctly for server support.
+     */
+    if (!ch->is_server) {
+        ossl_quic_channel_raise_protocol_error(ch,
+                                               QUIC_ERR_PROTOCOL_VIOLATION,
+                                               OSSL_QUIC_FRAME_TYPE_RETIRE_CONN_ID,
+                                               "conn has zero-length CID");
+        return 0;
+    }
 
-    /* TODO(QUIC): Post MVP ADD CODE to send |seq_num| to the ch manager */
     return 1;
 }
 
@@ -774,9 +888,6 @@ static int depack_do_frame_path_challenge(PACKET *pkt,
                                                "decode error");
         return 0;
     }
-
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
 
     /* TODO(QUIC): ADD CODE to send |frame_data| to the ch manager */
 
@@ -796,9 +907,6 @@ static int depack_do_frame_path_response(PACKET *pkt,
                                                "decode error");
         return 0;
     }
-
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
 
     /* TODO(QUIC): ADD CODE to send |frame_data| to the ch manager */
 
@@ -823,9 +931,6 @@ static int depack_do_frame_handshake_done(PACKET *pkt,
     if (!ossl_quic_wire_decode_frame_handshake_done(pkt))
         return 0;
 
-    /* This frame makes the packet ACK eliciting */
-    ackm_data->is_ack_eliciting = 1;
-
     ossl_quic_channel_on_handshake_confirmed(ch);
     return 1;
 }
@@ -838,7 +943,21 @@ static int depack_process_frames(QUIC_CHANNEL *ch, PACKET *pkt,
 {
     uint32_t pkt_type = parent_pkt->hdr->type;
 
+    if (PACKET_remaining(pkt) == 0) {
+        /*
+         * RFC 9000 s. 12.4: An endpoint MUST treat receipt of a packet
+         * containing no frames as a connection error of type
+         * PROTOCOL_VIOLATION.
+         */
+        ossl_quic_channel_raise_protocol_error(ch,
+                                               QUIC_ERR_PROTOCOL_VIOLATION,
+                                               0,
+                                               "empty packet payload");
+        return 0;
+    }
+
     while (PACKET_remaining(pkt) > 0) {
+        int was_minimal;
         uint64_t frame_type;
         const unsigned char *sof = NULL;
         uint64_t datalen = 0;
@@ -846,8 +965,39 @@ static int depack_process_frames(QUIC_CHANNEL *ch, PACKET *pkt,
         if (ch->msg_callback != NULL)
             sof = PACKET_data(pkt);
 
-        if (!ossl_quic_wire_peek_frame_header(pkt, &frame_type))
+        if (!ossl_quic_wire_peek_frame_header(pkt, &frame_type, &was_minimal)) {
+            ossl_quic_channel_raise_protocol_error(ch,
+                                                   QUIC_ERR_PROTOCOL_VIOLATION,
+                                                   0,
+                                                   "malformed frame header");
             return 0;
+        }
+
+        if (!was_minimal) {
+            ossl_quic_channel_raise_protocol_error(ch,
+                                                   QUIC_ERR_PROTOCOL_VIOLATION,
+                                                   frame_type,
+                                                   "non-minimal frame type encoding");
+            return 0;
+        }
+
+        /*
+         * There are only a few frame types which are not ACK-eliciting. Handle
+         * these centrally to make error handling cases more resilient, as we
+         * should tell the ACKM about an ACK-eliciting frame even if it was not
+         * successfully handled.
+         */
+        switch (frame_type) {
+        case OSSL_QUIC_FRAME_TYPE_PADDING:
+        case OSSL_QUIC_FRAME_TYPE_ACK_WITHOUT_ECN:
+        case OSSL_QUIC_FRAME_TYPE_ACK_WITH_ECN:
+        case OSSL_QUIC_FRAME_TYPE_CONN_CLOSE_TRANSPORT:
+        case OSSL_QUIC_FRAME_TYPE_CONN_CLOSE_APP:
+            break;
+        default:
+            ackm_data->is_ack_eliciting = 1;
+            break;
+        }
 
         switch (frame_type) {
         case OSSL_QUIC_FRAME_TYPE_PING:
@@ -1120,9 +1270,8 @@ static int depack_process_frames(QUIC_CHANNEL *ch, PACKET *pkt,
 
         default:
             /* Unknown frame type */
-            ackm_data->is_ack_eliciting = 1;
             ossl_quic_channel_raise_protocol_error(ch,
-                                                   QUIC_ERR_PROTOCOL_VIOLATION,
+                                                   QUIC_ERR_FRAME_ENCODING_ERROR,
                                                    frame_type,
                                                    "Unknown frame type received");
             return 0;

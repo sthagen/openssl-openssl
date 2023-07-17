@@ -92,6 +92,9 @@ static void on_acked(void *arg)
             fifd->confirm_frame(OSSL_QUIC_FRAME_TYPE_RESET_STREAM,
                                 chunks[i].stream_id, pkt,
                                 fifd->confirm_frame_arg);
+
+        if (ossl_quic_sstream_is_totally_acked(sstream))
+            fifd->sstream_updated(chunks[i].stream_id, fifd->sstream_updated_arg);
     }
 
     /* GCR */
@@ -124,6 +127,12 @@ static void on_lost(void *arg)
         sstream_updated = 0;
 
         if (chunks[i].end >= chunks[i].start) {
+            /*
+             * Note: If the stream is being reset, we do not need to retransmit
+             * old data as this is pointless. In this case this will be handled
+             * by (sstream == NULL) above as the QSM will free the QUIC_SSTREAM
+             * and our call to get_sstream_by_id above will return NULL.
+             */
             ossl_quic_sstream_mark_lost(sstream,
                                         chunks[i].start, chunks[i].end);
             sstream_updated = 1;
