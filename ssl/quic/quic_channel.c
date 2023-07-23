@@ -36,6 +36,14 @@
  */
 #define MAX_NAT_INTERVAL (ossl_ms2time(25000))
 
+/*
+ * Our maximum ACK delay on the TX side. This is up to us to choose. Note that
+ * this could differ from QUIC_DEFAULT_MAX_DELAY in future as that is a protocol
+ * value which determines the value of the maximum ACK delay if the
+ * max_ack_delay transport parameter is not set.
+ */
+#define DEFAULT_MAX_ACK_DELAY   QUIC_DEFAULT_MAX_ACK_DELAY
+
 static void ch_rx_pre(QUIC_CHANNEL *ch);
 static int ch_rx(QUIC_CHANNEL *ch);
 static int ch_tx(QUIC_CHANNEL *ch);
@@ -292,6 +300,7 @@ static int ch_init(QUIC_CHANNEL *ch)
     if ((ch->qtls = ossl_quic_tls_new(&tls_args)) == NULL)
         goto err;
 
+    ch->tx_max_ack_delay        = DEFAULT_MAX_ACK_DELAY;
     ch->rx_max_ack_delay        = QUIC_DEFAULT_MAX_ACK_DELAY;
     ch->rx_ack_delay_exp        = QUIC_DEFAULT_ACK_DELAY_EXP;
     ch->rx_active_conn_id_limit = QUIC_MIN_ACTIVE_CONN_ID_LIMIT;
@@ -299,6 +308,9 @@ static int ch_init(QUIC_CHANNEL *ch)
     ch->tx_enc_level            = QUIC_ENC_LEVEL_INITIAL;
     ch->rx_enc_level            = QUIC_ENC_LEVEL_INITIAL;
     ch->txku_threshold_override = UINT64_MAX;
+
+    ossl_ackm_set_tx_max_ack_delay(ch->ackm, ossl_ms2time(ch->tx_max_ack_delay));
+    ossl_ackm_set_rx_max_ack_delay(ch->ackm, ossl_ms2time(ch->rx_max_ack_delay));
 
     /*
      * Determine the QUIC Transport Parameters and serialize the transport
@@ -1232,6 +1244,9 @@ static int ch_on_transport_params(const unsigned char *params,
             }
 
             ch->rx_max_ack_delay = v;
+            ossl_ackm_set_rx_max_ack_delay(ch->ackm,
+                                           ossl_ms2time(ch->rx_max_ack_delay));
+
             got_max_ack_delay = 1;
             break;
 
@@ -1509,6 +1524,11 @@ static int ch_generate_transport_params(QUIC_CHANNEL *ch)
 
     if (!ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_ACTIVE_CONN_ID_LIMIT,
                                                    QUIC_MIN_ACTIVE_CONN_ID_LIMIT))
+        goto err;
+
+    if (ch->tx_max_ack_delay != QUIC_DEFAULT_MAX_ACK_DELAY
+        && !ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_MAX_ACK_DELAY,
+                                                      ch->tx_max_ack_delay))
         goto err;
 
     if (!ossl_quic_wire_encode_transport_param_int(&wpkt, QUIC_TPARAM_INITIAL_MAX_DATA,
@@ -1806,11 +1826,13 @@ static int bio_addr_eq(const BIO_ADDR *a, const BIO_ADDR *b)
                            &b->s_in.sin_addr,
                            sizeof(a->s_in.sin_addr))
                 && a->s_in.sin_port == b->s_in.sin_port;
+#if OPENSSL_USE_IPV6
         case AF_INET6:
             return !memcmp(&a->s_in6.sin6_addr,
                            &b->s_in6.sin6_addr,
                            sizeof(a->s_in6.sin6_addr))
                 && a->s_in6.sin6_port == b->s_in6.sin6_port;
+#endif
         default:
             return 0; /* not supported */
     }
@@ -1859,8 +1881,12 @@ static void ch_rx_handle_packet(QUIC_CHANNEL *ch)
      */
     if (!ch->is_server
         && ch->qrx_pkt->peer != NULL
-        && (BIO_ADDR_family(&ch->cur_peer_addr) == AF_INET
-            || BIO_ADDR_family(&ch->cur_peer_addr) == AF_INET6)
+        && (
+               BIO_ADDR_family(&ch->cur_peer_addr) == AF_INET
+#if OPENSSL_USE_IPV6
+            || BIO_ADDR_family(&ch->cur_peer_addr) == AF_INET6
+#endif
+        )
         && !bio_addr_eq(ch->qrx_pkt->peer, &ch->cur_peer_addr))
         return;
 
@@ -2106,9 +2132,7 @@ static int ch_tx(QUIC_CHANNEL *ch)
      * Best effort. In particular if TXP fails for some reason we should still
      * flush any queued packets which we already generated.
      */
-    switch (ossl_quic_tx_packetiser_generate(ch->txp,
-                                             TX_PACKETISER_ARCHETYPE_NORMAL,
-                                             &status)) {
+    switch (ossl_quic_tx_packetiser_generate(ch->txp, &status)) {
     case TX_PACKETISER_RES_SENT_PKT:
         ch->have_sent_any_pkt = 1; /* Packet was sent */
 
@@ -2192,11 +2216,9 @@ static OSSL_TIME ch_determine_next_tick_deadline(QUIC_CHANNEL *ch)
         }
     }
 
-    /* When will CC let us send more? */
-    if (ossl_quic_tx_packetiser_has_pending(ch->txp, TX_PACKETISER_ARCHETYPE_NORMAL,
-                                            TX_PACKETISER_BYPASS_CC))
-        deadline = ossl_time_min(deadline,
-                                 ch->cc_method->get_wakeup_deadline(ch->cc_data));
+    /* Apply TXP wakeup deadline. */
+    deadline = ossl_time_min(deadline,
+                             ossl_quic_tx_packetiser_get_deadline(ch->txp));
 
     /* Is the terminating timer armed? */
     if (ossl_quic_channel_is_terminating(ch))
@@ -2770,10 +2792,14 @@ void ossl_quic_channel_raise_protocol_error(QUIC_CHANNEL *ch,
                                             const char *reason)
 {
     QUIC_TERMINATE_CAUSE tcause = {0};
+    int err_reason = error_code == QUIC_ERR_INTERNAL_ERROR
+                     ? ERR_R_INTERNAL_ERROR : SSL_R_QUIC_PROTOCOL_ERROR;
 
-    if (error_code == QUIC_ERR_INTERNAL_ERROR)
-        /* Internal errors might leave some errors on the stack. */
-        ch_save_err_state(ch);
+    ERR_raise_data(ERR_LIB_SSL, err_reason,
+                   "Error code: %llu Frame type: %llu Reason: %s",
+                   (unsigned long long) error_code,
+                   (unsigned long long) frame_type, reason);
+    ch_save_err_state(ch);
 
     tcause.error_code = error_code;
     tcause.frame_type = frame_type;

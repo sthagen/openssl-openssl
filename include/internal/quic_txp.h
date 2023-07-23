@@ -67,18 +67,10 @@ typedef void (ossl_quic_initial_token_free_fn)(const unsigned char *buf,
 
 void ossl_quic_tx_packetiser_free(OSSL_QUIC_TX_PACKETISER *txp);
 
-/* Generate normal packets containing most frame types. */
-#define TX_PACKETISER_ARCHETYPE_NORMAL      0
-/* Generate ACKs only. */
-#define TX_PACKETISER_ARCHETYPE_ACK_ONLY    1
-#define TX_PACKETISER_ARCHETYPE_NUM         2
-
 /*
  * Generates a datagram by polling the various ELs to determine if they want to
  * generate any frames, and generating a datagram which coalesces packets for
  * any ELs which do.
- *
- * archetype is a TX_PACKETISER_ARCHETYPE_* value.
  *
  * Returns TX_PACKETISER_RES_FAILURE on failure (e.g. allocation error),
  * TX_PACKETISER_RES_NO_PKT if no packets were sent (e.g. because nothing wants
@@ -96,21 +88,19 @@ typedef struct quic_txp_status_st {
 } QUIC_TXP_STATUS;
 
 int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
-                                     uint32_t archetype,
                                      QUIC_TXP_STATUS *status);
 
 /*
- * Returns 1 if one or more packets would be generated if
- * ossl_quic_tx_packetiser_generate were called.
- *
- * If TX_PACKETISER_BYPASS_CC is set in flags, congestion control is
- * ignored for the purposes of making this determination.
+ * Returns a deadline after which a call to ossl_quic_tx_packetiser_generate()
+ * might succeed even if it did not previously. This may return
+ * ossl_time_infinite() if there is no such deadline currently applicable. It
+ * returns ossl_time_zero() if there is (potentially) more data to be generated
+ * immediately. The value returned is liable to change after any call to
+ * ossl_quic_tx_packetiser_generate() (or after ACKM or CC state changes). Note
+ * that ossl_quic_tx_packetiser_generate() can also start to succeed for other
+ * non-chronological reasons, such as changes to send stream buffers, etc.
  */
-#define TX_PACKETISER_BYPASS_CC   (1U << 0)
-
-int ossl_quic_tx_packetiser_has_pending(OSSL_QUIC_TX_PACKETISER *txp,
-                                        uint32_t archetype,
-                                        uint32_t flags);
+OSSL_TIME ossl_quic_tx_packetiser_get_deadline(OSSL_QUIC_TX_PACKETISER *txp);
 
 /*
  * Set the token used in Initial packets. The callback is called when the buffer

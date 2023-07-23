@@ -488,6 +488,9 @@ static int rx_pkt_history_bump_watermark(struct rx_pkt_history_st *h,
 /* The maximum number of times we allow PTO to be doubled. */
 #define MAX_PTO_COUNT          16
 
+/* Default maximum amount of time to leave an ACK-eliciting packet un-ACK'd. */
+#define DEFAULT_TX_MAX_ACK_DELAY       ossl_ms2time(QUIC_DEFAULT_MAX_ACK_DELAY)
+
 struct ossl_ackm_st {
     /* Our list of transmitted packets. Corresponds to RFC 9002 sent_packets. */
     struct tx_pkt_history_st tx_history[QUIC_PN_SPACE_NUM];
@@ -580,6 +583,19 @@ struct ossl_ackm_st {
      */
     OSSL_TIME       rx_ack_flush_deadline[QUIC_PN_SPACE_NUM];
 
+    /*
+     * The RX maximum ACK delay (the maximum amount of time our peer might
+     * wait to send us an ACK after receiving an ACK-eliciting packet).
+     */
+    OSSL_TIME       rx_max_ack_delay;
+
+    /*
+     * The TX maximum ACK delay (the maximum amount of time we allow ourselves
+     * to wait before generating an ACK after receiving an ACK-eliciting
+     * packet).
+     */
+    OSSL_TIME       tx_max_ack_delay;
+
     /* Callbacks for deadline updates. */
     void (*loss_detection_deadline_cb)(OSSL_TIME deadline, void *arg);
     void *loss_detection_deadline_cb_arg;
@@ -593,7 +609,7 @@ static ossl_inline uint32_t min_u32(uint32_t x, uint32_t y)
     return x < y ? x : y;
 }
 
-/* 
+/*
  * Get TX history for a given packet number space. Must not have been
  * discarded.
  */
@@ -848,13 +864,13 @@ static OSSL_TIME ackm_get_pto_time_and_space(OSSL_ACKM *ackm, int *space)
                 break;
 
             /* Include max_ack_delay and backoff for app data. */
-            if (!ossl_time_is_infinite(rtt.max_ack_delay)) {
+            if (!ossl_time_is_infinite(ackm->rx_max_ack_delay)) {
                 uint64_t factor
                     = (uint64_t)1 << min_u32(ackm->pto_count, MAX_PTO_COUNT);
 
                 duration
                     = ossl_time_add(duration,
-                                    ossl_time_multiply(rtt.max_ack_delay,
+                                    ossl_time_multiply(ackm->rx_max_ack_delay,
                                                        factor));
             }
         }
@@ -935,18 +951,18 @@ static void ackm_on_pkts_lost(OSSL_ACKM *ackm, int pkt_space,
 
             if (p->pkt_num > largest_pn_lost)
                 largest_pn_lost = p->pkt_num;
-        }
 
-        if (!pseudo) {
-            /*
-             * If this is pseudo-loss (e.g. during connection retry) we do not
-             * inform the CC as it is not a real loss and not reflective of
-             * network conditions.
-             */
-            loss_info.tx_time = p->time;
-            loss_info.tx_size = p->num_bytes;
+            if (!pseudo) {
+                /*
+                 * If this is pseudo-loss (e.g. during connection retry) we do not
+                 * inform the CC as it is not a real loss and not reflective of
+                 * network conditions.
+                 */
+                loss_info.tx_time = p->time;
+                loss_info.tx_size = p->num_bytes;
 
-            ackm->cc_method->on_data_lost(ackm->cc_data, &loss_info);
+                ackm->cc_method->on_data_lost(ackm->cc_data, &loss_info);
+            }
         }
 
         p->on_lost(p->cb_arg);
@@ -996,7 +1012,8 @@ static void ackm_on_pkts_acked(OSSL_ACKM *ackm, const OSSL_ACKM_TX_PKT *apkt)
         anext = apkt->anext;
         apkt->on_acked(apkt->cb_arg); /* may free apkt */
 
-        ackm->cc_method->on_data_acked(ackm->cc_data, &ainfo);
+        if (apkt->is_inflight)
+            ackm->cc_method->on_data_acked(ackm->cc_data, &ainfo);
     }
 }
 
@@ -1028,6 +1045,10 @@ OSSL_ACKM *ossl_ackm_new(OSSL_TIME (*now)(void *arg),
     ackm->statm     = statm;
     ackm->cc_method = cc_method;
     ackm->cc_data   = cc_data;
+
+    ackm->rx_max_ack_delay = ossl_ms2time(QUIC_DEFAULT_MAX_ACK_DELAY);
+    ackm->tx_max_ack_delay = DEFAULT_TX_MAX_ACK_DELAY;
+
     return ackm;
 
 err:
@@ -1169,12 +1190,8 @@ int ossl_ackm_on_rx_ack_frame(OSSL_ACKM *ackm, const OSSL_QUIC_FRAME_ACK *ack,
 
         /* Enforce maximum ACK delay. */
         ack_delay = ack->delay_time;
-        if (ackm->handshake_confirmed) {
-            OSSL_RTT_INFO rtt;
-
-            ossl_statm_get_rtt_info(ackm->statm, &rtt);
-            ack_delay = ossl_time_min(ack_delay, rtt.max_ack_delay);
-        }
+        if (ackm->handshake_confirmed)
+            ack_delay = ossl_time_min(ack_delay, ackm->rx_max_ack_delay);
 
         ossl_statm_update_rtt(ackm->statm, ack_delay,
                               ossl_time_subtract(now, na_pkts->time));
@@ -1342,8 +1359,6 @@ int ossl_ackm_get_largest_unacked(OSSL_ACKM *ackm, int pkt_space, QUIC_PN *pn)
 
 /* Number of ACK-eliciting packets RX'd before we always emit an ACK. */
 #define PKTS_BEFORE_ACK     2
-/* Maximum amount of time to leave an ACK-eliciting packet un-ACK'd. */
-#define MAX_ACK_DELAY       ossl_ms2time(25)
 
 /*
  * Return 1 if emission of an ACK frame is currently desired.
@@ -1452,6 +1467,8 @@ static void ackm_on_rx_ack_eliciting(OSSL_ACKM *ackm,
                                      OSSL_TIME rx_time, int pkt_space,
                                      int was_missing)
 {
+    OSSL_TIME tx_max_ack_delay;
+
     if (ackm->rx_ack_desired[pkt_space])
         /* ACK generation already requested so nothing to do. */
         return;
@@ -1493,15 +1510,24 @@ static void ackm_on_rx_ack_eliciting(OSSL_ACKM *ackm,
      * Not emitting an ACK yet.
      *
      * Update the ACK flush deadline.
+     *
+     * RFC 9000 s. 13.2.1: "An endpoint MUST acknowledge all ack-eliciting
+     * Initial and Handshake packets immediately"; don't delay ACK generation if
+     * we are using the Initial or Handshake PN spaces.
      */
+    tx_max_ack_delay = ackm->tx_max_ack_delay;
+    if (pkt_space == QUIC_PN_SPACE_INITIAL
+        || pkt_space == QUIC_PN_SPACE_HANDSHAKE)
+        tx_max_ack_delay = ossl_time_zero();
+
     if (ossl_time_is_infinite(ackm->rx_ack_flush_deadline[pkt_space]))
         ackm_set_flush_deadline(ackm, pkt_space,
-                                ossl_time_add(rx_time, MAX_ACK_DELAY));
+                                ossl_time_add(rx_time, tx_max_ack_delay));
     else
         ackm_set_flush_deadline(ackm, pkt_space,
                                 ossl_time_min(ackm->rx_ack_flush_deadline[pkt_space],
                                               ossl_time_add(rx_time,
-                                                            MAX_ACK_DELAY)));
+                                                            tx_max_ack_delay)));
 }
 
 int ossl_ackm_on_rx_packet(OSSL_ACKM *ackm, const OSSL_ACKM_RX_PKT *pkt)
@@ -1676,8 +1702,8 @@ OSSL_TIME ossl_ackm_get_pto_duration(OSSL_ACKM *ackm)
     duration = ossl_time_add(rtt.smoothed_rtt,
                              ossl_time_max(ossl_time_multiply(rtt.rtt_variance, 4),
                                            ossl_ticks2time(K_GRANULARITY)));
-    if (!ossl_time_is_infinite(rtt.max_ack_delay))
-        duration = ossl_time_add(duration, rtt.max_ack_delay);
+    if (!ossl_time_is_infinite(ackm->rx_max_ack_delay))
+        duration = ossl_time_add(duration, ackm->rx_max_ack_delay);
 
     return duration;
 }
@@ -1685,4 +1711,14 @@ OSSL_TIME ossl_ackm_get_pto_duration(OSSL_ACKM *ackm)
 QUIC_PN ossl_ackm_get_largest_acked(OSSL_ACKM *ackm, int pkt_space)
 {
     return ackm->largest_acked_pkt[pkt_space];
+}
+
+void ossl_ackm_set_rx_max_ack_delay(OSSL_ACKM *ackm, OSSL_TIME rx_max_ack_delay)
+{
+    ackm->rx_max_ack_delay = rx_max_ack_delay;
+}
+
+void ossl_ackm_set_tx_max_ack_delay(OSSL_ACKM *ackm, OSSL_TIME tx_max_ack_delay)
+{
+    ackm->tx_max_ack_delay = tx_max_ack_delay;
 }

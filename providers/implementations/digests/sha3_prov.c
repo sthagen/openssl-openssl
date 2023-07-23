@@ -249,6 +249,40 @@ static PROV_SHA3_METHOD kmac_s390x_md =
     } else {                                                                   \
         ctx->meth = sha3_generic_md;                                           \
     }
+#elif defined(__aarch64__)
+# include "arm_arch.h"
+
+static sha3_absorb_fn armsha3_sha3_absorb;
+
+size_t SHA3_absorb_cext(uint64_t A[5][5], const unsigned char *inp, size_t len,
+                    size_t r);
+/*-
+ * Hardware-assisted ARMv8.2 SHA3 extension version of the absorb()
+ */
+static size_t armsha3_sha3_absorb(void *vctx, const void *inp, size_t len)
+{
+    KECCAK1600_CTX *ctx = vctx;
+
+    return SHA3_absorb_cext(ctx->A, inp, len, ctx->block_size);
+}
+
+static PROV_SHA3_METHOD sha3_ARMSHA3_md =
+{
+    armsha3_sha3_absorb,
+    generic_sha3_final
+};
+# define SHA3_SET_MD(uname, typ)                                               \
+    if (OPENSSL_armcap_P & ARMV8_HAVE_SHA3_AND_WORTH_USING) {                  \
+        ctx->meth = sha3_ARMSHA3_md;                                           \
+    } else {                                                                   \
+        ctx->meth = sha3_generic_md;                                           \
+    }
+# define KMAC_SET_MD(bitlen)                                                   \
+    if (OPENSSL_armcap_P & ARMV8_HAVE_SHA3_AND_WORTH_USING) {                  \
+        ctx->meth = sha3_ARMSHA3_md;                                           \
+    } else {                                                                   \
+        ctx->meth = sha3_generic_md;                                           \
+    }
 #else
 # define SHA3_SET_MD(uname, typ) ctx->meth = sha3_generic_md;
 # define KMAC_SET_MD(bitlen) ctx->meth = sha3_generic_md;
