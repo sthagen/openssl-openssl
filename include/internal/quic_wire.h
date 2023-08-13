@@ -87,6 +87,8 @@
 #  define OSSL_QUIC_FRAME_TYPE_IS_CONN_CLOSE(x) \
     (((x) & ~(uint64_t)1) == OSSL_QUIC_FRAME_TYPE_CONN_CLOSE_TRANSPORT)
 
+const char *ossl_quic_frame_type_to_string(uint64_t frame_type);
+
 static ossl_unused ossl_inline int
 ossl_quic_frame_type_is_ack_eliciting(uint64_t frame_type)
 {
@@ -209,7 +211,7 @@ typedef struct ossl_quic_frame_new_conn_id_st {
     uint64_t              seq_num;
     uint64_t              retire_prior_to;
     QUIC_CONN_ID          conn_id;
-    unsigned char         stateless_reset_token[16];
+    unsigned char         stateless_reset_token[QUIC_STATELESS_RESET_TOKEN_LEN];
 } OSSL_QUIC_FRAME_NEW_CONN_ID;
 
 /* QUIC Frame: CONNECTION_CLOSE */

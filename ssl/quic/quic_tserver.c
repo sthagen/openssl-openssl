@@ -86,7 +86,11 @@ QUIC_TSERVER *ossl_quic_tserver_new(const QUIC_TSERVER_ARGS *args,
         goto err;
 #endif
 
-    srv->ctx = SSL_CTX_new_ex(srv->args.libctx, srv->args.propq, TLS_method());
+    if (args->ctx != NULL)
+        srv->ctx = args->ctx;
+    else
+        srv->ctx = SSL_CTX_new_ex(srv->args.libctx, srv->args.propq,
+                                  TLS_method());
     if (srv->ctx == NULL)
         goto err;
 
@@ -121,6 +125,9 @@ QUIC_TSERVER *ossl_quic_tserver_new(const QUIC_TSERVER_ARGS *args,
 
 err:
     if (srv != NULL) {
+        if (args->ctx == NULL)
+            SSL_CTX_free(srv->ctx);
+        SSL_free(srv->tls);
         ossl_quic_channel_free(srv->ch);
 #if defined(OPENSSL_THREADS)
         ossl_crypto_mutex_free(&srv->mutex);
@@ -215,9 +222,6 @@ int ossl_quic_tserver_read(QUIC_TSERVER *srv,
     int is_fin = 0;
     QUIC_STREAM *qs;
 
-    if (!ossl_quic_channel_is_active(srv->ch))
-        return 0;
-
     qs = ossl_quic_stream_map_get_by_id(ossl_quic_channel_get_qsm(srv->ch),
                                         stream_id);
     if (qs == NULL) {
@@ -227,10 +231,11 @@ int ossl_quic_tserver_read(QUIC_TSERVER *srv,
 
         /*
          * A client-initiated stream might spontaneously come into existence, so
-         * allow trying to read on a client-initiated stream before it exists.
+         * allow trying to read on a client-initiated stream before it exists,
+         * assuming the connection is still active.
          * Otherwise, fail.
          */
-        if (!is_client_init)
+        if (!is_client_init || !ossl_quic_channel_is_active(srv->ch))
             return 0;
 
         *bytes_read = 0;
@@ -303,8 +308,10 @@ int ossl_quic_tserver_has_read_ended(QUIC_TSERVER *srv, uint64_t stream_id)
     if (is_fin && bytes_read == 0) {
         /* If we have a FIN awaiting retirement and no data before it... */
         /* Let RSTREAM know we've consumed this FIN. */
-        ossl_quic_rstream_read(qs->rstream, buf, sizeof(buf),
-                               &bytes_read, &is_fin); /* best effort */
+        if (!ossl_quic_rstream_read(qs->rstream, buf, sizeof(buf),
+                                    &bytes_read, &is_fin))
+            return 0;
+
         assert(is_fin && bytes_read == 0);
         assert(qs->recv_state == QUIC_RSTREAM_STATE_DATA_RECVD);
 
@@ -389,6 +396,11 @@ int ossl_quic_tserver_stream_new(QUIC_TSERVER *srv,
 BIO *ossl_quic_tserver_get0_rbio(QUIC_TSERVER *srv)
 {
     return srv->args.net_rbio;
+}
+
+SSL_CTX *ossl_quic_tserver_get0_ssl_ctx(QUIC_TSERVER *srv)
+{
+    return srv->ctx;
 }
 
 int ossl_quic_tserver_stream_has_peer_stop_sending(QUIC_TSERVER *srv,
@@ -478,7 +490,7 @@ OSSL_TIME ossl_quic_tserver_get_deadline(QUIC_TSERVER *srv)
 
 int ossl_quic_tserver_shutdown(QUIC_TSERVER *srv)
 {
-    ossl_quic_channel_local_close(srv->ch, 0);
+    ossl_quic_channel_local_close(srv->ch, 0, NULL);
 
     /* TODO(QUIC): !SSL_SHUTDOWN_FLAG_NO_STREAM_FLUSH */
 
@@ -500,4 +512,20 @@ int ossl_quic_tserver_ping(QUIC_TSERVER *srv)
 
     ossl_quic_reactor_tick(ossl_quic_channel_get_reactor(srv->ch), 0);
     return 1;
+}
+
+QUIC_CHANNEL *ossl_quic_tserver_get_channel(QUIC_TSERVER *srv)
+{
+    return srv->ch;
+}
+
+void ossl_quic_tserver_set_msg_callback(QUIC_TSERVER *srv,
+                                        void (*f)(int write_p, int version,
+                                                  int content_type,
+                                                  const void *buf, size_t len,
+                                                  SSL *ssl, void *arg),
+                                        void *arg)
+{
+    ossl_quic_channel_set_msg_callback(srv->ch, f, NULL);
+    ossl_quic_channel_set_msg_callback_arg(srv->ch, arg);
 }

@@ -182,6 +182,13 @@ struct quic_conn_st {
     /* Have we created a default XSO yet? */
     unsigned int                    default_xso_created     : 1;
 
+    /*
+     * Pre-TERMINATING shutdown phase in which we are flushing streams.
+     * Monotonically transitions to 1.
+     * New streams cannot be created in this state.
+     */
+    unsigned int                    shutting_down           : 1;
+
     /* Default stream type. Defaults to SSL_DEFAULT_STREAM_MODE_AUTO_BIDI. */
     uint32_t                        default_stream_mode;
 
@@ -286,7 +293,7 @@ const SSL_METHOD *func_name(void)  \
                 ossl_quic_free, \
                 ossl_quic_reset, \
                 ossl_quic_init, \
-                ossl_quic_clear, \
+                NULL /* clear */, \
                 ossl_quic_deinit, \
                 q_accept, \
                 q_connect, \

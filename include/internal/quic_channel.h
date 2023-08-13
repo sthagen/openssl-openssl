@@ -149,6 +149,21 @@ typedef struct quic_terminate_cause_st {
      */
     uint64_t                        frame_type;
 
+    /*
+     * Optional reason string. When calling ossl_quic_channel_local_close, if a
+     * reason string pointer is passed, it is copied and stored inside
+     * QUIC_CHANNEL for the remainder of the lifetime of the channel object.
+     * Thus the string pointed to by this value, if non-NULL, is valid for the
+     * lifetime of the QUIC_CHANNEL object.
+     */
+    const char                      *reason;
+
+    /*
+     * Length of reason in bytes. The reason is supposed to contain a UTF-8
+     * string but may be arbitrary data if the reason came from the network.
+     */
+    size_t                          reason_len;
+
     /* Is this error code in the transport (0) or application (1) space? */
     unsigned int                    app : 1;
 
@@ -196,7 +211,8 @@ int ossl_quic_channel_set_mutator(QUIC_CHANNEL *ch,
 int ossl_quic_channel_start(QUIC_CHANNEL *ch);
 
 /* Start a locally initiated connection shutdown. */
-void ossl_quic_channel_local_close(QUIC_CHANNEL *ch, uint64_t app_error_code);
+void ossl_quic_channel_local_close(QUIC_CHANNEL *ch, uint64_t app_error_code,
+                                   const char *app_reason);
 
 /*
  * Called when the handshake is confirmed.
@@ -211,11 +227,40 @@ int ossl_quic_channel_on_handshake_confirmed(QUIC_CHANNEL *ch);
  * reason string is not currently handled, but should be a string of static
  * storage duration. If the connection has already terminated due to a previous
  * protocol error, this is a no-op; first error wins.
+ *
+ * Usually the ossl_quic_channel_raise_protocol_error() function should be used.
+ * The ossl_quic_channel_raise_protocol_error_loc() function can be used
+ * directly for passing through existing call site information from an existing
+ * error.
  */
-void ossl_quic_channel_raise_protocol_error(QUIC_CHANNEL *ch,
-                                            uint64_t error_code,
-                                            uint64_t frame_type,
-                                            const char *reason);
+void ossl_quic_channel_raise_protocol_error_loc(QUIC_CHANNEL *ch,
+                                                uint64_t error_code,
+                                                uint64_t frame_type,
+                                                const char *reason,
+                                                ERR_STATE *err_state,
+                                                const char *src_file,
+                                                int src_line,
+                                                const char *src_func);
+
+#define ossl_quic_channel_raise_protocol_error(ch, error_code, frame_type, reason) \
+    ossl_quic_channel_raise_protocol_error_loc((ch), (error_code),  \
+                                               (frame_type),        \
+                                               (reason),            \
+                                               NULL,                \
+                                               OPENSSL_FILE,        \
+                                               OPENSSL_LINE,        \
+                                               OPENSSL_FUNC)
+
+#define ossl_quic_channel_raise_protocol_error_state(ch, error_code, frame_type, reason, state) \
+    ossl_quic_channel_raise_protocol_error_loc((ch), (error_code),  \
+                                               (frame_type),        \
+                                               (reason),            \
+                                               (state),             \
+                                               OPENSSL_FILE,        \
+                                               OPENSSL_LINE,        \
+                                               OPENSSL_FUNC)
+
+
 /*
  * Returns 1 if permanent net error was detected on the QUIC_CHANNEL,
  * 0 otherwise.
@@ -269,7 +314,6 @@ QUIC_STREAM *ossl_quic_channel_get_stream_by_id(QUIC_CHANNEL *ch,
 int ossl_quic_channel_is_term_any(const QUIC_CHANNEL *ch);
 const QUIC_TERMINATE_CAUSE *
 ossl_quic_channel_get_terminate_cause(const QUIC_CHANNEL *ch);
-int ossl_quic_channel_is_terminating(const QUIC_CHANNEL *ch);
 int ossl_quic_channel_is_terminated(const QUIC_CHANNEL *ch);
 int ossl_quic_channel_is_active(const QUIC_CHANNEL *ch);
 int ossl_quic_channel_is_handshake_complete(const QUIC_CHANNEL *ch);
@@ -352,6 +396,20 @@ int ossl_quic_channel_has_pending(const QUIC_CHANNEL *ch);
 
 /* Force transmission of an ACK-eliciting packet. */
 int ossl_quic_channel_ping(QUIC_CHANNEL *ch);
+
+/* For testing use. While enabled, ticking is not performed. */
+void ossl_quic_channel_set_inhibit_tick(QUIC_CHANNEL *ch, int inhibit);
+
+/*
+ * These queries exist for diagnostic purposes only. They may roll over.
+ * Do not rely on them for non-testing purposes.
+ */
+uint16_t ossl_quic_channel_get_diag_num_rx_ack(QUIC_CHANNEL *ch);
+
+/*
+ * Diagnostic use only. Gets the current local CID.
+ */
+void ossl_quic_channel_get_diag_local_cid(QUIC_CHANNEL *ch, QUIC_CONN_ID *cid);
 
 # endif
 

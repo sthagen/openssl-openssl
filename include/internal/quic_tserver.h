@@ -37,6 +37,7 @@ typedef struct quic_tserver_st QUIC_TSERVER;
 typedef struct quic_tserver_args_st {
     OSSL_LIB_CTX *libctx;
     const char *propq;
+    SSL_CTX *ctx;
     BIO *net_rbio, *net_wbio;
     OSSL_TIME (*now_cb)(void *arg);
     void *now_cb_arg;
@@ -132,6 +133,8 @@ int ossl_quic_tserver_stream_new(QUIC_TSERVER *srv,
 
 BIO *ossl_quic_tserver_get0_rbio(QUIC_TSERVER *srv);
 
+SSL_CTX *ossl_quic_tserver_get0_ssl_ctx(QUIC_TSERVER *srv);
+
 /*
  * Returns 1 if the peer has sent a STOP_SENDING frame for a stream.
  * app_error_code is written if this returns 1.
@@ -183,6 +186,20 @@ int ossl_quic_tserver_shutdown(QUIC_TSERVER *srv);
 
 /* Force generation of an ACK-eliciting packet. */
 int ossl_quic_tserver_ping(QUIC_TSERVER *srv);
+
+/* Set tracing callback on channel. */
+void ossl_quic_tserver_set_msg_callback(QUIC_TSERVER *srv,
+                                        void (*f)(int write_p, int version,
+                                                  int content_type,
+                                                  const void *buf, size_t len,
+                                                  SSL *ssl, void *arg),
+                                        void *arg);
+
+/*
+ * This is similar to ossl_quic_conn_get_channel; it should be used for test
+ * instrumentation only and not to bypass QUIC_TSERVER for 'normal' operations.
+ */
+QUIC_CHANNEL *ossl_quic_tserver_get_channel(QUIC_TSERVER *srv);
 
 # endif
 

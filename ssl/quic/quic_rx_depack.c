@@ -117,6 +117,7 @@ static int depack_do_frame_ack(PACKET *pkt, QUIC_CHANNEL *ch,
                                    packet_space, received))
         goto malformed;
 
+    ++ch->diag_num_rx_ack;
     OPENSSL_free(ack_ranges);
     return 1;
 
@@ -257,6 +258,7 @@ static int depack_do_frame_crypto(PACKET *pkt, QUIC_CHANNEL *ch,
 {
     OSSL_QUIC_FRAME_CRYPTO f;
     QUIC_RSTREAM *rstream;
+    QUIC_RXFC *rxfc;
 
     *datalen = 0;
 
@@ -268,6 +270,9 @@ static int depack_do_frame_crypto(PACKET *pkt, QUIC_CHANNEL *ch,
         return 0;
     }
 
+    if (f.len == 0)
+        return 1; /* nothing to do */
+
     rstream = ch->crypto_recv[ackm_data->pkt_space];
     if (!ossl_assert(rstream != NULL))
         /*
@@ -276,6 +281,24 @@ static int depack_do_frame_crypto(PACKET *pkt, QUIC_CHANNEL *ch,
          * shouldn't be here.
          */
         return 0;
+
+    rxfc = &ch->crypto_rxfc[ackm_data->pkt_space];
+
+    if (!ossl_quic_rxfc_on_rx_stream_frame(rxfc, f.offset + f.len,
+                                           /*is_fin=*/0)) {
+        ossl_quic_channel_raise_protocol_error(ch,
+                                               QUIC_ERR_INTERNAL_ERROR,
+                                               OSSL_QUIC_FRAME_TYPE_CRYPTO,
+                                               "internal error (crypto RXFC)");
+        return 0;
+    }
+
+    if (ossl_quic_rxfc_get_error(rxfc, 0) != QUIC_ERR_NO_ERROR) {
+        ossl_quic_channel_raise_protocol_error(ch, QUIC_ERR_CRYPTO_BUFFER_EXCEEDED,
+                                               OSSL_QUIC_FRAME_TYPE_CRYPTO,
+                                               "exceeded maximum crypto buffer");
+        return 0;
+    }
 
     if (!ossl_quic_rstream_queue_data(rstream, parent_pkt,
                                       f.offset, f.data, f.len, 0))
@@ -313,7 +336,7 @@ static int depack_do_frame_new_token(PACKET *pkt, QUIC_CHANNEL *ch,
         return 0;
     }
 
-    /* TODO(QUIC): ADD CODE to send |token| to the session manager */
+    /* TODO(QUIC FUTURE): ADD CODE to send |token| to the session manager */
 
     return 1;
 }
@@ -561,8 +584,13 @@ static int depack_do_frame_stream(PACKET *pkt, QUIC_CHANNEL *ch,
      * without copying by reffing the OSSL_QRX_PKT. In this case
      * ossl_qrx_pkt_release() will be eventually called when the data is no
      * longer needed.
+     *
+     * It is OK for the peer to send us a zero-length non-FIN STREAM frame,
+     * which is a no-op, aside from the fact that it ensures the stream exists.
+     * In this case we have nothing to report to the receive buffer.
      */
-    if (!ossl_quic_rstream_queue_data(stream->rstream, parent_pkt,
+    if ((frame_data.len > 0 || frame_data.is_fin)
+        && !ossl_quic_rstream_queue_data(stream->rstream, parent_pkt,
                                       frame_data.offset,
                                       frame_data.data,
                                       frame_data.len,
@@ -575,9 +603,9 @@ static int depack_do_frame_stream(PACKET *pkt, QUIC_CHANNEL *ch,
      * calling ossl_quic_rstream_available() where it is not necessary as it is
      * more expensive.
      */
-    if (stream->recv_state != QUIC_RSTREAM_STATE_SIZE_KNOWN
-        || !ossl_quic_rstream_available(stream->rstream, &rs_avail, &rs_fin))
-        return 0;
+    if (stream->recv_state == QUIC_RSTREAM_STATE_SIZE_KNOWN)
+        if (!ossl_quic_rstream_available(stream->rstream, &rs_avail, &rs_fin))
+            return 0;
 
     if (rs_fin)
         ossl_quic_stream_map_notify_totally_received(&ch->qsm, stream);
@@ -862,7 +890,7 @@ static int depack_do_frame_retire_conn_id(PACKET *pkt,
      * currently non-conformant and for internal testing use; simply handle it
      * as a no-op in this case.
      *
-     * TODO(QUIC): Revise and implement correctly for server support.
+     * TODO(QUIC SERVER): Revise and implement correctly for server support.
      */
     if (!ch->is_server) {
         ossl_quic_channel_raise_protocol_error(ch,
@@ -875,11 +903,19 @@ static int depack_do_frame_retire_conn_id(PACKET *pkt,
     return 1;
 }
 
+static void free_path_response(unsigned char *buf, size_t buf_len, void *arg)
+{
+    OPENSSL_free(buf);
+}
+
 static int depack_do_frame_path_challenge(PACKET *pkt,
                                           QUIC_CHANNEL *ch,
                                           OSSL_ACKM_RX_PKT *ackm_data)
 {
     uint64_t frame_data = 0;
+    unsigned char *encoded = NULL;
+    size_t encoded_len;
+    WPACKET wpkt;
 
     if (!ossl_quic_wire_decode_frame_path_challenge(pkt, &frame_data)) {
         ossl_quic_channel_raise_protocol_error(ch,
@@ -889,9 +925,42 @@ static int depack_do_frame_path_challenge(PACKET *pkt,
         return 0;
     }
 
-    /* TODO(QUIC): ADD CODE to send |frame_data| to the ch manager */
+    /*
+     * RFC 9000 s. 8.2.2: On receiving a PATH_CHALLENGE frame, an endpoint MUST
+     * respond by echoing the data contained in the PATH_CHALLENGE frame in a
+     * PATH_RESPONSE frame.
+     *
+     * TODO(QUIC FUTURE): We should try to avoid allocation here in the future.
+     */
+    encoded_len = sizeof(uint64_t) + 1;
+    if ((encoded = OPENSSL_malloc(encoded_len)) == NULL)
+        goto err;
+
+    if (!WPACKET_init_static_len(&wpkt, encoded, encoded_len, 0))
+        goto err;
+
+    if (!ossl_quic_wire_encode_frame_path_response(&wpkt, frame_data)) {
+        WPACKET_cleanup(&wpkt);
+        goto err;
+    }
+
+    WPACKET_finish(&wpkt);
+
+    if (!ossl_quic_cfq_add_frame(ch->cfq, 0, QUIC_PN_SPACE_APP,
+                                 OSSL_QUIC_FRAME_TYPE_PATH_RESPONSE,
+                                 QUIC_CFQ_ITEM_FLAG_UNRELIABLE,
+                                 encoded, encoded_len,
+                                 free_path_response, NULL))
+        goto err;
 
     return 1;
+
+err:
+    OPENSSL_free(encoded);
+    ossl_quic_channel_raise_protocol_error(ch, QUIC_ERR_INTERNAL_ERROR,
+                                           OSSL_QUIC_FRAME_TYPE_PATH_CHALLENGE,
+                                           "internal error");
+    return 0;
 }
 
 static int depack_do_frame_path_response(PACKET *pkt,
@@ -908,7 +977,7 @@ static int depack_do_frame_path_response(PACKET *pkt,
         return 0;
     }
 
-    /* TODO(QUIC): ADD CODE to send |frame_data| to the ch manager */
+    /* TODO(QUIC MULTIPATH): ADD CODE to send |frame_data| to the ch manager */
 
     return 1;
 }
@@ -1224,6 +1293,7 @@ static int depack_process_frames(QUIC_CHANNEL *ch, PACKET *pkt,
             }
             if (!depack_do_frame_path_challenge(pkt, ch, ackm_data))
                 return 0;
+
             break;
         case OSSL_QUIC_FRAME_TYPE_PATH_RESPONSE:
             /* PATH_RESPONSE frames are valid in 1RTT packets */
@@ -1317,8 +1387,8 @@ int ossl_quic_handle_frames(QUIC_CHANNEL *ch, OSSL_QRX_PKT *qpacket)
     /* Initialize |ackm_data| (and reinitialize |ok|)*/
     memset(&ackm_data, 0, sizeof(ackm_data));
     /*
-     * TODO(QUIC): ASSUMPTION: All packets that aren't special case have a
-     * packet number
+     * ASSUMPTION: All packets that aren't special case have a
+     * packet number.
      */
     ackm_data.pkt_num = qpacket->pn;
     ackm_data.time = qpacket->time;
@@ -1352,7 +1422,7 @@ int ossl_quic_handle_frames(QUIC_CHANNEL *ch, OSSL_QRX_PKT *qpacket)
     ok = 1;
  end:
     /*
-     * TODO(QUIC): ASSUMPTION: If this function is called at all, |qpacket| is
+     * ASSUMPTION: If this function is called at all, |qpacket| is
      * a legitimate packet, even if its contents aren't.
      * Therefore, we call ossl_ackm_on_rx_packet() unconditionally, as long as
      * |ackm_data| has at least been initialized.

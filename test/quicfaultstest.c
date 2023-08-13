@@ -34,7 +34,7 @@ static int test_basic(void)
     if (!TEST_ptr(cctx))
         goto err;
 
-    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, cert, privkey, 0,
+    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, NULL, cert, privkey, 0,
                                              &qtserv, &cssl, NULL)))
         goto err;
 
@@ -104,7 +104,7 @@ static int test_unknown_frame(void)
     if (!TEST_ptr(cctx))
         goto err;
 
-    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, cert, privkey, 0,
+    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, NULL, cert, privkey, 0,
                                              &qtserv, &cssl, &fault)))
         goto err;
 
@@ -184,7 +184,7 @@ static int test_no_transport_params(void)
     if (!TEST_ptr(cctx))
         goto err;
 
-    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, cert, privkey, 0,
+    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, NULL, cert, privkey, 0,
                                              &qtserv, &cssl, &fault)))
         goto err;
 
@@ -200,7 +200,8 @@ static int test_no_transport_params(void)
     if (!TEST_false(qtest_create_quic_connection(qtserv, cssl)))
         goto err;
 
-    if (!TEST_true(qtest_check_server_protocol_err(qtserv)))
+    if (!TEST_true(qtest_check_server_transport_err(qtserv,
+                                                    QUIC_ERR_CRYPTO_MISSING_EXT)))
         goto err;
 
     testresult = 1;
@@ -263,7 +264,7 @@ static int test_corrupted_data(int idx)
     if (!TEST_ptr(cctx))
         goto err;
 
-    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, cert, privkey,
+    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, NULL, cert, privkey,
                                              QTEST_FLAG_FAKE_TIME, &qtserv,
                                              &cssl, &fault)))
         goto err;

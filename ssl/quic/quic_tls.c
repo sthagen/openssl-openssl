@@ -10,12 +10,13 @@
 #include "internal/recordmethod.h"
 #include "internal/quic_tls.h"
 #include "../ssl_local.h"
+#include "internal/quic_error.h"
 
 #define QUIC_TLS_FATAL(rl, ad, err) \
     do { \
-        (rl)->alert = (ad); \
+        if ((rl) != NULL) (rl)->alert = (ad); \
         ERR_raise(ERR_LIB_SSL, (err)); \
-        (rl)->qtls->inerror = 1; \
+        if ((rl) != NULL) (rl)->qtls->inerror = 1; \
     } while(0)
 
 struct quic_tls_st {
@@ -27,6 +28,20 @@ struct quic_tls_st {
      */
     const unsigned char *local_transport_params;
     size_t local_transport_params_len;
+
+    ERR_STATE *error_state;
+
+    /*
+     * QUIC error code (usually in the TLS Alert-mapped CRYPTO_ERR range). Valid
+     * only if inerror is 1.
+     */
+    uint64_t error_code;
+
+    /*
+     * Error message with static storage duration. Valid only if inerror is 1.
+     * Should be suitable for encapsulation in a CONNECTION_CLOSE frame.
+     */
+    const char *error_msg;
 
     /* Whether our SSL object for TLS has been configured for use in QUIC */
     unsigned int configured : 1;
@@ -619,18 +634,62 @@ QUIC_TLS *ossl_quic_tls_new(const QUIC_TLS_ARGS *args)
     if (qtls == NULL)
         return NULL;
 
+    if ((qtls->error_state = OSSL_ERR_STATE_new()) == NULL) {
+        OPENSSL_free(qtls);
+        return NULL;
+    }
+
     qtls->args = *args;
     return qtls;
 }
 
 void ossl_quic_tls_free(QUIC_TLS *qtls)
 {
+    OSSL_ERR_STATE_free(qtls->error_state);
     OPENSSL_free(qtls);
 }
 
+static int raise_error(QUIC_TLS *qtls, uint64_t error_code,
+                       const char *error_msg,
+                       const char *src_file,
+                       int src_line,
+                       const char *src_func)
+{
+    /*
+     * When QTLS fails, add a "cover letter" error with information, potentially
+     * with any underlying libssl errors underneath it (but our cover error may
+     * be the only error in some cases). Then capture this into an ERR_STATE so
+     * we can report it later if need be when the QUIC_CHANNEL asks for it.
+     */
+    ERR_new();
+    ERR_set_debug(src_file, src_line, src_func);
+    ERR_set_error(ERR_LIB_SSL, SSL_R_QUIC_HANDSHAKE_LAYER_ERROR,
+                  "handshake layer error, error code %zu (\"%s\")",
+                  error_code, error_msg);
+    OSSL_ERR_STATE_save_to_mark(qtls->error_state);
+
+    /*
+     * We record the error information reported via the QUIC protocol
+     * separately.
+     */
+    qtls->error_code        = error_code;
+    qtls->error_msg         = error_msg;
+    qtls->inerror           = 1;
+
+    ERR_pop_to_mark();
+    return 0;
+}
+
+#define RAISE_ERROR(qtls, error_code, error_msg) \
+    raise_error((qtls), (error_code), (error_msg), \
+                OPENSSL_FILE, OPENSSL_LINE, OPENSSL_FUNC)
+
+#define RAISE_INTERNAL_ERROR(qtls) \
+    RAISE_ERROR((qtls), QUIC_ERR_INTERNAL_ERROR, "internal error")
+
 int ossl_quic_tls_tick(QUIC_TLS *qtls)
 {
-    int ret;
+    int ret, err;
     const unsigned char *alpn;
     unsigned int alpnlen;
 
@@ -644,8 +703,28 @@ int ossl_quic_tls_tick(QUIC_TLS *qtls)
     if (qtls->inerror)
         return 0;
 
-    if (qtls->complete)
-        return 1;
+    /*
+     * SSL_get_error does not truly know what the cause of an SSL_read failure
+     * is and to some extent guesses based on contextual information. In
+     * particular, if there is _any_ ERR on the error stack, SSL_ERROR_SSL or
+     * SSL_ERROR_SYSCALL will be returned no matter what and there is no
+     * possibility of SSL_ERROR_WANT_READ/WRITE being returned, even if that was
+     * the actual cause of the SSL_read() failure.
+     *
+     * This means that ordinarily, the below code might not work right if the
+     * application has any ERR on the error stack. In order to make this code
+     * perform correctly regardless of prior ERR state, we use a variant of
+     * SSL_get_error() which ignores the error stack. However, some ERRs are
+     * raised by SSL_read() and actually indicate that something has gone wrong
+     * during the call to SSL_read(). We therefore adopt a strategy of marking
+     * the ERR stack and seeing if any errors get appended during the call to
+     * SSL_read(). If they are, we assume SSL_read() has raised an error and
+     * that we should use normal SSL_get_error() handling.
+     *
+     * NOTE: Ensure all escape paths from this function call
+     * ERR_clear_to_mark(). The RAISE macros handle this in failure cases.
+     */
+    ERR_set_mark();
 
     if (!qtls->configured) {
         SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(qtls->args.s);
@@ -659,20 +738,15 @@ int ossl_quic_tls_tick(QUIC_TLS *qtls)
 
         /* ALPN is a requirement for QUIC and must be set */
         if (qtls->args.is_server) {
-            if (sctx->ext.alpn_select_cb == NULL) {
-                qtls->inerror = 1;
-                return 0;
-            }
+            if (sctx->ext.alpn_select_cb == NULL)
+                return RAISE_INTERNAL_ERROR(qtls);
         } else {
-            if (sc->ext.alpn == NULL || sc->ext.alpn_len == 0) {
-                qtls->inerror = 1;
-                return 0;
-            }
+            if (sc->ext.alpn == NULL || sc->ext.alpn_len == 0)
+                return RAISE_INTERNAL_ERROR(qtls);
         }
-        if (!SSL_set_min_proto_version(qtls->args.s, TLS1_3_VERSION)) {
-            qtls->inerror = 1;
-            return 0;
-        }
+        if (!SSL_set_min_proto_version(qtls->args.s, TLS1_3_VERSION))
+            return RAISE_INTERNAL_ERROR(qtls);
+
         SSL_clear_options(qtls->args.s, SSL_OP_ENABLE_MIDDLEBOX_COMPAT);
         ossl_ssl_set_custom_record_layer(sc, &quic_tls_record_method, qtls);
 
@@ -685,16 +759,12 @@ int ossl_quic_tls_tick(QUIC_TLS *qtls)
                                             | SSL_EXT_TLS1_3_ENCRYPTED_EXTENSIONS,
                                             add_transport_params_cb,
                                             free_transport_params_cb, qtls,
-                                            parse_transport_params_cb, qtls)) {
-            qtls->inerror = 1;
-            return 0;
-        }
+                                            parse_transport_params_cb, qtls))
+            return RAISE_INTERNAL_ERROR(qtls);
 
         nullbio = BIO_new(BIO_s_null());
-        if (nullbio == NULL) {
-            qtls->inerror = 1;
-            return 0;
-        }
+        if (nullbio == NULL)
+            return RAISE_INTERNAL_ERROR(qtls);
 
         /*
          * Our custom record layer doesn't use the BIO - but libssl generally
@@ -702,38 +772,52 @@ int ossl_quic_tls_tick(QUIC_TLS *qtls)
          */
         SSL_set_bio(qtls->args.s, nullbio, nullbio);
 
-        if (qtls->args.is_server) {
+        if (qtls->args.is_server)
             SSL_set_accept_state(qtls->args.s);
-            if (!SSL_set_num_tickets(qtls->args.s, 0)) {
-                qtls->inerror = 1;
-                return 0;
-            }
-        } else {
+        else
             SSL_set_connect_state(qtls->args.s);
-        }
 
         qtls->configured = 1;
     }
-    ret = SSL_do_handshake(qtls->args.s);
+
+    if (qtls->complete)
+        /*
+         * There should never be app data to read, but calling SSL_read() will
+         * ensure any post-handshake messages are processed.
+         */
+        ret = SSL_read(qtls->args.s, NULL, 0);
+    else
+        ret = SSL_do_handshake(qtls->args.s);
+
     if (ret <= 0) {
-        switch (SSL_get_error(qtls->args.s, ret)) {
+        err = ossl_ssl_get_error(qtls->args.s, ret,
+                                 /*check_err=*/ERR_count_to_mark() > 0);
+
+        switch (err) {
         case SSL_ERROR_WANT_READ:
         case SSL_ERROR_WANT_WRITE:
+            ERR_pop_to_mark();
             return 1;
+
         default:
-            qtls->inerror = 1;
-            return 0;
+            return RAISE_INTERNAL_ERROR(qtls);
         }
     }
 
-    /* Validate that we have ALPN */
-    SSL_get0_alpn_selected(qtls->args.s, &alpn, &alpnlen);
-    if (alpn == NULL || alpnlen == 0) {
-        qtls->inerror = 1;
-        return 0;
+    if (!qtls->complete) {
+        /* Validate that we have ALPN */
+        SSL_get0_alpn_selected(qtls->args.s, &alpn, &alpnlen);
+        if (alpn == NULL || alpnlen == 0)
+            return RAISE_ERROR(qtls, QUIC_ERR_CRYPTO_NO_APP_PROTO,
+                               "no application protocol negotiated");
+
+        qtls->complete = 1;
+        ERR_pop_to_mark();
+        return qtls->args.handshake_complete_cb(qtls->args.handshake_complete_cb_arg);
     }
-    qtls->complete = 1;
-    return qtls->args.handshake_complete_cb(qtls->args.handshake_complete_cb_arg);
+
+    ERR_pop_to_mark();
+    return 1;
 }
 
 int ossl_quic_tls_set_transport_params(QUIC_TLS *qtls,
@@ -743,4 +827,18 @@ int ossl_quic_tls_set_transport_params(QUIC_TLS *qtls,
     qtls->local_transport_params       = transport_params;
     qtls->local_transport_params_len   = transport_params_len;
     return 1;
+}
+
+int ossl_quic_tls_get_error(QUIC_TLS *qtls,
+                            uint64_t *error_code,
+                            const char **error_msg,
+                            ERR_STATE **error_state)
+{
+    if (qtls->inerror) {
+        *error_code     = qtls->error_code;
+        *error_msg      = qtls->error_msg;
+        *error_state    = qtls->error_state;
+    }
+
+    return qtls->inerror;
 }

@@ -20,6 +20,7 @@
 #include "internal/quic_record_tx.h"
 #include "internal/quic_error.h"
 #include "internal/packet.h"
+#include "internal/tsan_assist.h"
 
 #define GROWTH_ALLOWANCE 1024
 
@@ -72,7 +73,7 @@ static OSSL_TIME fake_now_cb(void *arg)
 }
 
 int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
-                              char *certfile, char *keyfile,
+                              SSL_CTX *serverctx, char *certfile, char *keyfile,
                               int flags, QUIC_TSERVER **qtserv, SSL **cssl,
                               QTEST_FAULT **fault)
 {
@@ -166,6 +167,9 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
     tserver_args.net_rbio = sbio;
     tserver_args.net_wbio = fisbio;
     tserver_args.alpn = NULL;
+    if (serverctx != NULL && !TEST_true(SSL_CTX_up_ref(serverctx)))
+        goto err;
+    tserver_args.ctx = serverctx;
     if ((flags & QTEST_FLAG_FAKE_TIME) != 0) {
         fake_now = ossl_time_zero();
         tserver_args.now_cb = fake_now_cb;
@@ -186,6 +190,7 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
 
     return 1;
  err:
+    SSL_CTX_free(tserver_args.ctx);
     BIO_ADDR_free(peeraddr);
     BIO_free(cbio);
     BIO_free(fisbio);
@@ -334,13 +339,77 @@ int qtest_create_quic_connection(QUIC_TSERVER *qtserv, SSL *clientssl)
     return ret;
 }
 
+#if defined(OPENSSL_THREADS) && !defined(CRYPTO_TDEBUG)
+static TSAN_QUALIFIER int shutdowndone;
+
+static void run_server_shutdown_thread(void)
+{
+    /*
+     * This will operate in a busy loop because the server does not block,
+     * but should be acceptable because it is local and we expect this to be
+     * fast
+     */
+    do {
+        ossl_quic_tserver_tick(globtserv);
+    } while(!tsan_load(&shutdowndone));
+}
+#endif
+
 int qtest_shutdown(QUIC_TSERVER *qtserv, SSL *clientssl)
 {
-    /* Busy loop in non-blocking mode. It should be quick because its local */
-    while (SSL_shutdown(clientssl) != 1)
-        ossl_quic_tserver_tick(qtserv);
+    int tickserver = 1;
+    int ret = 0;
+#if defined(OPENSSL_THREADS) && !defined(CRYPTO_TDEBUG)
+    /*
+     * Pointless initialisation to avoid bogus compiler warnings about using
+     * t uninitialised
+     */
+    thread_t t = thread_zero;
+#endif
 
-    return 1;
+    if (SSL_get_blocking_mode(clientssl) > 0) {
+#if defined(OPENSSL_THREADS) && !defined(CRYPTO_TDEBUG)
+        /*
+         * clientssl is blocking. We will need a thread to complete the
+         * connection
+         */
+        globtserv = qtserv;
+        shutdowndone = 0;
+        if (!TEST_true(run_thread(&t, run_server_shutdown_thread)))
+            return 0;
+
+        tickserver = 0;
+#else
+        TEST_error("No thread support in this build");
+        return 0;
+#endif
+    }
+
+    /* Busy loop in non-blocking mode. It should be quick because its local */
+    for (;;) {
+        int rc = SSL_shutdown(clientssl);
+
+        if (rc == 1) {
+            ret = 1;
+            break;
+        }
+
+        if (rc < 0)
+            break;
+
+        if (tickserver)
+            ossl_quic_tserver_tick(qtserv);
+    }
+
+#if defined(OPENSSL_THREADS) && !defined(CRYPTO_TDEBUG)
+    tsan_store(&shutdowndone, 1);
+    if (!tickserver) {
+        if (!TEST_true(wait_for_thread(t)))
+            ret = 0;
+    }
+#endif
+
+    return ret;
 }
 
 int qtest_check_server_transport_err(QUIC_TSERVER *qtserv, uint64_t code)
@@ -775,7 +844,13 @@ static int pcipher_sendmmsg(BIO *b, BIO_MSG *msg, size_t stride,
 
             do {
                 if (!ossl_quic_wire_decode_pkt_hdr(&pkt,
-                        0 /* TODO(QUIC): Not sure how this should be set*/, 1,
+                        /*
+                         * TODO(QUIC SERVER):
+                         * Needs to be set to the actual short header CID length
+                         * when testing the server implementation.
+                         */
+                        0,
+                        1,
                         0, &hdr, NULL))
                     goto out;
 
@@ -788,7 +863,7 @@ static int pcipher_sendmmsg(BIO *b, BIO_MSG *msg, size_t stride,
                     goto out;
 
                 /*
-                 * TODO(QUIC): At the moment modifications to hdr by the callback
+                 * At the moment modifications to hdr by the callback
                  * are ignored. We might need to rewrite the QUIC header to
                  * enable tests to change this. We also don't yet have a
                  * mechanism for the callback to change the encrypted data
