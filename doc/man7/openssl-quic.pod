@@ -97,6 +97,10 @@ in order to use L<SSL_accept_stream(3)> in this case. However, applications
 using additional streams are strongly recommended to use multi-stream mode
 instead.
 
+Calling L<SSL_new_stream(3)> or L<SSL_accept_stream(3)> before a default stream
+has been associated with the QUIC connection SSL object will inhibit future
+creation of a default stream.
+
 =head2 Multi-Stream Mode
 
 The recommended usage mode for new applications adopting QUIC is multi-stream
@@ -338,8 +342,8 @@ the SSL object to provide it with network access.
 
 Changes needed: Change your application to use L<BIO_s_datagram(3)> instead when
 using QUIC. The socket must be configured in nonblocking mode. You may or may
-not need to use L<SSL_set_initial_peer_addr(3)> to set the initial peer address;
-see the B<QUIC-SPECIFIC APIS> section for details.
+not need to use L<SSL_set1_initial_peer_addr(3)> to set the initial peer
+address; see the B<QUIC-SPECIFIC APIS> section for details.
 
 =item
 
@@ -548,12 +552,12 @@ conjunction with L<SSL_get_rpoll_descriptor(3)> and
 L<SSL_get_wpoll_descriptor(3)> respectively. They determine whether the
 respective poll descriptor is currently relevant for the purposes of polling.
 
-=item L<SSL_set_initial_peer_addr(3)>
+=item L<SSL_set1_initial_peer_addr(3)>
 
 This function can be used to set the initial peer address for an outgoing QUIC
 connection. This function must be used in the general case when creating an
 outgoing QUIC connection; however, the correct initial peer address can be
-autodetected in some cases. See L<SSL_set_initial_peer_addr(3)> for details.
+autodetected in some cases. See L<SSL_set1_initial_peer_addr(3)> for details.
 
 =item L<SSL_shutdown_ex(3)>
 
@@ -747,7 +751,7 @@ L<SSL_set_blocking_mode(3)>.
 =item
 
 It should configure the SSL object as desired, set an initial peer as needed
-using L<SSL_set_initial_peer_addr(3)>, and trigger the connection process by
+using L<SSL_set1_initial_peer_addr(3)>, and trigger the connection process by
 calling L<SSL_connect(3)>.
 
 =item
@@ -823,7 +827,7 @@ L<SSL_handle_events(3)>, L<SSL_get_event_timeout(3)>,
 L<SSL_net_read_desired(3)>, L<SSL_net_write_desired(3)>,
 L<SSL_get_rpoll_descriptor(3)>, L<SSL_get_wpoll_descriptor(3)>,
 L<SSL_set_blocking_mode(3)>, L<SSL_shutdown_ex(3)>,
-L<SSL_set_initial_peer_addr(3)>, L<SSL_stream_conclude(3)>,
+L<SSL_set1_initial_peer_addr(3)>, L<SSL_stream_conclude(3)>,
 L<SSL_stream_reset(3)>, L<SSL_get_stream_read_state(3)>,
 L<SSL_get_stream_read_error_code(3)>, L<SSL_get_conn_close_info(3)>,
 L<SSL_get0_connection(3)>, L<SSL_get_stream_type(3)>, L<SSL_get_stream_id(3)>,

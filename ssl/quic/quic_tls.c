@@ -84,6 +84,8 @@ struct ossl_record_layer_st {
     void *cbarg;
 };
 
+static int quic_set1_bio(OSSL_RECORD_LAYER *rl, BIO *bio);
+
 static int
 quic_new_record_layer(OSSL_LIB_CTX *libctx, const char *propq, int vers,
                       int role, int direction, int level, uint16_t epoch,
@@ -111,7 +113,10 @@ quic_new_record_layer(OSSL_LIB_CTX *libctx, const char *propq, int vers,
 
     rl->qtls = (QUIC_TLS *)rlarg;
     rl->level = level;
-    rl->dummybio = transport;
+    if (!quic_set1_bio(rl, transport)) {
+        QUIC_TLS_FATAL(rl, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        goto err;
+    }
     rl->cbarg = cbarg;
     *retrl = rl;
 
@@ -167,7 +172,7 @@ quic_new_record_layer(OSSL_LIB_CTX *libctx, const char *propq, int vers,
     }
 
     /* We pass a ref to the md in a successful yield_secret_cb call */
-    /* TODO(QUIC): This cast is horrible. We should try and remove it */
+    /* TODO(QUIC FUTURE): This cast is horrible. We should try and remove it */
     if (!EVP_MD_up_ref((EVP_MD *)kdfdigest)) {
         QUIC_TLS_FATAL(rl, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         goto err;
@@ -193,6 +198,7 @@ static int quic_free(OSSL_RECORD_LAYER *rl)
     if (rl == NULL)
         return 1;
 
+    BIO_free(rl->dummybio);
     OPENSSL_free(rl);
     return 1;
 }
@@ -224,7 +230,8 @@ static int quic_processed_read_pending(OSSL_RECORD_LAYER *rl)
     return 0;
 }
 
-static size_t quic_get_max_records(OSSL_RECORD_LAYER *rl, int type, size_t len,
+static size_t quic_get_max_records(OSSL_RECORD_LAYER *rl, uint8_t type,
+                                   size_t len,
                                    size_t maxfrag, size_t *preffrag)
 {
     return 1;
@@ -350,7 +357,7 @@ static int quic_retry_write_records(OSSL_RECORD_LAYER *rl)
 }
 
 static int quic_read_record(OSSL_RECORD_LAYER *rl, void **rechandle,
-                            int *rversion, int *type, const unsigned char **data,
+                            int *rversion, uint8_t *type, const unsigned char **data,
                             size_t *datalen, uint16_t *epoch,
                             unsigned char *seq_num)
 {
@@ -524,10 +531,11 @@ static int quic_free_buffers(OSSL_RECORD_LAYER *rl)
 
 static int quic_set1_bio(OSSL_RECORD_LAYER *rl, BIO *bio)
 {
-    /*
-     * Can be called to set the buffering BIO - which is then never used by us.
-     * We ignore it
-     */
+    if (bio != NULL && !BIO_up_ref(bio))
+        return 0;
+    BIO_free(rl->dummybio);
+    rl->dummybio = bio;
+
     return 1;
 }
 
@@ -664,8 +672,8 @@ static int raise_error(QUIC_TLS *qtls, uint64_t error_code,
     ERR_new();
     ERR_set_debug(src_file, src_line, src_func);
     ERR_set_error(ERR_LIB_SSL, SSL_R_QUIC_HANDSHAKE_LAYER_ERROR,
-                  "handshake layer error, error code %zu (\"%s\")",
-                  error_code, error_msg);
+                  "handshake layer error, error code %llu (0x%llx) (\"%s\")",
+                  error_code, error_code, error_msg);
     OSSL_ERR_STATE_save_to_mark(qtls->error_state);
 
     /*
@@ -692,13 +700,6 @@ int ossl_quic_tls_tick(QUIC_TLS *qtls)
     int ret, err;
     const unsigned char *alpn;
     unsigned int alpnlen;
-
-    /*
-     * TODO(QUIC): There are various calls here that could fail and ordinarily
-     * would result in an ERR_raise call - but "tick" calls aren't supposed to
-     * fail "loudly" - so its unclear how we will report these errors. The
-     * ERR_raise calls are omitted from this function for now.
-     */
 
     if (qtls->inerror)
         return 0;
@@ -742,7 +743,8 @@ int ossl_quic_tls_tick(QUIC_TLS *qtls)
                 return RAISE_INTERNAL_ERROR(qtls);
         } else {
             if (sc->ext.alpn == NULL || sc->ext.alpn_len == 0)
-                return RAISE_INTERNAL_ERROR(qtls);
+                return RAISE_ERROR(qtls, QUIC_ERR_CRYPTO_NO_APP_PROTO,
+                                   "ALPN must be configured when using QUIC");
         }
         if (!SSL_set_min_proto_version(qtls->args.s, TLS1_3_VERSION))
             return RAISE_INTERNAL_ERROR(qtls);
@@ -796,6 +798,9 @@ int ossl_quic_tls_tick(QUIC_TLS *qtls)
         switch (err) {
         case SSL_ERROR_WANT_READ:
         case SSL_ERROR_WANT_WRITE:
+        case SSL_ERROR_WANT_CLIENT_HELLO_CB:
+        case SSL_ERROR_WANT_X509_LOOKUP:
+        case SSL_ERROR_WANT_RETRY_VERIFY:
             ERR_pop_to_mark();
             return 1;
 
@@ -841,4 +846,31 @@ int ossl_quic_tls_get_error(QUIC_TLS *qtls,
     }
 
     return qtls->inerror;
+}
+
+/*
+ * Returns true if the last handshake record message we processed was a
+ * CertificateRequest
+ */
+int ossl_quic_tls_is_cert_request(QUIC_TLS *qtls)
+{
+    SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(qtls->args.s);
+
+    return sc->s3.tmp.message_type == SSL3_MT_CERTIFICATE_REQUEST;
+}
+
+/*
+ * Returns true if the last session associated with the connection has an
+ * invalid max_early_data value for QUIC.
+ */
+int ossl_quic_tls_has_bad_max_early_data(QUIC_TLS *qtls)
+{
+    uint32_t max_early_data = SSL_get0_session(qtls->args.s)->ext.max_early_data;
+
+    /*
+     * If max_early_data was present we always ensure a non-zero value is
+     * stored in the session for QUIC. Therefore if max_early_data == 0 here
+     * we can be confident that it was not present in the NewSessionTicket
+     */
+    return max_early_data != 0xffffffff && max_early_data != 0;
 }

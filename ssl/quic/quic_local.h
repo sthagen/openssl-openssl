@@ -41,8 +41,18 @@ struct quic_xso_st {
     /* The stream object. Always non-NULL for as long as the XSO exists. */
     QUIC_STREAM                     *stream;
 
-    /* Is this stream in blocking mode? */
-    unsigned int                    blocking                : 1;
+    /*
+     * Has this stream been logically configured into blocking mode? Only
+     * meaningful if desires_blocking_set is 1. Ignored if blocking is not
+     * currently possible given QUIC_CONNECTION configuration.
+     */
+    unsigned int                    desires_blocking        : 1;
+
+    /*
+     * Has SSL_set_blocking_mode been called on this stream? If not set, we
+     * inherit from the QUIC_CONNECTION blocking state.
+     */
+    unsigned int                    desires_blocking_set    : 1;
 
     /*
      * This state tracks SSL_write all-or-nothing (AON) write semantics
@@ -154,10 +164,6 @@ struct quic_conn_st {
     /* Have we started? */
     unsigned int                    started                 : 1;
 
-    /* Can the read and write network BIOs support blocking? */
-    unsigned int                    can_poll_net_rbio       : 1;
-    unsigned int                    can_poll_net_wbio       : 1;
-
     /*
      * This is 1 if we were instantiated using a QUIC server method
      * (for future use).
@@ -176,8 +182,8 @@ struct quic_conn_st {
     /* Do connection-level operations (e.g. handshakes) run in blocking mode? */
     unsigned int                    blocking                : 1;
 
-    /* Do newly created streams start in blocking mode? Inherited by new XSOs. */
-    unsigned int                    default_blocking        : 1;
+    /* Does the application want blocking mode? */
+    unsigned int                    desires_blocking        : 1;
 
     /* Have we created a default XSO yet? */
     unsigned int                    default_xso_created     : 1;
@@ -188,6 +194,13 @@ struct quic_conn_st {
      * New streams cannot be created in this state.
      */
     unsigned int                    shutting_down           : 1;
+
+    /* Have we probed the BIOs for addressing support? */
+    unsigned int                    addressing_probe_done   : 1;
+
+    /* Are we using addressed mode (BIO_sendmmsg with non-NULL peer)? */
+    unsigned int                    addressed_mode_w        : 1;
+    unsigned int                    addressed_mode_r        : 1;
 
     /* Default stream type. Defaults to SSL_DEFAULT_STREAM_MODE_AUTO_BIDI. */
     uint32_t                        default_stream_mode;

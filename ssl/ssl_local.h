@@ -433,10 +433,10 @@ struct ssl_method_st {
     int (*ssl_shutdown) (SSL *s);
     int (*ssl_renegotiate) (SSL *s);
     int (*ssl_renegotiate_check) (SSL *s, int);
-    int (*ssl_read_bytes) (SSL *s, int type, int *recvd_type,
+    int (*ssl_read_bytes) (SSL *s, uint8_t type, uint8_t *recvd_type,
                            unsigned char *buf, size_t len, int peek,
                            size_t *readbytes);
-    int (*ssl_write_bytes) (SSL *s, int type, const void *buf_, size_t len,
+    int (*ssl_write_bytes) (SSL *s, uint8_t type, const void *buf_, size_t len,
                             size_t *written);
     int (*ssl_dispatch_alert) (SSL *s);
     long (*ssl_ctrl) (SSL *s, int cmd, long larg, void *parg);
@@ -1258,7 +1258,7 @@ struct ssl_connection_st {
     SSL_EARLY_DATA_STATE early_data_state;
     BUF_MEM *init_buf;          /* buffer used during init */
     void *init_msg;             /* pointer to handshake message body, set by
-                                 * ssl3_get_message() */
+                                 * tls_get_message_header() */
     size_t init_num;               /* amount read/written */
     size_t init_off;               /* amount read/written */
 
@@ -2163,16 +2163,6 @@ typedef struct ssl3_enc_method {
  */
 # define SSL_ENC_FLAG_TLS1_2_CIPHERS     0x10
 
-# ifndef OPENSSL_NO_COMP
-/* Used for holding the relevant compression methods loaded into SSL_CTX */
-typedef struct ssl3_comp_st {
-    int comp_id;                /* The identifier byte for this compression
-                                 * type */
-    char *name;                 /* Text name used for the compression type */
-    COMP_METHOD *method;        /* The method :-) */
-} SSL3_COMP;
-# endif
-
 typedef enum downgrade_en {
     DOWNGRADE_NONE,
     DOWNGRADE_TO_1_2,
@@ -2587,7 +2577,7 @@ int ssl3_init_finished_mac(SSL_CONNECTION *s);
 __owur int ssl3_setup_key_block(SSL_CONNECTION *s);
 __owur int ssl3_change_cipher_state(SSL_CONNECTION *s, int which);
 void ssl3_cleanup_key_block(SSL_CONNECTION *s);
-__owur int ssl3_do_write(SSL_CONNECTION *s, int type);
+__owur int ssl3_do_write(SSL_CONNECTION *s, uint8_t type);
 int ssl3_send_alert(SSL_CONNECTION *s, int level, int desc);
 __owur int ssl3_generate_master_secret(SSL_CONNECTION *s, unsigned char *out,
                                        unsigned char *p, size_t len,
@@ -2650,14 +2640,14 @@ __owur int ssl_get_min_max_version(const SSL_CONNECTION *s, int *min_version,
                                    int *max_version, int *real_max);
 
 __owur OSSL_TIME tls1_default_timeout(void);
-__owur int dtls1_do_write(SSL_CONNECTION *s, int type);
+__owur int dtls1_do_write(SSL_CONNECTION *s, uint8_t type);
 void dtls1_set_message_header(SSL_CONNECTION *s,
                               unsigned char mt,
                               size_t len,
                               size_t frag_off, size_t frag_len);
 
-int dtls1_write_app_data_bytes(SSL *s, int type, const void *buf_, size_t len,
-                               size_t *written);
+int dtls1_write_app_data_bytes(SSL *s, uint8_t type, const void *buf_,
+                               size_t len, size_t *written);
 
 __owur int dtls1_read_failed(SSL_CONNECTION *s, int code);
 __owur int dtls1_buffer_message(SSL_CONNECTION *s, int ccs);
@@ -2999,6 +2989,8 @@ void ossl_ssl_set_custom_record_layer(SSL_CONNECTION *s,
                                       const OSSL_RECORD_METHOD *meth,
                                       void *rlarg);
 
+long ossl_ctrl_internal(SSL *s, int cmd, long larg, void *parg, int no_quic);
+
 /*
  * Options which no longer have any effect, but which can be implemented
  * as no-ops for QUIC.
@@ -3019,6 +3011,10 @@ void ossl_ssl_set_custom_record_layer(SSL_CONNECTION *s,
      SSL_OP_SINGLE_ECDH_USE                   | \
      SSL_OP_EPHEMERAL_RSA                     )
 
+/* This option is undefined in public headers with no-dtls1-method. */
+#ifndef SSL_OP_CISCO_ANYCONNECT
+# define SSL_OP_CISCO_ANYCONNECT 0
+#endif
 /*
  * Options which are no-ops under QUIC or TLSv1.3 and which are therefore
  * allowed but ignored under QUIC.

@@ -106,7 +106,7 @@ static BIO *create_socket_bio(const char *hostname, const char *port)
 int main(void)
 {
     SSL_CTX *ctx = NULL;
-    SSL *ssl;
+    SSL *ssl = NULL;
     BIO *bio = NULL;
     int res = EXIT_FAILURE;
     int ret;

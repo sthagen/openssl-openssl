@@ -36,7 +36,7 @@ designs and the relevant design decisions.
       - [`SSL_get_rpoll_descriptor`, `SSL_get_wpoll_descriptor`](#-ssl-get-rpoll-descriptor----ssl-get-wpoll-descriptor-)
       - [`SSL_net_read_desired`, `SSL_net_write_desired`](#-ssl-want-net-read----ssl-want-net-write-)
       - [`SSL_want`, `SSL_want_read`, `SSL_want_write`](#-ssl-want----ssl-want-read----ssl-want-write-)
-      - [`SSL_set_initial_peer_addr`, `SSL_get_initial_peer_addr`](#-ssl-set-initial-peer-addr----ssl-get-initial-peer-addr-)
+      - [`SSL_set1_initial_peer_addr`](#-ssl-set-initial-peer-addr-)
       - [`SSL_shutdown_ex`](#-ssl-shutdown-ex-)
       - [`SSL_stream_conclude`](#-ssl-stream-conclude-)
       - [`SSL_stream_reset`](#-ssl-stream-reset-)
@@ -51,6 +51,7 @@ designs and the relevant design decisions.
       - [`SSL_is_connection`](#-ssl-is-connection-)
       - [`SSL_get_stream_type`](#-ssl-get-stream-type-)
       - [`SSL_get_stream_id`](#-ssl-get-stream-id-)
+      - [`SSL_is_stream_local`](#-ssl-is-stream-local-)
       - [`SSL_new_stream`](#-ssl-new-stream-)
       - [`SSL_accept_stream`](#-ssl-accept-stream-)
       - [`SSL_get_accept_stream_queue_len`](#-ssl-get-accept-stream-queue-len-)
@@ -88,9 +89,9 @@ for details on SSL object APIs.
 
 | Semantics | API                             | Status |
 |-----------|---------------------------------|--------|
-| TBD       | `BIO_s_connect`                 | TODO  |
-| TBD       | `BIO_set_conn_hostname`         | TODO   |
-| TBD       | `BIO_new_bio_pair`              | TODO   |
+| Changed   | `BIO_s_connect`                 | Done  |
+| Unchanged | `BIO_set_conn_hostname`         | Done   |
+| N/A       | `BIO_new_bio_pair`              | N/A (see `BIO_new_bio_dgram_pair`)   |
 | New       | `BIO_s_dgram_pair`              | Done   |
 | Unchanged | `BIO_dgram_get_mtu`             | Done   |
 | Unchanged | `BIO_dgram_set_mtu`             | Done   |
@@ -519,20 +520,20 @@ write), not both. This call will not be implemented for QUIC (e.g. always
 returns `SSL_NOTHING`) and `SSL_net_read_desired` and `SSL_net_write_desired`
 will be used instead.
 
-#### `SSL_set_initial_peer_addr`, `SSL_get_initial_peer_addr`
+#### `SSL_set1_initial_peer_addr`
 
 | Semantics | `SSL_get_error` | Can Tick? | CSHL          |
 | --------- | ------------- | --------- | ------------- |
 | New       | Never         | No        | CS            |
 
-`SSL_set_initial_peer_addr` sets the initial L4 UDP peer address for an outgoing
+`SSL_set1_initial_peer_addr` sets the initial L4 UDP peer address for an outgoing
 QUIC connection.
 
 The initial peer address may be autodetected if no peer address has already been
 set explicitly and the QUIC connection SSL object is provided with a
 `BIO_s_dgram` with a peer set.
 
-`SSL_set_initial_peer_addr` cannot be called after a connection is established.
+`SSL_set1_initial_peer_addr` cannot be called after a connection is established.
 
 #### `SSL_shutdown_ex`
 
@@ -830,12 +831,14 @@ unidirectional stream), returns -1.
 | New       | Never         | No        | C             |
 
 ```c
+#define SSL_CONN_CLOSE_FLAG_LOCAL
+#define SSL_CONN_CLOSE_FLAG_TRANSPORT
+
 typedef struct ssl_conn_close_info_st {
     uint64_t error_code;
     char     *reason;
     size_t   reason_len;
-    int      is_local;
-    int      is_transport;
+    uint32_t flags;
 } SSL_CONN_CLOSE_INFO;
 
 int SSL_get_conn_close_info(SSL *ssl,
@@ -854,11 +857,12 @@ always be zero terminated, but since it is received from a potentially untrusted
 peer, may also contain zero bytes. `info->reason_len` is the true length of the
 reason string in bytes.
 
-`info->is_local` is 1 if the connection closure was locally initiated.
+`info->flags` has `SSL_CONN_CLOSE_FLAG_LOCAL` set if the connection closure was
+locally initiated.
 
-`info->is_transport` is 1 if the connection closure was initiated by QUIC, and 0
-if it was initiated by the application. The namespace of `info->error_code` is
-determined by this parameter.
+`info->flags` has `SSL_CONN_CLOSE_FLAG_TRANSPORT` if the connection closure was
+initiated by QUIC, and 0 if it was initiated by the application. The namespace
+of `info->error_code` is determined by this parameter.
 
 ### New APIs for Multi-Stream Operation
 
@@ -977,6 +981,21 @@ __owur int SSL_get_stream_type(SSL *ssl);
  * TLS, DTLS: Returns UINT64_MAX.
  */
 __owur uint64_t SSL_get_stream_id(SSL *ssl);
+```
+
+#### `SSL_is_stream_local`
+
+| Semantics | `SSL_get_error` | Can Tick? | CSHL          |
+| --------- | ------------- | --------- | ------------- |
+| New       | Never         | No        | S             |
+
+```c
+/*
+ * QUIC: Returns 1 if the stream was locally initiated, or 0 otherwise.
+ *
+ * TLS, DTLS: Returns -1.
+ */
+__owur int SSL_is_stream_local(SSL *ssl);
 ```
 
 #### `SSL_new_stream`
@@ -1527,7 +1546,8 @@ calls.
 
 **Q. How should `STOP_SENDING` be supported?**
 
-TODO: Determine how `STOP_SENDING` should be supported.
+We trigger `STOP_SENDING` automatically if an application frees the associated
+QUIC stream SSL object.
 
 **Q. Can data be received on a locally initiated bidirectional stream before any
 data is sent on that stream?**

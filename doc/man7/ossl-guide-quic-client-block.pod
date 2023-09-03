@@ -17,13 +17,13 @@ ossl-guide-quic-client-block
 This page will present various source code samples demonstrating how to write
 a simple blocking QUIC client application which connects to a server, sends an
 HTTP/1.0 request to it, and reads back the response. Note that HTTP/1.0 over
-QUIC is non-standard and will not typically be supported by real world servers.
-This is for demonstration purposes only.
+QUIC is non-standard and will not be supported by real world servers. This is
+for demonstration purposes only.
 
 We assume that you already have OpenSSL installed on your system; that you
 already have some fundamental understanding of OpenSSL concepts, TLS and QUIC
-(see L<crypto(7)>, L<ossl-guide-tls-introduction(7)> and
-L<ossl-guide-quic-introduction(7)>); and that you know how to
+(see L<ossl-guide-libraries-introduction(7)>, L<ossl-guide-tls-introduction(7)>
+and L<ossl-guide-quic-introduction(7)>); and that you know how to
 write and build C code and link it against the libcrypto and libssl libraries
 that are provided by OpenSSL. It also assumes that you have a basic
 understanding of UDP/IP and sockets. The example code that we build in this
@@ -33,7 +33,8 @@ this one will be discussed so we also assume that you have run through and
 understand that tutorial.
 
 For this tutorial our client will be using a single QUIC stream. A subsequent
-tutorial will discuss how to write a multi-stream client.
+tutorial will discuss how to write a multi-stream client (see
+L<ossl-guide-quic-multi-stream(7)>).
 
 The complete source code for this example blocking QUIC client is available in
 the C<demos/guide> directory of the OpenSSL source distribution in the file
@@ -219,9 +220,10 @@ L<SSL_set_alpn_protos(3)> returns zero for success and nonzero for failure.
 An OpenSSL QUIC application must specify the target address of the server that
 is being connected to. In L</Creating the socket and BIO> above we saved that
 address away for future use. Now we need to use it via the
-L<SSL_set_initial_peer_addr(3)> function.
+L<SSL_set1_initial_peer_addr(3)> function.
 
-    if (!SSL_set_initial_peer_addr(ssl, peer_addr)) {
+    /* Set the IP address of the remote peer */
+    if (!SSL_set1_initial_peer_addr(ssl, peer_addr)) {
         printf("Failed to set the initial peer address\n");
         goto end;
     }
@@ -239,16 +241,95 @@ client, so we won't repeat it here.
 
 We can also perform data transfer using a default QUIC stream that is
 automatically associated with the B<SSL> object for us. We can transmit data
-using L<SSL_write_ex(3)>, and receive data using L<SSL_read_ex(3)> in exactly
-the same way as for TLS. Again, we won't repeat it here.
+using L<SSL_write_ex(3)>, and receive data using L<SSL_read_ex(3)> in the same
+way as for TLS. The main difference is that we have to account for failures
+slightly differently. With QUIC the stream can be reset by the peer (which is
+fatal for that stream), but the underlying connection itself may still be
+healthy.
+
+    /*
+     * Get up to sizeof(buf) bytes of the response. We keep reading until the
+     * server closes the connection.
+     */
+    while (SSL_read_ex(ssl, buf, sizeof(buf), &readbytes)) {
+        /*
+        * OpenSSL does not guarantee that the returned data is a string or
+        * that it is NUL terminated so we use fwrite() to write the exact
+        * number of bytes that we read. The data could be non-printable or
+        * have NUL characters in the middle of it. For this simple example
+        * we're going to print it to stdout anyway.
+        */
+        fwrite(buf, 1, readbytes, stdout);
+    }
+    /* In case the response didn't finish with a newline we add one now */
+    printf("\n");
+
+    /*
+     * Check whether we finished the while loop above normally or as the
+     * result of an error. The 0 argument to SSL_get_error() is the return
+     * code we received from the SSL_read_ex() call. It must be 0 in order
+     * to get here. Normal completion is indicated by SSL_ERROR_ZERO_RETURN. In
+     * QUIC terms this means that the peer has sent FIN on the stream to
+     * indicate that no further data will be sent.
+     */
+    switch (SSL_get_error(ssl, 0)) {
+    case SSL_ERROR_ZERO_RETURN:
+        /* Normal completion of the stream */
+        break;
+
+    case SSL_ERROR_SSL:
+        /*
+         * Some stream fatal error occurred. This could be because of a stream
+         * reset - or some failure occurred on the underlying connection.
+         */
+        switch (SSL_get_stream_read_state(ssl)) {
+        case SSL_STREAM_STATE_RESET_REMOTE:
+            printf("Stream reset occurred\n");
+            /* The stream has been reset but the connection is still healthy. */
+            break;
+
+        case SSL_STREAM_STATE_CONN_CLOSED:
+            printf("Connection closed\n");
+            /* Connection is already closed. Skip SSL_shutdown() */
+            goto end;
+
+        default:
+            printf("Unknown stream failure\n");
+            break;
+        }
+        break;
+
+    default:
+        /* Some other unexpected error occurred */
+        printf ("Failed reading remaining data\n");
+        break;
+    }
+
+In the above code example you can see that B<SSL_ERROR_SSL> indicates a stream
+fatal error. We can use L<SSL_get_stream_read_state(3)> to determine whether the
+stream has been reset, or if some other fatal error has occurred.
 
 =head2 Shutting down the connection
 
-As in the TLS tutorial, once we have finished reading data from the server then
-we are ready to close the connection down. As before we do this via the
-L<SSL_shutdown(3)> function. This example for QUIC is very similar to the TLS
-version. However the L<SSL_shutdown(3)> function may need to be called more than
-once:
+In the TLS tutorial we knew that the server had finished sending data because
+L<SSL_read_ex(3)> returned 0, and L<SSL_get_error(3)> returned
+B<SSL_ERROR_ZERO_RETURN>. The same is true with QUIC except that
+B<SSL_ERROR_ZERO_RETURN> should be interpreted slightly differently. With TLS
+we knew that this meant that the server had sent a "close_notify" alert. No
+more data will be sent from the server on that connection.
+
+With QUIC it means that the server has indicated "FIN" on the stream, meaning
+that it will no longer send any more data on that stream. However this only
+gives us information about the stream itself and does not tell us anything about
+the underlying connection. More data could still be sent from the server on some
+other stream. Additionally, although the server will not send any more data to
+the client, it does not prevent the client from sending more data to the server.
+
+In this tutorial, once we have finished reading data from the server on the one
+stream that we are using, we will close the connection down. As before we do
+this via the L<SSL_shutdown(3)> function. This example for QUIC is very similar
+to the TLS version. However the L<SSL_shutdown(3)> function will need to be
+called more than once:
 
     /*
      * Repeatedly call SSL_shutdown() until the connection is fully
@@ -262,24 +343,27 @@ once:
         }
     } while (ret != 1);
 
-The shutdown process is in two stages. First we gracefully shutdown the
-connection for sending and secondly we shutdown the connection for receiving.
-L<SSL_shutdown(3)> returns 0 once the first stage has been completed, and 1 once
-the second stage is finished. This two stage process applies to TLS as well.
-However in our blocking TLS client example code we knew that the peer had
-already partially closed down due to the B<SSL_ERROR_ZERO_RETURN> that we had
-obtained via L<SSL_get_error(3)> after the final L<SSL_read_ex(3)> call. Due to
-that return value we knew that the connection was already closed down for
-receiving data and hence L<SSL_shutdown(3)> should only need to be called once.
+The shutdown process is in two stages. In the first stage we wait until all the
+data we have buffered for sending on any stream has been successfully sent and
+acknowledged by the peer, and then we send a CONNECTION_CLOSE to the peer to
+indicate that the connection is no longer usable. This immediately closes the
+connection and no more data can be sent or received. L<SSL_shutdown(3)> returns
+0 once the first stage has been completed.
 
-However, with QUIC, the B<SSL_ERROR_ZERO_RETURN> value only tells us that the
-stream (not the connection) is partially closed down. Therefore we need to call
-L<SSL_shutdown(3)> more than once to ensure that we progress through both stages
-of the shutdown process.
+In the second stage the connection enters a "closing" state. Application data
+cannot be sent or received in this state, but late arriving packets coming from
+the peer will be handled appropriately. Once this stage has completed
+successfully L<SSL_shutdown(3)> will return 1 to indicate success.
+
+=head1 FURTHER READING
+
+See L<ossl-guide-quic-multi-stream(7)> to read a tutorial on how to modify the
+client developed on this page to support multiple streams.
 
 =head1 SEE ALSO
 
-L<crypto(7)>, L<ossl-guide-tls-introduction(7)>,
+L<ossl-guide-introduction(7)>, L<ossl-guide-libraries-introduction(7)>,
+L<ossl-guide-libssl-introduction(7)>, L<ossl-guide-tls-introduction(7)>,
 L<ossl-guide-tls-client-block(7)>, L<ossl-guide-quic-introduction(7)>
 
 =head1 COPYRIGHT

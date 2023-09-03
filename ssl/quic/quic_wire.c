@@ -328,8 +328,8 @@ int ossl_quic_wire_encode_frame_new_conn_id(WPACKET *pkt,
             || !WPACKET_quic_write_vlint(pkt, f->retire_prior_to)
             || !WPACKET_put_bytes_u8(pkt, f->conn_id.id_len)
             || !WPACKET_memcpy(pkt, f->conn_id.id, f->conn_id.id_len)
-            || !WPACKET_memcpy(pkt, f->stateless_reset_token,
-                               sizeof(f->stateless_reset_token)))
+            || !WPACKET_memcpy(pkt, f->stateless_reset.token,
+                               sizeof(f->stateless_reset.token)))
         return 0;
 
     return 1;
@@ -488,7 +488,7 @@ int ossl_quic_wire_peek_frame_ack_num_ranges(const PACKET *orig_pkt,
                                              uint64_t *total_ranges)
 {
     PACKET pkt = *orig_pkt;
-    uint64_t ack_range_count;
+    uint64_t ack_range_count, i;
 
     if (!expect_frame_header_mask(&pkt, OSSL_QUIC_FRAME_TYPE_ACK_WITHOUT_ECN,
                                   1, NULL)
@@ -496,6 +496,18 @@ int ossl_quic_wire_peek_frame_ack_num_ranges(const PACKET *orig_pkt,
             || !PACKET_skip_quic_vlint(&pkt)
             || !PACKET_get_quic_vlint(&pkt, &ack_range_count))
         return 0;
+
+    /*
+     * Ensure the specified number of ack ranges listed in the ACK frame header
+     * actually are available in the frame data. This naturally bounds the
+     * number of ACK ranges which can be requested by the MDPL, and therefore by
+     * the MTU. This ensures we do not allocate memory for an excessive number
+     * of ACK ranges.
+     */
+    for (i = 0; i < ack_range_count; ++i)
+        if (!PACKET_skip_quic_vlint(&pkt)
+            || !PACKET_skip_quic_vlint(&pkt))
+            return 0;
 
     /* (cannot overflow because QUIC vlints can only encode up to 2**62-1) */
     *total_ranges = ack_range_count + 1;
@@ -804,8 +816,8 @@ int ossl_quic_wire_decode_frame_new_conn_id(PACKET *pkt,
     if (len < QUIC_MAX_CONN_ID_LEN)
         memset(f->conn_id.id + len, 0, QUIC_MAX_CONN_ID_LEN - len);
 
-    if (!PACKET_copy_bytes(pkt, f->stateless_reset_token,
-                           sizeof(f->stateless_reset_token)))
+    if (!PACKET_copy_bytes(pkt, f->stateless_reset.token,
+                           sizeof(f->stateless_reset.token)))
         return 0;
 
     return 1;
@@ -983,8 +995,8 @@ int ossl_quic_wire_decode_transport_param_preferred_addr(PACKET *pkt,
         || !PACKET_get_1(&pkt2, &cidl)
         || cidl > QUIC_MAX_CONN_ID_LEN
         || !PACKET_copy_bytes(&pkt2, p->cid.id, cidl)
-        || !PACKET_copy_bytes(&pkt2, p->stateless_reset_token,
-                              sizeof(p->stateless_reset_token)))
+        || !PACKET_copy_bytes(&pkt2, p->stateless_reset.token,
+                              sizeof(p->stateless_reset.token)))
         return 0;
 
     p->ipv4_port    = (uint16_t)ipv4_port;

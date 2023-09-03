@@ -57,6 +57,7 @@ __owur int ossl_quic_get_wpoll_descriptor(SSL *s, BIO_POLL_DESCRIPTOR *d);
 __owur int ossl_quic_get_net_read_desired(SSL *s);
 __owur int ossl_quic_get_net_write_desired(SSL *s);
 __owur int ossl_quic_get_error(const SSL *s, int i);
+__owur int ossl_quic_want(const SSL *s);
 __owur int ossl_quic_conn_get_blocking_mode(const SSL *s);
 __owur int ossl_quic_conn_set_blocking_mode(SSL *s, int blocking);
 __owur int ossl_quic_conn_shutdown(SSL *s, uint64_t flags,
@@ -73,6 +74,7 @@ __owur SSL *ossl_quic_conn_stream_new(SSL *s, uint64_t flags);
 __owur SSL *ossl_quic_get0_connection(SSL *s);
 __owur int ossl_quic_get_stream_type(SSL *s);
 __owur uint64_t ossl_quic_get_stream_id(SSL *s);
+__owur int ossl_quic_is_stream_local(SSL *s);
 __owur int ossl_quic_set_default_stream_mode(SSL *s, uint32_t mode);
 __owur SSL *ossl_quic_detach_stream(SSL *s);
 __owur int ossl_quic_attach_stream(SSL *conn, SSL *stream);

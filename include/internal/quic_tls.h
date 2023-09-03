@@ -100,4 +100,7 @@ int ossl_quic_tls_get_error(QUIC_TLS *qtls,
                             const char **error_msg,
                             ERR_STATE **error_state);
 
+int ossl_quic_tls_is_cert_request(QUIC_TLS *qtls);
+int ossl_quic_tls_has_bad_max_early_data(QUIC_TLS *qtls);
+
 #endif

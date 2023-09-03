@@ -182,7 +182,7 @@ OSSL_TIME ossl_quic_tserver_get_deadline(QUIC_TSERVER *srv);
  * Shutdown the QUIC connection. Returns 1 if the connection is terminated and
  * 0 otherwise.
  */
-int ossl_quic_tserver_shutdown(QUIC_TSERVER *srv);
+int ossl_quic_tserver_shutdown(QUIC_TSERVER *srv, uint64_t app_error_code);
 
 /* Force generation of an ACK-eliciting packet. */
 int ossl_quic_tserver_ping(QUIC_TSERVER *srv);
@@ -200,6 +200,16 @@ void ossl_quic_tserver_set_msg_callback(QUIC_TSERVER *srv,
  * instrumentation only and not to bypass QUIC_TSERVER for 'normal' operations.
  */
 QUIC_CHANNEL *ossl_quic_tserver_get_channel(QUIC_TSERVER *srv);
+
+/* Send a TLS new session ticket */
+int ossl_quic_tserver_new_ticket(QUIC_TSERVER *srv);
+
+/*
+ * Set the max_early_data value to be sent in NewSessionTickets. Only the
+ * values 0 and 0xffffffff are valid for use in QUIC.
+ */
+int ossl_quic_tserver_set_max_early_data(QUIC_TSERVER *srv,
+                                         uint32_t max_early_data);
 
 # endif
 

@@ -304,6 +304,12 @@ int ossl_quic_channel_set_net_rbio(QUIC_CHANNEL *ch, BIO *net_rbio);
 int ossl_quic_channel_set_net_wbio(QUIC_CHANNEL *ch, BIO *net_wbio);
 
 /*
+ * Re-poll the network BIOs already set to determine if their support
+ * for polling has changed.
+ */
+int ossl_quic_channel_update_poll_descriptors(QUIC_CHANNEL *ch);
+
+/*
  * Returns an existing stream by stream ID. Returns NULL if the stream does not
  * exist.
  */
@@ -410,6 +416,12 @@ uint16_t ossl_quic_channel_get_diag_num_rx_ack(QUIC_CHANNEL *ch);
  * Diagnostic use only. Gets the current local CID.
  */
 void ossl_quic_channel_get_diag_local_cid(QUIC_CHANNEL *ch, QUIC_CONN_ID *cid);
+
+/*
+ * Returns 1 if stream count flow control allows us to create a new
+ * locally-initiated stream.
+ */
+int ossl_quic_channel_is_new_local_stream_admissible(QUIC_CHANNEL *ch, int is_uni);
 
 # endif
 

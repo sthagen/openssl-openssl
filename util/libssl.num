@@ -535,7 +535,7 @@ SSL_get_rpoll_descriptor                ?	3_2_0	EXIST::FUNCTION:
 SSL_get_wpoll_descriptor                ?	3_2_0	EXIST::FUNCTION:
 SSL_set_blocking_mode                   ?	3_2_0	EXIST::FUNCTION:
 SSL_get_blocking_mode                   ?	3_2_0	EXIST::FUNCTION:
-SSL_set_initial_peer_addr               ?	3_2_0	EXIST::FUNCTION:
+SSL_set1_initial_peer_addr              ?	3_2_0	EXIST::FUNCTION:
 SSL_net_read_desired                    ?	3_2_0	EXIST::FUNCTION:
 SSL_net_write_desired                   ?	3_2_0	EXIST::FUNCTION:
 SSL_shutdown_ex                         ?	3_2_0	EXIST::FUNCTION:
@@ -576,3 +576,4 @@ SSL_set_incoming_stream_policy          ?	3_2_0	EXIST::FUNCTION:
 SSL_handle_events                       ?	3_2_0	EXIST::FUNCTION:
 SSL_get_event_timeout                   ?	3_2_0	EXIST::FUNCTION:
 SSL_get0_group_name                     ?	3_2_0	EXIST::FUNCTION:
+SSL_is_stream_local                     ?	3_2_0	EXIST::FUNCTION:

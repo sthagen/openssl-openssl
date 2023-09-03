@@ -80,8 +80,10 @@ struct helper {
                                unsigned char *buf, size_t buf_len);
     int (*qtf_handshake_cb)(struct helper *h,
                             unsigned char *buf, size_t buf_len);
+    int (*qtf_datagram_cb)(struct helper *h,
+                           BIO_MSG *m, size_t stride);
     uint64_t inject_word0, inject_word1;
-    uint64_t scratch0, scratch1;
+    uint64_t scratch0, scratch1, fail_count;
 };
 
 struct helper_local {
@@ -101,6 +103,8 @@ struct script_op {
                                            unsigned char *buf, size_t buf_len);
     int             (*qtf_handshake_cb)(struct helper *h,
                                         unsigned char *buf, size_t buf_len);
+    int             (*qtf_datagram_cb)(struct helper *h,
+                                       BIO_MSG *m, size_t stride);
 };
 
 #define OPK_END                                     0
@@ -150,9 +154,16 @@ struct script_op {
 #define OPK_C_INHIBIT_TICK                          44
 #define OPK_C_SET_WRITE_BUF_SIZE                    45
 #define OPK_S_SET_INJECT_HANDSHAKE                  46
+#define OPK_S_NEW_TICKET                            47
+#define OPK_C_SKIP_IF_UNBOUND                       48
+#define OPK_S_SET_INJECT_DATAGRAM                   49
+#define OPK_S_SHUTDOWN                              50
 
 #define EXPECT_CONN_CLOSE_APP       (1U << 0)
 #define EXPECT_CONN_CLOSE_REMOTE    (1U << 1)
+
+/* OPK_C_NEW_STREAM */
+#define ALLOW_FAIL (1U << 16)
 
 #define C_BIDI_ID(ordinal) \
     (((ordinal) << 2) | QUIC_STREAM_INITIATOR_CLIENT | QUIC_STREAM_DIR_BIDI)
@@ -197,8 +208,14 @@ struct script_op {
     {OPK_C_ATTACH, NULL, 0, NULL, #stream_name},
 #define OP_C_NEW_STREAM_BIDI(stream_name, expect_id) \
     {OPK_C_NEW_STREAM, NULL, 0, NULL, #stream_name, (expect_id)},
+#define OP_C_NEW_STREAM_BIDI_EX(stream_name, expect_id, flags) \
+    {OPK_C_NEW_STREAM, NULL, (flags), NULL, #stream_name, (expect_id)},
 #define OP_C_NEW_STREAM_UNI(stream_name, expect_id) \
-    {OPK_C_NEW_STREAM, NULL, 1, NULL, #stream_name, (expect_id)},
+    {OPK_C_NEW_STREAM, NULL, SSL_STREAM_FLAG_UNI, \
+     NULL, #stream_name, (expect_id)},
+#define OP_C_NEW_STREAM_UNI_EX(stream_name, expect_id, flags) \
+    {OPK_C_NEW_STREAM, NULL, (flags) | SSL_STREAM_FLAG_UNI, \
+     NULL, #stream_name, (expect_id)},
 #define OP_S_NEW_STREAM_BIDI(stream_name, expect_id) \
     {OPK_S_NEW_STREAM, NULL, 0, NULL, #stream_name, (expect_id)},
 #define OP_S_NEW_STREAM_UNI(stream_name, expect_id) \
@@ -213,8 +230,8 @@ struct script_op {
     {OPK_C_SET_DEFAULT_STREAM_MODE, NULL, (mode), NULL, NULL},
 #define OP_C_SET_INCOMING_STREAM_POLICY(policy) \
     {OPK_C_SET_INCOMING_STREAM_POLICY, NULL, (policy), NULL, NULL},
-#define OP_C_SHUTDOWN_WAIT(reason) \
-    {OPK_C_SHUTDOWN_WAIT, (reason), 0, NULL, NULL},
+#define OP_C_SHUTDOWN_WAIT(reason, flags) \
+    {OPK_C_SHUTDOWN_WAIT, (reason), (flags), NULL, NULL},
 #define OP_C_EXPECT_CONN_CLOSE_INFO(ec, app, remote)                \
     {OPK_C_EXPECT_CONN_CLOSE_INFO, NULL,                            \
         ((app) ? EXPECT_CONN_CLOSE_APP : 0) |                       \
@@ -271,6 +288,14 @@ struct script_op {
     {OPK_C_SET_WRITE_BUF_SIZE, NULL, (size), NULL, #stream_name},
 #define OP_S_SET_INJECT_HANDSHAKE(f) \
     {OPK_S_SET_INJECT_HANDSHAKE, NULL, 0, NULL, NULL, 0, NULL, (f)},
+#define OP_S_NEW_TICKET() \
+    {OPK_S_NEW_TICKET},
+#define OP_C_SKIP_IF_UNBOUND(stream_name, n) \
+    {OPK_C_SKIP_IF_UNBOUND, NULL, (n), NULL, #stream_name},
+#define OP_S_SET_INJECT_DATAGRAM(f) \
+    {OPK_S_SET_INJECT_DATAGRAM, NULL, 0, NULL, NULL, 0, NULL, NULL, (f)},
+#define OP_S_SHUTDOWN(error_code) \
+    {OPK_S_SHUTDOWN, NULL, (error_code)},
 
 static OSSL_TIME get_time(void *arg)
 {
@@ -764,11 +789,43 @@ static int helper_handshake_listener(QTEST_FAULT *fault,
     return h->qtf_handshake_cb(h, buf, buf_len);
 }
 
+static int helper_datagram_listener(QTEST_FAULT *fault,
+                                    BIO_MSG *msg, size_t stride,
+                                    void *arg)
+{
+    struct helper *h = arg;
+
+    return h->qtf_datagram_cb(h, msg, stride);
+}
+
 static int is_want(SSL *s, int ret)
 {
     int ec = SSL_get_error(s, ret);
 
     return ec == SSL_ERROR_WANT_READ || ec == SSL_ERROR_WANT_WRITE;
+}
+
+static int check_consistent_want(SSL *s, int ret)
+{
+    int ec = SSL_get_error(s, ret);
+    int w = SSL_want(s);
+
+    int ok = TEST_true(
+        (ec == SSL_ERROR_NONE                 && w == SSL_NOTHING)
+    ||  (ec == SSL_ERROR_ZERO_RETURN          && w == SSL_NOTHING)
+    ||  (ec == SSL_ERROR_SSL                  && w == SSL_NOTHING)
+    ||  (ec == SSL_ERROR_SYSCALL              && w == SSL_NOTHING)
+    ||  (ec == SSL_ERROR_WANT_READ            && w == SSL_READING)
+    ||  (ec == SSL_ERROR_WANT_WRITE           && w == SSL_WRITING)
+    ||  (ec == SSL_ERROR_WANT_CLIENT_HELLO_CB && w == SSL_CLIENT_HELLO_CB)
+    ||  (ec == SSL_ERROR_WANT_X509_LOOKUP     && w == SSL_X509_LOOKUP)
+    ||  (ec == SSL_ERROR_WANT_RETRY_VERIFY    && w == SSL_RETRY_VERIFY)
+    );
+
+    if (!ok)
+        TEST_error("got error=%d, want=%d", ec, w);
+
+    return ok;
 }
 
 static int run_script_worker(struct helper *h, const struct script_op *script,
@@ -908,6 +965,13 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
             ++repeat_stack_len;
             break;
 
+        case OPK_C_SKIP_IF_UNBOUND:
+            if (c_tgt != NULL)
+                break;
+
+            op_idx += op->arg1;
+            break;
+
         case OPK_END_REPEAT:
             if (!TEST_size_t_gt(repeat_stack_len, 0))
                 goto out;
@@ -965,24 +1029,29 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
                 connect_started = 1;
 
                 ret = SSL_connect(h->c_conn);
-                if (!TEST_true((ret == 1 || op->arg1 > 0)
-                               || (!h->blocking && is_want(h->c_conn, ret))))
+                if (!check_consistent_want(c_tgt, ret))
                     goto out;
+                if (ret != 1) {
+                    if (!h->blocking && is_want(h->c_conn, ret))
+                        SPIN_AGAIN();
 
-                if (!h->blocking && ret < 0)
-                    SPIN_AGAIN();
+                    if (op->arg1 == 0 && !TEST_int_eq(ret, 1))
+                        goto out;
+                }
             }
             break;
 
         case OPK_C_WRITE:
             {
                 size_t bytes_written = 0;
+                int r;
 
                 if (!TEST_ptr(c_tgt))
                     goto out;
 
-                if (!TEST_true(SSL_write_ex(c_tgt, op->arg0, op->arg1,
-                                            &bytes_written))
+                r = SSL_write_ex(c_tgt, op->arg0, op->arg1, &bytes_written);
+                if (!TEST_true(r)
+                    || !check_consistent_want(c_tgt, r)
                     || !TEST_size_t_eq(bytes_written, op->arg1))
                     goto out;
             }
@@ -1036,13 +1105,18 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
         case OPK_C_READ_EXPECT:
             {
                 size_t bytes_read = 0;
+                int r;
 
                 if (op->arg1 > 0 && tmp_buf == NULL
                     && !TEST_ptr(tmp_buf = OPENSSL_malloc(op->arg1)))
                     goto out;
 
-                if (!SSL_read_ex(c_tgt, tmp_buf + offset, op->arg1 - offset,
-                                 &bytes_read))
+                r = SSL_read_ex(c_tgt, tmp_buf + offset, op->arg1 - offset,
+                                &bytes_read);
+                if (!check_consistent_want(c_tgt, r))
+                    goto out;
+
+                if (!r)
                     SPIN_AGAIN();
 
                 if (bytes_read + offset != op->arg1) {
@@ -1094,9 +1168,11 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
             {
                 char buf[1];
                 size_t bytes_read = 0;
+                int r;
 
-                if (!TEST_false(SSL_read_ex(c_tgt, buf, sizeof(buf),
-                                            &bytes_read))
+                r = SSL_read_ex(c_tgt, buf, sizeof(buf), &bytes_read);
+                if (!check_consistent_want(c_tgt, r)
+                    || !TEST_false(r)
                     || !TEST_size_t_eq(bytes_read, 0))
                     goto out;
 
@@ -1105,6 +1181,9 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
 
                 if (!TEST_int_eq(SSL_get_error(c_tgt, 0),
                                  SSL_ERROR_ZERO_RETURN))
+                    goto out;
+
+                if (!TEST_int_eq(SSL_want(c_tgt), SSL_NOTHING))
                     goto out;
             }
             break;
@@ -1156,7 +1235,10 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
         case OPK_C_NEW_STREAM:
             {
                 SSL *c_stream;
-                uint64_t flags = 0;
+                uint64_t flags = op->arg1;
+                int allow_fail = ((flags & ALLOW_FAIL) != 0);
+
+                flags &= ~(uint64_t)ALLOW_FAIL;
 
                 if (!TEST_ptr_null(c_tgt))
                     goto out; /* don't overwrite existing stream with same name */
@@ -1164,11 +1246,18 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
                 if (!TEST_ptr(op->stream_name))
                     goto out;
 
-                if (op->arg1 != 0)
-                    flags |= SSL_STREAM_FLAG_UNI;
-
-                if (!TEST_ptr(c_stream = SSL_new_stream(h->c_conn, flags)))
+                c_stream = SSL_new_stream(h->c_conn, flags);
+                if (!allow_fail && !TEST_ptr(c_stream))
                     goto out;
+
+                if (allow_fail && c_stream == NULL) {
+                    if (!TEST_size_t_eq(ERR_GET_REASON(ERR_get_error()),
+                                        SSL_R_STREAM_COUNT_LIMITED))
+                        goto out;
+
+                    ++h->fail_count;
+                    break;
+                }
 
                 if (op->arg2 != UINT64_MAX
                     && !TEST_uint64_t_eq(SSL_get_stream_id(c_stream),
@@ -1305,12 +1394,18 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
 
                 args.quic_reason = (const char *)op->arg0;
 
-                ret = SSL_shutdown_ex(c_tgt, 0, &args, sizeof(args));
+                ret = SSL_shutdown_ex(c_tgt, op->arg1, &args, sizeof(args));
                 if (!TEST_int_ge(ret, 0))
                     goto out;
 
                 if (ret == 0)
                     SPIN_AGAIN();
+            }
+            break;
+
+        case OPK_S_SHUTDOWN:
+            {
+                ossl_quic_tserver_shutdown(h->s, op->arg1);
             }
             break;
 
@@ -1327,8 +1422,12 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
                 if (!SSL_get_conn_close_info(c_tgt, &cc_info, sizeof(cc_info)))
                     SPIN_AGAIN();
 
-                if (!TEST_int_eq(expect_app, !cc_info.is_transport)
-                    || !TEST_int_eq(expect_remote, !cc_info.is_local)
+                if (!TEST_int_eq(expect_app,
+                                 (cc_info.flags
+                                  & SSL_CONN_CLOSE_FLAG_TRANSPORT) == 0)
+                    || !TEST_int_eq(expect_remote,
+                                    (cc_info.flags
+                                     & SSL_CONN_CLOSE_FLAG_LOCAL) == 0)
                     || !TEST_uint64_t_eq(error_code, cc_info.error_code))
                     goto out;
             }
@@ -1385,11 +1484,14 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
         case OPK_C_WRITE_FAIL:
             {
                 size_t bytes_written = 0;
+                int r;
 
                 if (!TEST_ptr(c_tgt))
                     goto out;
 
-                if (!TEST_false(SSL_write_ex(c_tgt, "apple", 5, &bytes_written)))
+                r = SSL_write_ex(c_tgt, "apple", 5, &bytes_written);
+                if (!TEST_false(r)
+                    || !check_consistent_want(c_tgt, r))
                     goto out;
             }
             break;
@@ -1412,11 +1514,15 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
             {
                 size_t bytes_read = 0;
                 char buf[1];
+                int r;
 
                 if (!TEST_ptr(c_tgt))
                     goto out;
 
-                if (!TEST_false(SSL_read_ex(c_tgt, buf, sizeof(buf), &bytes_read)))
+                r = SSL_read_ex(c_tgt, buf, sizeof(buf), &bytes_read);
+                if (!TEST_false(r))
+                    goto out;
+                if (!check_consistent_want(c_tgt, r))
                     goto out;
             }
             break;
@@ -1425,11 +1531,15 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
             {
                 size_t bytes_read = 0;
                 char buf[1];
+                int r;
 
                 if (!TEST_ptr(c_tgt))
                     goto out;
 
-                if (!TEST_false(SSL_read_ex(c_tgt, buf, sizeof(buf), &bytes_read)))
+                r = SSL_read_ex(c_tgt, buf, sizeof(buf), &bytes_read);
+                if (!TEST_false(r))
+                    goto out;
+                if (!check_consistent_want(c_tgt, r))
                     goto out;
 
                 if (is_want(c_tgt, 0))
@@ -1521,6 +1631,8 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
             {
                 if (!TEST_size_t_eq((size_t)SSL_get_error(c_tgt, 0), op->arg1))
                     goto out;
+                if (!TEST_int_eq(SSL_want(c_tgt), SSL_NOTHING))
+                    goto out;
             }
             break;
 
@@ -1566,6 +1678,17 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
 
             break;
 
+        case OPK_S_SET_INJECT_DATAGRAM:
+            h->qtf_datagram_cb = op->qtf_datagram_cb;
+
+            if (!TEST_true(qtest_fault_set_datagram_listener(h->qtf,
+                                                             h->qtf_datagram_cb != NULL ?
+                                                             helper_datagram_listener : NULL,
+                                                             h)))
+                goto out;
+
+            break;
+
         case OPK_SET_INJECT_WORD:
             h->inject_word0 = op->arg1;
             h->inject_word1 = op->arg2;
@@ -1586,6 +1709,11 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
             if (!TEST_true(ossl_quic_set_write_buffer_size(c_tgt, op->arg1)))
                 goto out;
 
+            break;
+
+        case OPK_S_NEW_TICKET:
+            if (!TEST_true(ossl_quic_tserver_new_ticket(h->s)))
+                goto out;
             break;
 
         default:
@@ -1905,7 +2033,7 @@ static const struct script_op script_10[] = {
     OP_S_BIND_STREAM_ID     (a, C_BIDI_ID(0))
     OP_S_READ_EXPECT        (a, "apple", 5)
 
-    OP_C_SHUTDOWN_WAIT      (NULL)
+    OP_C_SHUTDOWN_WAIT      (NULL, 0)
     OP_C_EXPECT_CONN_CLOSE_INFO(0, 1, 0)
     OP_S_EXPECT_CONN_CLOSE_INFO(0, 1, 1)
 
@@ -2065,7 +2193,7 @@ static const struct script_op script_15[] = {
      */
     OP_BEGIN_REPEAT         (200)
 
-    OP_C_NEW_STREAM_BIDI    (a, ANY_ID)
+    OP_C_NEW_STREAM_BIDI_EX (a, ANY_ID, SSL_STREAM_FLAG_ADVANCE)
     OP_C_WRITE              (a, "foo", 3)
     OP_C_CONCLUDE           (a)
     OP_C_FREE_STREAM        (a)
@@ -2997,7 +3125,7 @@ static const struct script_op script_40[] = {
     OP_END_REPEAT           ()
 
     OP_C_CONCLUDE           (a)
-    OP_C_SHUTDOWN_WAIT      (NULL) /* disengages tick inhibition */
+    OP_C_SHUTDOWN_WAIT      (NULL, 0) /* disengages tick inhibition */
 
     OP_S_BIND_STREAM_ID     (a, C_BIDI_ID(0))
     OP_S_READ_EXPECT        (a, "apple", 5)
@@ -3902,7 +4030,7 @@ static const struct script_op script_60[] = {
     OP_S_READ_EXPECT        (a, "apple", 5)
 
     OP_CHECK                (init_reason, 0)
-    OP_C_SHUTDOWN_WAIT      (long_reason)
+    OP_C_SHUTDOWN_WAIT      (long_reason, 0)
     OP_CHECK                (check_shutdown_reason, 0)
 
     OP_END
@@ -4173,6 +4301,334 @@ static const struct script_op script_67[] = {
     OP_END
 };
 
+/* 68. Fault injection - Unexpected TLS messages */
+static int script_68_inject_handshake(struct helper *h, unsigned char *msg,
+                                      size_t msglen)
+{
+    const unsigned char *data;
+    size_t datalen;
+    const unsigned char certreq[] = {
+        SSL3_MT_CERTIFICATE_REQUEST,         /* CertificateRequest message */
+        0, 0, 12,                            /* Length of message */
+        1, 1,                                /* certificate_request_context */
+        0, 8,                                /* Extensions block length */
+        0, TLSEXT_TYPE_signature_algorithms, /* sig_algs extension*/
+        0, 4,                                /* 4 bytes of sig algs extension*/
+        0, 2,                                /* sigalgs list is 2 bytes long */
+        8, 4                                 /* rsa_pss_rsae_sha256 */
+    };
+    const unsigned char keyupdate[] = {
+        SSL3_MT_KEY_UPDATE,                  /* KeyUpdate message */
+        0, 0, 1,                             /* Length of message */
+        SSL_KEY_UPDATE_NOT_REQUESTED         /* update_not_requested */
+    };
+
+    /* We transform the NewSessionTicket message into something else */
+    switch(h->inject_word0) {
+    case 0:
+        return 1;
+
+    case 1:
+        /* CertificateRequest message */
+        data = certreq;
+        datalen = sizeof(certreq);
+        break;
+
+    case 2:
+        /* KeyUpdate message */
+        data = keyupdate;
+        datalen = sizeof(keyupdate);
+        break;
+
+    default:
+        return 0;
+    }
+
+    if (!TEST_true(qtest_fault_resize_message(h->qtf,
+                                              datalen - SSL3_HM_HEADER_LENGTH)))
+        return 0;
+
+    memcpy(msg, data, datalen);
+
+    return 1;
+}
+
+/* Send a CerticateRequest message post-handshake */
+static const struct script_op script_68[] = {
+    OP_S_SET_INJECT_HANDSHAKE(script_68_inject_handshake)
+    OP_C_SET_ALPN            ("ossltest")
+    OP_C_CONNECT_WAIT        ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_C_NEW_STREAM_BIDI     (a, C_BIDI_ID(0))
+    OP_C_WRITE               (a, "apple", 5)
+    OP_S_BIND_STREAM_ID      (a, C_BIDI_ID(0))
+    OP_S_READ_EXPECT         (a, "apple", 5)
+
+    OP_SET_INJECT_WORD       (1, 0)
+    OP_S_NEW_TICKET          ()
+    OP_S_WRITE               (a, "orange", 6)
+
+    OP_C_EXPECT_CONN_CLOSE_INFO(QUIC_ERR_PROTOCOL_VIOLATION, 0, 0)
+
+    OP_END
+};
+
+/* 69. Send a TLS KeyUpdate message post-handshake */
+static const struct script_op script_69[] = {
+    OP_S_SET_INJECT_HANDSHAKE(script_68_inject_handshake)
+    OP_C_SET_ALPN            ("ossltest")
+    OP_C_CONNECT_WAIT        ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_C_NEW_STREAM_BIDI     (a, C_BIDI_ID(0))
+    OP_C_WRITE               (a, "apple", 5)
+    OP_S_BIND_STREAM_ID      (a, C_BIDI_ID(0))
+    OP_S_READ_EXPECT         (a, "apple", 5)
+
+    OP_SET_INJECT_WORD       (2, 0)
+    OP_S_NEW_TICKET          ()
+    OP_S_WRITE               (a, "orange", 6)
+
+    OP_C_EXPECT_CONN_CLOSE_INFO(QUIC_ERR_CRYPTO_ERR_BEGIN
+                                + SSL_AD_UNEXPECTED_MESSAGE, 0, 0)
+
+    OP_END
+};
+
+static int set_max_early_data(struct helper *h, const struct script_op *op)
+{
+
+    if (!TEST_true(ossl_quic_tserver_set_max_early_data(h->s,
+                                                        (uint32_t)op->arg2)))
+        return 0;
+
+    return 1;
+}
+
+/* 70. Send a TLS NewSessionTicket message with invalid max_early_data */
+static const struct script_op script_70[] = {
+    OP_C_SET_ALPN            ("ossltest")
+    OP_C_CONNECT_WAIT        ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_C_NEW_STREAM_BIDI     (a, C_BIDI_ID(0))
+    OP_C_WRITE               (a, "apple", 5)
+    OP_S_BIND_STREAM_ID      (a, C_BIDI_ID(0))
+    OP_S_READ_EXPECT         (a, "apple", 5)
+
+    OP_CHECK                 (set_max_early_data, 0xfffffffe)
+    OP_S_NEW_TICKET          ()
+    OP_S_WRITE               (a, "orange", 6)
+
+    OP_C_EXPECT_CONN_CLOSE_INFO(QUIC_ERR_PROTOCOL_VIOLATION, 0, 0)
+
+    OP_END
+};
+
+/* 71. Send a TLS NewSessionTicket message with valid max_early_data */
+static const struct script_op script_71[] = {
+    OP_C_SET_ALPN            ("ossltest")
+    OP_C_CONNECT_WAIT        ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_C_NEW_STREAM_BIDI     (a, C_BIDI_ID(0))
+    OP_C_WRITE               (a, "apple", 5)
+    OP_S_BIND_STREAM_ID      (a, C_BIDI_ID(0))
+    OP_S_READ_EXPECT         (a, "apple", 5)
+
+    OP_CHECK                 (set_max_early_data, 0xffffffff)
+    OP_S_NEW_TICKET          ()
+    OP_S_WRITE               (a, "orange", 6)
+    OP_C_READ_EXPECT         (a, "orange", 6)
+
+    OP_END
+};
+
+/* 72. Test that APL stops handing out streams after limit reached (bidi) */
+static int script_72_check(struct helper *h, const struct script_op *op)
+{
+    if (!TEST_uint64_t_ge(h->fail_count, 50))
+        return 0;
+
+    return 1;
+}
+
+static const struct script_op script_72[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    /*
+     * Request more streams than a server will initially hand out and test that
+     * they fail properly.
+     */
+    OP_BEGIN_REPEAT         (200)
+
+    OP_C_NEW_STREAM_BIDI_EX (a, ANY_ID, ALLOW_FAIL)
+    OP_C_SKIP_IF_UNBOUND    (a, 2)
+    OP_C_WRITE              (a, "apple", 5)
+    OP_C_FREE_STREAM        (a)
+
+    OP_END_REPEAT           ()
+
+    OP_CHECK                (script_72_check, 0)
+
+    OP_END
+};
+
+/* 73. Test that APL stops handing out streams after limit reached (uni) */
+static const struct script_op script_73[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    /*
+     * Request more streams than a server will initially hand out and test that
+     * they fail properly.
+     */
+    OP_BEGIN_REPEAT         (200)
+
+    OP_C_NEW_STREAM_UNI_EX  (a, ANY_ID, ALLOW_FAIL)
+    OP_C_SKIP_IF_UNBOUND    (a, 2)
+    OP_C_WRITE              (a, "apple", 5)
+    OP_C_FREE_STREAM        (a)
+
+    OP_END_REPEAT           ()
+
+    OP_CHECK                (script_72_check, 0)
+
+    OP_END
+};
+
+/* 74. Version negotiation: QUIC_VERSION_1 ignored */
+static int generate_version_neg(WPACKET *wpkt, uint32_t version)
+{
+    QUIC_PKT_HDR hdr = {0};
+
+    hdr.type                = QUIC_PKT_TYPE_VERSION_NEG;
+    hdr.fixed               = 1;
+    hdr.dst_conn_id.id_len  = 0;
+    hdr.src_conn_id.id_len  = 8;
+    memset(hdr.src_conn_id.id, 0x55, 8);
+
+    if (!TEST_true(ossl_quic_wire_encode_pkt_hdr(wpkt, 0, &hdr, NULL)))
+        return 0;
+
+    if (!TEST_true(WPACKET_put_bytes_u32(wpkt, version)))
+        return 0;
+
+    return 1;
+}
+
+static int server_gen_version_neg(struct helper *h, BIO_MSG *msg, size_t stride)
+{
+    int rc = 0, have_wpkt = 0;
+    size_t l;
+    WPACKET wpkt;
+    BUF_MEM *buf = NULL;
+    uint32_t version;
+
+    switch (h->inject_word0) {
+    case 0:
+        return 1;
+    case 1:
+        version = QUIC_VERSION_1;
+        break;
+    default:
+        version = 0x5432abcd;
+        break;
+    }
+
+    if (!TEST_ptr(buf = BUF_MEM_new()))
+        goto err;
+
+    if (!TEST_true(WPACKET_init(&wpkt, buf)))
+        goto err;
+
+    have_wpkt = 1;
+
+    generate_version_neg(&wpkt, version);
+
+    if (!TEST_true(WPACKET_get_total_written(&wpkt, &l)))
+        goto err;
+
+    if (!TEST_true(qtest_fault_resize_datagram(h->qtf, l)))
+        return 0;
+
+    memcpy(msg->data, buf->data, l);
+    h->inject_word0 = 0;
+
+    rc = 1;
+err:
+    if (have_wpkt)
+        WPACKET_finish(&wpkt);
+
+    BUF_MEM_free(buf);
+    return rc;
+}
+
+static const struct script_op script_74[] = {
+    OP_S_SET_INJECT_DATAGRAM (server_gen_version_neg)
+    OP_SET_INJECT_WORD       (1, 0)
+
+    OP_C_SET_ALPN            ("ossltest")
+    OP_C_CONNECT_WAIT        ()
+
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_C_NEW_STREAM_BIDI     (a, C_BIDI_ID(0))
+    OP_C_WRITE               (a, "apple", 5)
+    OP_S_BIND_STREAM_ID      (a, C_BIDI_ID(0))
+    OP_S_READ_EXPECT         (a, "apple", 5)
+
+    OP_END
+};
+
+/* 75. Version negotiation: Unknown version causes connection abort */
+static const struct script_op script_75[] = {
+    OP_S_SET_INJECT_DATAGRAM (server_gen_version_neg)
+    OP_SET_INJECT_WORD       (2, 0)
+
+    OP_C_SET_ALPN            ("ossltest")
+    OP_C_CONNECT_WAIT_OR_FAIL()
+
+    OP_C_EXPECT_CONN_CLOSE_INFO(QUIC_ERR_CONNECTION_REFUSED,0,0)
+
+    OP_END
+};
+
+/* 74. Test peer-initiated shutdown wait */
+static int script_76_check(struct helper *h, const struct script_op *op)
+{
+    if (!TEST_false(SSL_shutdown_ex(h->c_conn, SSL_SHUTDOWN_FLAG_WAIT_PEER,
+                                    NULL, 0)))
+        return 0;
+
+    return 1;
+}
+
+static const struct script_op script_76[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_C_NEW_STREAM_BIDI    (a, C_BIDI_ID(0))
+    OP_C_WRITE              (a, "apple", 5)
+
+    OP_S_BIND_STREAM_ID     (a, C_BIDI_ID(0))
+    OP_S_READ_EXPECT        (a, "apple", 5)
+
+    /* Check a WAIT_PEER call doesn't succeed yet. */
+    OP_CHECK                (script_76_check, 0)
+    OP_S_SHUTDOWN           (42)
+
+    OP_C_SHUTDOWN_WAIT      (NULL, SSL_SHUTDOWN_FLAG_WAIT_PEER)
+    OP_C_EXPECT_CONN_CLOSE_INFO(42, 1, 1)
+
+    OP_END
+};
+
 static const struct script_op *const scripts[] = {
     script_1,
     script_2,
@@ -4241,6 +4697,15 @@ static const struct script_op *const scripts[] = {
     script_65,
     script_66,
     script_67,
+    script_68,
+    script_69,
+    script_70,
+    script_71,
+    script_72,
+    script_73,
+    script_74,
+    script_75,
+    script_76
 };
 
 static int test_script(int idx)

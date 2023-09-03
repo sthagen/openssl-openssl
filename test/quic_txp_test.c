@@ -403,7 +403,7 @@ static int schedule_cfq_new_conn_id(struct helper *h)
     ncid.seq_num         = 2345;
     ncid.retire_prior_to = 1234;
     ncid.conn_id         = cid_1;
-    memcpy(ncid.stateless_reset_token, reset_token_1, sizeof(reset_token_1));
+    memcpy(ncid.stateless_reset.token, reset_token_1, sizeof(reset_token_1));
 
     if (!TEST_ptr(buf_mem = BUF_MEM_new()))
         goto err;
@@ -442,7 +442,7 @@ static int check_cfq_new_conn_id(struct helper *h)
         || !TEST_uint64_t_eq(h->frame.new_conn_id.retire_prior_to, 1234)
         || !TEST_mem_eq(&h->frame.new_conn_id.conn_id, sizeof(cid_1),
                         &cid_1, sizeof(cid_1))
-        || !TEST_mem_eq(&h->frame.new_conn_id.stateless_reset_token,
+        || !TEST_mem_eq(&h->frame.new_conn_id.stateless_reset.token,
                         sizeof(reset_token_1),
                         reset_token_1,
                         sizeof(reset_token_1)))
@@ -1244,16 +1244,16 @@ static int run_script(int script_idx, const struct script_op *script)
     for (op = script, opn = 0; op->opcode != OPK_END; ++op, ++opn) {
         switch (op->opcode) {
         case OPK_TXP_GENERATE:
-            if (!TEST_int_eq(ossl_quic_tx_packetiser_generate(h.txp, &status),
-                             TX_PACKETISER_RES_SENT_PKT))
+            if (!TEST_true(ossl_quic_tx_packetiser_generate(h.txp, &status))
+                && !TEST_size_t_gt(status.sent_pkt, 0))
                 goto err;
 
             ossl_qtx_finish_dgram(h.args.qtx);
             ossl_qtx_flush_net(h.args.qtx);
             break;
         case OPK_TXP_GENERATE_NONE:
-            if (!TEST_int_eq(ossl_quic_tx_packetiser_generate(h.txp, &status),
-                             TX_PACKETISER_RES_NO_PKT))
+            if (!TEST_true(ossl_quic_tx_packetiser_generate(h.txp, &status))
+                && !TEST_size_t_eq(status.sent_pkt, 0))
                 goto err;
 
             break;

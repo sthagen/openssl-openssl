@@ -195,6 +195,83 @@ static int test_quic_write_read(int idx)
     return ret;
 }
 
+/*
+ * Test that sending FIN with no data to a client blocking in SSL_read_ex() will
+ * wake up the client.
+ */
+static int test_fin_only_blocking(void)
+{
+    SSL_CTX *cctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_client_method());
+    SSL_CTX *sctx = NULL;
+    SSL *clientquic = NULL;
+    QUIC_TSERVER *qtserv = NULL;
+    const char *msg = "Hello World";
+    uint64_t sid;
+    size_t numbytes;
+    unsigned char buf[32];
+    int ret = 0;
+    OSSL_TIME timer, timediff;
+
+    if (!qtest_supports_blocking())
+        return TEST_skip("Blocking tests not supported in this build");
+
+    if (!TEST_ptr(cctx)
+            || !TEST_true(qtest_create_quic_objects(libctx, cctx, sctx,
+                                                    cert, privkey,
+                                                    QTEST_FLAG_BLOCK,
+                                                    &qtserv, &clientquic,
+                                                    NULL))
+            || !TEST_true(SSL_set_tlsext_host_name(clientquic, "localhost")))
+        goto end;
+
+    if (!TEST_true(qtest_create_quic_connection(qtserv, clientquic)))
+        goto end;
+
+    if (!TEST_true(ossl_quic_tserver_stream_new(qtserv, 0, &sid))
+            || !TEST_true(ossl_quic_tserver_write(qtserv, sid,
+                                                  (unsigned char *)msg,
+                                                  strlen(msg), &numbytes))
+            || !TEST_size_t_eq(strlen(msg), numbytes))
+        goto end;
+
+    ossl_quic_tserver_tick(qtserv);
+
+    if (!TEST_true(SSL_read_ex(clientquic, buf, sizeof(buf), &numbytes))
+            || !TEST_mem_eq(msg, strlen(msg), buf, numbytes))
+
+
+        goto end;
+
+    if (!TEST_true(ossl_quic_tserver_conclude(qtserv, sid)))
+        goto end;
+
+    timer = ossl_time_now();
+    if (!TEST_false(SSL_read_ex(clientquic, buf, sizeof(buf), &numbytes)))
+        goto end;
+    timediff = ossl_time_subtract(ossl_time_now(), timer);
+
+    if (!TEST_int_eq(SSL_get_error(clientquic, 0), SSL_ERROR_ZERO_RETURN)
+               /*
+                * We expect the SSL_read_ex to not have blocked so this should
+                * be very fast. 20ms should be plenty.
+                */
+            || !TEST_uint64_t_le(ossl_time2ms(timediff), 20))
+        goto end;
+
+    if (!TEST_true(qtest_shutdown(qtserv, clientquic)))
+        goto end;
+
+    ret = 1;
+
+ end:
+    ossl_quic_tserver_free(qtserv);
+    SSL_free(clientquic);
+    SSL_CTX_free(cctx);
+    SSL_CTX_free(sctx);
+
+    return ret;
+}
+
 /* Test that a vanilla QUIC SSL object has the expected ciphersuites available */
 static int test_ciphersuites(void)
 {
@@ -297,7 +374,7 @@ static void strip_line_ends(char *str)
 
 static int compare_with_file(BIO *membio)
 {
-    BIO *file = NULL;
+    BIO *file = NULL, *newfile = NULL;
     char buf1[512], buf2[512];
     char *reffile;
     int ret = 0;
@@ -309,6 +386,19 @@ static int compare_with_file(BIO *membio)
 
     file = BIO_new_file(reffile, "rb");
     if (!TEST_ptr(file))
+        goto err;
+
+    newfile = BIO_new_file("ssltraceref-new.txt", "wb");
+    if (!TEST_ptr(newfile))
+        goto err;
+
+    while (BIO_gets(membio, buf2, sizeof(buf2)) > 0)
+        if (BIO_puts(newfile, buf2) <= 0) {
+            TEST_error("Failed writing new file data");
+            goto err;
+        }
+
+    if (!TEST_int_ge(BIO_seek(membio, 0), 0))
         goto err;
 
     while (BIO_gets(file, buf1, sizeof(buf1)) > 0) {
@@ -340,6 +430,7 @@ static int compare_with_file(BIO *membio)
  err:
     OPENSSL_free(reffile);
     BIO_free(file);
+    BIO_free(newfile);
     return ret;
 }
 
@@ -365,7 +456,9 @@ static int test_ssl_trace(void)
     if (!TEST_ptr(cctx)
             || !TEST_ptr(bio)
             || !TEST_true(qtest_create_quic_objects(libctx, cctx, NULL, cert,
-                                                    privkey, 0, &qtserv,
+                                                    privkey,
+                                                    QTEST_FLAG_FAKE_TIME,
+                                                    &qtserv,
                                                     &clientquic, NULL)))
         goto err;
 
@@ -856,6 +949,118 @@ static int test_back_pressure(void)
     return testresult;
 }
 
+
+static int dgram_ctr = 0;
+
+static void dgram_cb(int write_p, int version, int content_type,
+                     const void *buf, size_t msglen, SSL *ssl, void *arg)
+{
+    if (!write_p)
+        return;
+
+    if (content_type != SSL3_RT_QUIC_DATAGRAM)
+        return;
+
+    dgram_ctr++;
+}
+
+/* Test that we send multiple datagrams in one go when appropriate */
+static int test_multiple_dgrams(void)
+{
+    SSL_CTX *cctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_client_method());
+    SSL *clientquic = NULL;
+    QUIC_TSERVER *qtserv = NULL;
+    int testresult = 0;
+    unsigned char *buf;
+    const size_t buflen = 1400;
+    size_t written;
+
+    buf = OPENSSL_zalloc(buflen);
+
+    if (!TEST_ptr(cctx)
+            || !TEST_ptr(buf)
+            || !TEST_true(qtest_create_quic_objects(libctx, cctx, NULL, cert,
+                                                    privkey, 0, &qtserv,
+                                                    &clientquic, NULL))
+            || !TEST_true(qtest_create_quic_connection(qtserv, clientquic)))
+        goto err;
+
+    dgram_ctr = 0;
+    SSL_set_msg_callback(clientquic, dgram_cb);
+    if (!TEST_true(SSL_write_ex(clientquic, buf, buflen, &written))
+            || !TEST_size_t_eq(written, buflen)
+               /* We wrote enough data for 2 datagrams */
+            || !TEST_int_eq(dgram_ctr, 2))
+        goto err;
+
+    testresult = 1;
+ err:
+    OPENSSL_free(buf);
+    SSL_free(clientquic);
+    ossl_quic_tserver_free(qtserv);
+    SSL_CTX_free(cctx);
+
+    return testresult;
+}
+
+static int non_io_retry_cert_verify_cb(X509_STORE_CTX *ctx, void *arg)
+{
+    int idx = SSL_get_ex_data_X509_STORE_CTX_idx();
+    SSL *ssl;
+    int *ctr = (int *)arg;
+
+    /* this should not happen but check anyway */
+    if (idx < 0
+        || (ssl = X509_STORE_CTX_get_ex_data(ctx, idx)) == NULL)
+        return 0;
+
+    /* If this is the first time we've been called then retry */
+    if (((*ctr)++) == 0)
+        return SSL_set_retry_verify(ssl);
+
+    /* Otherwise do nothing - verification succeeds. Continue as normal */
+    return 1;
+}
+
+/* Test that we can handle a non-io related retry error
+ * Test 0: Non-blocking
+ * Test 1: Blocking
+ */
+static int test_non_io_retry(int idx)
+{
+    SSL_CTX *cctx;
+    SSL *clientquic = NULL;
+    QUIC_TSERVER *qtserv = NULL;
+    int testresult = 0;
+    int flags = 0, ctr = 0;
+
+    if (idx >= 1 && !qtest_supports_blocking())
+        return TEST_skip("Blocking tests not supported in this build");
+
+    cctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_client_method());
+    if (!TEST_ptr(cctx))
+        goto err;
+
+    SSL_CTX_set_cert_verify_callback(cctx, non_io_retry_cert_verify_cb, &ctr);
+
+    flags = (idx >= 1) ? QTEST_FLAG_BLOCK : 0;
+    if (!TEST_true(qtest_create_quic_objects(libctx, cctx, NULL, cert, privkey,
+                                             flags, &qtserv, &clientquic, NULL))
+            || !TEST_true(qtest_create_quic_connection_ex(qtserv, clientquic,
+                            SSL_ERROR_WANT_RETRY_VERIFY))
+            || !TEST_int_eq(SSL_want(clientquic), SSL_RETRY_VERIFY)
+            || !TEST_true(qtest_create_quic_connection(qtserv, clientquic)))
+        goto err;
+
+    testresult = 1;
+ err:
+    SSL_free(clientquic);
+    ossl_quic_tserver_free(qtserv);
+    SSL_CTX_free(cctx);
+
+    return testresult;
+}
+
 OPT_TEST_DECLARE_USAGE("provider config certsdir datadir\n")
 
 int setup_tests(void)
@@ -912,6 +1117,7 @@ int setup_tests(void)
         goto err;
 
     ADD_ALL_TESTS(test_quic_write_read, 3);
+    ADD_TEST(test_fin_only_blocking);
     ADD_TEST(test_ciphersuites);
     ADD_TEST(test_version);
 #if defined(DO_SSL_TRACE_TEST)
@@ -923,6 +1129,8 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_quic_set_fd, 3);
     ADD_TEST(test_bio_ssl);
     ADD_TEST(test_back_pressure);
+    ADD_TEST(test_multiple_dgrams);
+    ADD_ALL_TESTS(test_non_io_retry, 2);
     return 1;
  err:
     cleanup_tests();

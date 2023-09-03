@@ -555,8 +555,8 @@ int ossl_quic_tx_packetiser_set_peer(OSSL_QUIC_TX_PACKETISER *txp,
                                      const BIO_ADDR *peer)
 {
     if (peer == NULL) {
-        ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
-        return 0;
+        BIO_ADDR_clear(&txp->args.peer);
+        return 1;
     }
 
     txp->args.peer = *peer;
@@ -702,7 +702,7 @@ int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
      *      sent to the FIFM.
      *
      */
-    int res = TX_PACKETISER_RES_FAILURE, rc;
+    int res = 0, rc;
     uint32_t archetype, enc_level;
     uint32_t conn_close_enc_level = QUIC_ENC_LEVEL_NUM;
     struct txp_pkt pkt[QUIC_ENC_LEVEL_NUM];
@@ -714,6 +714,8 @@ int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
          enc_level < QUIC_ENC_LEVEL_NUM;
          ++enc_level)
         pkt[enc_level].h_valid = 0;
+
+    memset(status, 0, sizeof(*status));
 
     /*
      * Should not be needed, but a sanity check in case anyone else has been
@@ -798,8 +800,6 @@ int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
     }
 
     /* 4. Commit */
-    memset(status, 0, sizeof(*status));
-
     for (enc_level = QUIC_ENC_LEVEL_INITIAL;
          enc_level < QUIC_ENC_LEVEL_NUM;
          ++enc_level) {
@@ -833,7 +833,7 @@ int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
            && pkt[QUIC_ENC_LEVEL_HANDSHAKE].h.bytes_appended > 0);
 
     /* Flush & Cleanup */
-    res = TX_PACKETISER_RES_NO_PKT;
+    res = 1;
 out:
     ossl_qtx_finish_dgram(txp->args.qtx);
 
@@ -842,11 +842,9 @@ out:
          ++enc_level)
         txp_pkt_cleanup(&pkt[enc_level], txp);
 
-    /*
-     * If we already successfully did at least one, make sure we report this via
-     * the return code.
-     */
-    return pkts_done > 0 ? TX_PACKETISER_RES_SENT_PKT : res;
+    status->sent_pkt = pkts_done;
+
+    return res;
 }
 
 static const struct archetype_data archetypes[QUIC_ENC_LEVEL_NUM][TX_PACKETISER_ARCHETYPE_NUM] = {
@@ -1806,6 +1804,7 @@ static int txp_generate_pre_token(OSSL_QUIC_TX_PACKETISER *txp,
             if (!tx_helper_commit(h))
                 return 0;
 
+            tpkt->had_conn_close = 1;
             *can_be_non_inflight = 0;
         } else {
             tx_helper_rollback(h);
@@ -2945,6 +2944,9 @@ static int txp_pkt_commit(OSSL_QUIC_TX_PACKETISER *txp,
 
     if (tpkt->had_ack_frame)
         txp->want_ack &= ~(1UL << pn_space);
+
+    if (tpkt->had_conn_close)
+        txp->want_conn_close = 0;
 
     /*
      * Decrement probe request counts if we have sent a packet that meets

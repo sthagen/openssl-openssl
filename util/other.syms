@@ -168,6 +168,10 @@ BIO_dgram_get_peer                      define
 BIO_dgram_set_peer                      define
 BIO_dgram_recv_timedout                 define
 BIO_dgram_send_timedout                 define
+BIO_dgram_detect_peer_addr              define
+BIO_get0_dgram_bio                      define
+BIO_get_sock_type                       define
+BIO_set_sock_type                       define
 BIO_do_accept                           define
 BIO_do_connect                          define
 BIO_do_handshake                        define
@@ -643,10 +647,14 @@ SSL_want_read                           define
 SSL_want_retry_verify                   define
 SSL_want_write                          define
 SSL_want_x509_lookup                    define
+SSL_CONN_CLOSE_FLAG_LOCAL               define
+SSL_CONN_CLOSE_FLAG_TRANSPORT           define
 SSLv23_client_method                    define
 SSLv23_method                           define
 SSLv23_server_method                    define
 SSL_STREAM_FLAG_UNI                     define
+SSL_STREAM_FLAG_NO_BLOCK                define
+SSL_STREAM_FLAG_ADVANCE                 define
 SSL_STREAM_TYPE_NONE                    define
 SSL_STREAM_TYPE_READ                    define
 SSL_STREAM_TYPE_WRITE                   define
@@ -691,6 +699,8 @@ OSSL_TRACE_CANCEL                       define
 OSSL_TRACE1                             define
 OSSL_TRACE2                             define
 OSSL_TRACE9                             define
+OSSL_THREAD_SUPPORT_FLAG_THREAD_POOL    define
+OSSL_THREAD_SUPPORT_FLAG_DEFAULT_SPAWN  define
 TS_VERIFY_CTS_set_certs                 define deprecated 3.0.0
 EVP_PKEY_get1_tls_encodedpoint          define deprecated 3.0.0
 EVP_PKEY_set1_tls_encodedpoint          define deprecated 3.0.0
