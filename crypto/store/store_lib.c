@@ -428,14 +428,14 @@ OSSL_STORE_INFO *OSSL_STORE_load(OSSL_STORE_CTX *ctx)
 
             load_data.v = NULL;
             load_data.ctx = ctx;
+            ctx->error_flag = 0;
 
             if (!ctx->fetched_loader->p_load(ctx->loader_ctx,
                                              ossl_store_handle_load_result,
                                              &load_data,
                                              ossl_pw_passphrase_callback_dec,
                                              &ctx->pwdata)) {
-                if (!OSSL_STORE_eof(ctx))
-                    ctx->error_flag = 1;
+                ctx->error_flag = 1;
                 return NULL;
             }
             v = load_data.v;
@@ -1013,7 +1013,7 @@ OSSL_STORE_CTX *OSSL_STORE_attach(BIO *bp, const char *scheme,
     ctx->post_process_data = post_process_data;
 
     /*
-     * ossl_store_get0_loader_int will raise an error if the loader for the
+     * ossl_store_get0_loader_int will raise an error if the loader for
      * the scheme cannot be retrieved. But if a loader was successfully
      * fetched then we remove this error from the error stack.
      */

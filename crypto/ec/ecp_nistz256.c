@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2014-2023 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2014, Intel Corporation. All Rights Reserved.
  * Copyright (c) 2015, CloudFlare, Inc.
  *
@@ -35,14 +35,6 @@
 # define TOBN(hi,lo)    lo,hi
 #else
 # define TOBN(hi,lo)    ((BN_ULONG)hi<<32|lo)
-#endif
-
-#if defined(__GNUC__)
-# define ALIGN32        __attribute((aligned(32)))
-#elif defined(_MSC_VER)
-# define ALIGN32        __declspec(align(32))
-#else
-# define ALIGN32
 #endif
 
 #define ALIGNPTR(p,N)   ((unsigned char *)p+N-(size_t)p%N)

@@ -45,9 +45,9 @@ jobs:
             url: "https://www.openssl.org/source/openssl-3.0.9.tar.gz",
           },
           {
-            dir: openssl-3.1.1,
-            tgz: openssl-3.1.1.tar.gz,
-            url: "https://www.openssl.org/source/openssl-3.1.1.tar.gz",
+            dir: openssl-3.1.2,
+            tgz: openssl-3.1.2.tar.gz,
+            url: "https://www.openssl.org/source/openssl-3.1.2.tar.gz",
           },
         ]
 
@@ -122,7 +122,7 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           path: ${{ matrix.branch.dir }}
           repository: openssl/openssl

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -16,6 +16,15 @@
 # include "internal/refcount.h"
 # include "crypto/ecx.h"
 
+/*
+ * Default PKCS5 PBE KDF salt lengths
+ * In RFC 8018, PBE1 uses 8 bytes (64 bits) for its salt length.
+ * It also specifies to use at least 8 bytes for PBES2.
+ * The NIST requirement for PBKDF2 is 128 bits so we use this as the
+ * default for PBE2 (scrypt and HKDF2)
+ */
+# define PKCS5_DEFAULT_PBE1_SALT_LEN     PKCS5_SALT_LEN
+# define PKCS5_DEFAULT_PBE2_SALT_LEN     16
 /*
  * Don't free up md_ctx->pctx in EVP_MD_CTX_reset, use the reserved flag
  * values in evp.h

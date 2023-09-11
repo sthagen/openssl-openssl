@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -387,11 +387,11 @@ typedef struct string_int_pair_st {
 #define OPT_PARAMETERS() { OPT_PARAM_STR, 1, '-', "Parameters:\n" }
 
 const char *opt_path_end(const char *filename);
-char *opt_init(int ac, char **av, const OPTIONS * o);
+char *opt_init(int ac, char **av, const OPTIONS *o);
 char *opt_progname(const char *argv0);
 char *opt_appname(const char *argv0);
 char *opt_getprog(void);
-void opt_help(const OPTIONS * list);
+void opt_help(const OPTIONS *list);
 
 void opt_begin(void);
 int opt_next(void);
@@ -419,7 +419,7 @@ int opt_format(const char *s, unsigned long flags, int *result);
 void print_format_error(int format, unsigned long flags);
 int opt_printf_stderr(const char *fmt, ...);
 int opt_string(const char *name, const char **options);
-int opt_pair(const char *arg, const OPT_PAIR * pairs, int *result);
+int opt_pair(const char *arg, const OPT_PAIR *pairs, int *result);
 
 int opt_verify(int i, X509_VERIFY_PARAM *vpm);
 int opt_rand(int i);

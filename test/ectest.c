@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2001-2023 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -2457,7 +2457,7 @@ static int ec_point_hex2point_test(int id)
     EC_GROUP *group = NULL;
     const EC_POINT *G = NULL;
     EC_POINT *P = NULL;
-    BN_CTX * bnctx = NULL;
+    BN_CTX *bnctx = NULL;
 
     /* Do some setup */
     nid = curves[id].nid;

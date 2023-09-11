@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -228,7 +228,7 @@ struct ossl_record_method_st {
      * remain available until all the bytes from record are released via one or
      * more release_record calls.
      *
-     * Internally the the OSSL_RECORD_METHOD the implementation may read/process
+     * Internally the OSSL_RECORD_METHOD implementation may read/process
      * multiple records in one go and buffer them.
      */
     int (*read_record)(OSSL_RECORD_LAYER *rl, void **rechandle, int *rversion,

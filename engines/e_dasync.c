@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -519,7 +519,7 @@ static void dummy_pause_job(void) {
     ASYNC_JOB *job;
     ASYNC_WAIT_CTX *waitctx;
     ASYNC_callback_fn callback;
-    void * callback_arg;
+    void *callback_arg;
     OSSL_ASYNC_FD pipefds[2] = {0, 0};
     OSSL_ASYNC_FD *writefd;
 #if defined(ASYNC_WIN)

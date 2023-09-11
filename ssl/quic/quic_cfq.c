@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -8,6 +8,7 @@
  */
 
 #include "internal/quic_cfq.h"
+#include "internal/numbers.h"
 
 typedef struct quic_cfq_item_ex_st QUIC_CFQ_ITEM_EX;
 

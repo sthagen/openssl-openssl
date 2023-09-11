@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -89,6 +89,9 @@ struct servent *PASCAL getservbyname(const char *, const char *);
 #  endif
 
 #  include <netdb.h>
+#  if defined(OPENSSL_SYS_VMS)
+typedef size_t socklen_t;        /* Currently appears to be missing on VMS */
+#  endif
 #  if defined(OPENSSL_SYS_VMS_NODECC)
 #   include <socket.h>
 #   include <in.h>
@@ -114,7 +117,9 @@ struct servent *PASCAL getservbyname(const char *, const char *);
 #  endif
 
 #  ifdef OPENSSL_SYS_UNIX
-#    include <poll.h>
+#    ifndef OPENSSL_SYS_TANDEM
+#     include <poll.h>
+#    endif
 #    include <errno.h>
 #  endif
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -52,13 +52,13 @@ struct evp_test_method_st {
     /* Name of test as it appears in file */
     const char *name;
     /* Initialise test for "alg" */
-    int (*init) (EVP_TEST * t, const char *alg);
+    int (*init) (EVP_TEST *t, const char *alg);
     /* Clean up method */
-    void (*cleanup) (EVP_TEST * t);
+    void (*cleanup) (EVP_TEST *t);
     /* Test specific name value pair processing */
-    int (*parse) (EVP_TEST * t, const char *name, const char *value);
+    int (*parse) (EVP_TEST *t, const char *name, const char *value);
     /* Run the test itself */
-    int (*run_test) (EVP_TEST * t);
+    int (*run_test) (EVP_TEST *t);
 };
 
 /* Linked list of named keys. */

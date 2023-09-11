@@ -34,7 +34,7 @@ static variant_char *ossl_getenv(const char *name)
 {
     /*
      * Since we pull only one environment variable, it's simpler to
-     * to just ignore |name| and use equivalent wide-char L-literal.
+     * just ignore |name| and use equivalent wide-char L-literal.
      * As well as to ignore excessively long values...
      */
     static WCHAR value[48];
@@ -173,7 +173,7 @@ void OPENSSL_cpuid_setup(void)
  */
 
 /*
- * The volatile is used to to ensure that the compiler generates code that reads
+ * The volatile is used to ensure that the compiler generates code that reads
  * all values from the array and doesn't try to optimize this away. The standard
  * doesn't actually require this behavior if the original data pointed to is
  * not volatile, but compilers do this in practice anyway.
@@ -181,7 +181,7 @@ void OPENSSL_cpuid_setup(void)
  * There are also assembler versions of this function.
  */
 # undef CRYPTO_memcmp
-int CRYPTO_memcmp(const void * in_a, const void * in_b, size_t len)
+int CRYPTO_memcmp(const void *in_a, const void *in_b, size_t len)
 {
     size_t i;
     const volatile unsigned char *a = in_a;

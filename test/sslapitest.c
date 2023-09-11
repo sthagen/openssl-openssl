@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -9054,7 +9054,7 @@ static int test_session_timeout(int test)
      * Test session ordering and timeout
      * Can't explicitly test performance of the new code,
      * but can test to see if the ordering of the sessions
-     * are correct, and they they are removed as expected
+     * are correct, and they are removed as expected
      */
     SSL_SESSION *early = NULL;
     SSL_SESSION *middle = NULL;
@@ -9549,7 +9549,7 @@ static int test_pluggable_group(int idx)
  */
 static int create_cert_key(int idx, char *certfilename, char *privkeyfilename)
 {
-    EVP_PKEY_CTX * evpctx = EVP_PKEY_CTX_new_from_name(libctx,
+    EVP_PKEY_CTX *evpctx = EVP_PKEY_CTX_new_from_name(libctx,
                              (idx == 0) ? "xorhmacsig" : "xorhmacsha2sig", NULL);
     EVP_PKEY *pkey = NULL;
     X509 *x509 = X509_new();

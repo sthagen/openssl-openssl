@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -136,7 +136,7 @@ static int alg##_##kbits##_##lcmode##_get_params(OSSL_PARAM params[])          \
                                           flags, kbits, blkbits, ivbits);      \
 }                                                                              \
 static OSSL_FUNC_cipher_newctx_fn alg##_##kbits##_##lcmode##_newctx;           \
-static void * alg##_##kbits##_##lcmode##_newctx(void *provctx)                 \
+static void *alg##_##kbits##_##lcmode##_newctx(void *provctx)                  \
 {                                                                              \
      PROV_##UCALG##_CTX *ctx;                                                  \
      if (!ossl_prov_is_running())                                              \

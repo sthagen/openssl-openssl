@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2023 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -1571,7 +1571,7 @@ static int setup_request_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
             if (opt_csr != NULL) {
                 CMP_err1("no -newkey option given with private key for POPO, -csr option only provides public key%s",
                         opt_key == NULL ? "" :
-                        ", and -key option superseded by by -csr");
+                        ", and -key option superseded by -csr");
                 return 0;
             }
             if (opt_key == NULL) {
@@ -2648,7 +2648,7 @@ static int get_opts(int argc, char **argv)
             }
             break;
         case OPT_CSR:
-            opt_csr = opt_arg();
+            opt_csr = opt_str();
             break;
         case OPT_OUT_TRUSTED:
             opt_out_trusted = opt_str();
@@ -2681,7 +2681,7 @@ static int get_opts(int argc, char **argv)
             opt_issuer = opt_str();
             break;
         case OPT_SERIAL:
-            opt_serial = opt_arg();
+            opt_serial = opt_str();
             break;
         case OPT_CERTFORM:
             opt_certform_s = opt_str();

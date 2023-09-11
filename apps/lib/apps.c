@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -75,9 +75,9 @@ typedef struct {
 } NAME_EX_TBL;
 
 static int set_table_opts(unsigned long *flags, const char *arg,
-                          const NAME_EX_TBL * in_tbl);
+                          const NAME_EX_TBL *in_tbl);
 static int set_multi_opts(unsigned long *flags, const char *arg,
-                          const NAME_EX_TBL * in_tbl);
+                          const NAME_EX_TBL *in_tbl);
 int app_init(long mesgwin);
 
 int chopup_args(ARGS *arg, char *buf)
@@ -987,7 +987,7 @@ int load_key_certs_crls(const char *uri, int format, int maybe_stdin,
 
         if (!maybe_stdin) {
             if (!quiet)
-                BIO_printf(bio_err, "No filename or uri specified for loading");
+                BIO_printf(bio_err, "No filename or uri specified for loading\n");
             goto end;
         }
         uri = "<stdin>";
@@ -1003,11 +1003,8 @@ int load_key_certs_crls(const char *uri, int format, int maybe_stdin,
         ctx = OSSL_STORE_open_ex(uri, libctx, propq, get_ui_method(), &uidata,
                                  params, NULL, NULL);
     }
-    if (ctx == NULL) {
-        if (!quiet)
-            BIO_printf(bio_err, "Could not open file or uri for loading");
+    if (ctx == NULL)
         goto end;
-    }
     if (expect > 0 && !OSSL_STORE_expect(ctx, expect))
         goto end;
 
@@ -1273,7 +1270,7 @@ int copy_extensions(X509 *x, X509_REQ *req, int copy_type)
 }
 
 static int set_multi_opts(unsigned long *flags, const char *arg,
-                          const NAME_EX_TBL * in_tbl)
+                          const NAME_EX_TBL *in_tbl)
 {
     STACK_OF(CONF_VALUE) *vals;
     CONF_VALUE *val;
@@ -1292,7 +1289,7 @@ static int set_multi_opts(unsigned long *flags, const char *arg,
 }
 
 static int set_table_opts(unsigned long *flags, const char *arg,
-                          const NAME_EX_TBL * in_tbl)
+                          const NAME_EX_TBL *in_tbl)
 {
     char c;
     const NAME_EX_TBL *ptbl;
@@ -1980,16 +1977,17 @@ X509_NAME *parse_name(const char *cp, int chtype, int canmulti,
         nid = OBJ_txt2nid(typestr);
         if (nid == NID_undef) {
             BIO_printf(bio_err,
-                       "%s: Skipping unknown %s name attribute \"%s\"\n",
+                       "%s warning: Skipping unknown %s name attribute \"%s\"\n",
                        opt_getprog(), desc, typestr);
             if (ismulti)
                 BIO_printf(bio_err,
-                           "Hint: a '+' in a value string needs be escaped using '\\' else a new member of a multi-valued RDN is expected\n");
+                           "%s hint: a '+' in a value string needs be escaped using '\\' else a new member of a multi-valued RDN is expected\n",
+                           opt_getprog());
             continue;
         }
         if (*valstr == '\0') {
             BIO_printf(bio_err,
-                       "%s: No value provided for %s name attribute \"%s\", skipped\n",
+                       "%s warning: No value provided for %s name attribute \"%s\", skipped\n",
                        opt_getprog(), desc, typestr);
             continue;
         }

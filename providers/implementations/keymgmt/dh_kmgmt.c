@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -699,7 +699,7 @@ static void *dh_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
         return NULL;
 
     /*
-     * If a group name is selected then the type is group regardless of what the
+     * If a group name is selected then the type is group regardless of what
      * the user selected. This overrides rather than errors for backwards
      * compatibility.
      */

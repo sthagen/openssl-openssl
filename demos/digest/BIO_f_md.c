@@ -1,5 +1,5 @@
 /*-
- * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -34,7 +34,7 @@
  * The default digest is SHA3-512
  */
 
-int main(int argc, char * argv[])
+int main(int argc, char *argv[])
 {
     int ret = EXIT_FAILURE;
     OSSL_LIB_CTX *library_context = NULL;

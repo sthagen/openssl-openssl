@@ -123,6 +123,7 @@ for TCP).
 
         /* Set to nonblocking mode */
         if (!BIO_socket_nbio(sock, 1)) {
+            BIO_closesocket(sock);
             sock = -1;
             continue;
         }
@@ -164,10 +165,12 @@ associate it with a BIO object:
 
     BIO *bio;
 
-    /* Create a BIO to wrap the socket*/
+    /* Create a BIO to wrap the socket */
     bio = BIO_new(BIO_s_datagram());
-    if (bio == NULL)
+    if (bio == NULL) {
         BIO_closesocket(sock);
+        return NULL;
+    }
 
     /*
      * Associate the newly created BIO with the underlying socket. By

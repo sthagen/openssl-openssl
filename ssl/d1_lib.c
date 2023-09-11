@@ -1,5 +1,5 @@
 /*
- * Copyright 2005-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2005-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -256,7 +256,7 @@ long dtls1_ctrl(SSL *ssl, int cmd, long larg, void *parg)
     return ret;
 }
 
-static void dtls1_bio_set_next_timeout(BIO * bio, const DTLS1_STATE *d1)
+static void dtls1_bio_set_next_timeout(BIO *bio, const DTLS1_STATE *d1)
 {
     struct timeval tv = ossl_time_to_timeval(d1->next_timeout);
 

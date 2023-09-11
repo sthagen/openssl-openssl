@@ -1,5 +1,5 @@
 /*-
- * Copyright 2021-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2021-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -24,7 +24,7 @@
  * more than once.
  */
 
-const char * hamlet_1 =
+const char *hamlet_1 =
     "To be, or not to be, that is the question,\n"
     "Whether tis nobler in the minde to suffer\n"
     "The ſlings and arrowes of outragious fortune,\n"
@@ -43,7 +43,7 @@ const char * hamlet_1 =
     "The oppressor's wrong, the proud man's Contumely,\n"
     "The pangs of dispised love, the Law's delay,\n"
 ;
-const char * hamlet_2 =
+const char *hamlet_2 =
     "The insolence of Office, and the spurns\n"
     "That patient merit of the'unworthy takes,\n"
     "When he himself might his Quietas make\n"

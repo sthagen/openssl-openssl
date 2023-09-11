@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ *  Copyright 2022-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  *  Licensed under the Apache License 2.0 (the "License").  You may not use
  *  this file except in compliance with the License.  You can obtain a copy
@@ -118,7 +118,7 @@ void configure_client_context(SSL_CTX *ctx)
     }
 }
 
-void usage()
+void usage(void)
 {
     printf("Usage: sslecho s\n");
     printf("       --or--\n");

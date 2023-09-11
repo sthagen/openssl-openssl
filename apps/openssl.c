@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -446,12 +446,12 @@ static int do_cmd(LHASH_OF(FUNCTION) *prog, int argc, char *argv[])
     return 1;
 }
 
-static int function_cmp(const FUNCTION * a, const FUNCTION * b)
+static int function_cmp(const FUNCTION *a, const FUNCTION *b)
 {
     return strncmp(a->name, b->name, 8);
 }
 
-static unsigned long function_hash(const FUNCTION * a)
+static unsigned long function_hash(const FUNCTION *a)
 {
     return OPENSSL_LH_strhash(a->name);
 }

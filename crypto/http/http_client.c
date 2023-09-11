@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2001-2023 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Siemens AG 2018-2020
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -1473,7 +1473,7 @@ int OSSL_HTTP_proxy_connect(BIO *bio, const char *server, const char *port,
     do {
         /*
          * This does not necessarily catch the case when the full
-         * HTTP response came in in more than a single TCP message.
+         * HTTP response came in more than a single TCP message.
          */
         read_len = BIO_gets(fbio, mbuf, BUF_SIZE);
     } while (read_len > 2);

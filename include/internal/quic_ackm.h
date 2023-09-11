@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -225,7 +225,7 @@ int ossl_ackm_is_ack_desired(OSSL_ACKM *ackm, int pkt_space);
  * the RFC.
  *
  * The return value of this function transitions from 1 to 0 for a given PN once
- * that PN is passed to ossl_ackm_on_rx_packet, thus thus function must be used
+ * that PN is passed to ossl_ackm_on_rx_packet, thus this function must be used
  * before calling ossl_ackm_on_rx_packet.
  */
 int ossl_ackm_is_rx_pn_processable(OSSL_ACKM *ackm, QUIC_PN pn, int pkt_space);

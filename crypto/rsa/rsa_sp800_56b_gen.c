@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2023 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2018-2019, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -423,7 +423,7 @@ err:
  * See SP800-56Br1 6.3.1.3 (Step 6) Perform a pair-wise consistency test by
  * verifying that: k = (k^e)^d mod n for some integer k where 1 < k < n-1.
  *
- * Returns 1 if the RSA key passes the pairwise test or 0 it it fails.
+ * Returns 1 if the RSA key passes the pairwise test or 0 if it fails.
  */
 int ossl_rsa_sp800_56b_pairwise_test(RSA *rsa, BN_CTX *ctx)
 {

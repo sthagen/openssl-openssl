@@ -47,7 +47,7 @@ static BIO *create_socket_bio(const char *hostname, const char *port,
      */
     for (ai = res; ai != NULL; ai = BIO_ADDRINFO_next(ai)) {
         /*
-         * Create a TCP socket. We could equally use non-OpenSSL calls such
+         * Create a UDP socket. We could equally use non-OpenSSL calls such
          * as "socket" here for this and the subsequent connect and close
          * functions. But for portability reasons and also so that we get
          * errors on the OpenSSL stack in the event of a failure we use
@@ -66,6 +66,7 @@ static BIO *create_socket_bio(const char *hostname, const char *port,
 
         /* Set to nonblocking mode */
         if (!BIO_socket_nbio(sock, 1)) {
+            BIO_closesocket(sock);
             sock = -1;
             continue;
         }
@@ -81,7 +82,6 @@ static BIO *create_socket_bio(const char *hostname, const char *port,
         }
     }
 
-
     /* Free the address information resources we allocated earlier */
     BIO_ADDRINFO_free(res);
 
@@ -89,10 +89,12 @@ static BIO *create_socket_bio(const char *hostname, const char *port,
     if (sock == -1)
         return NULL;
 
-    /* Create a BIO to wrap the socket*/
+    /* Create a BIO to wrap the socket */
     bio = BIO_new(BIO_s_datagram());
-    if (bio == NULL)
+    if (bio == NULL) {
         BIO_closesocket(sock);
+        return NULL;
+    }
 
     /*
      * Associate the newly created BIO with the underlying socket. By
