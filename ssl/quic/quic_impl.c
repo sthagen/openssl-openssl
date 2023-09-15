@@ -1524,6 +1524,7 @@ static int ensure_channel_started(QCTX *ctx)
         }
 
         if (!ossl_quic_channel_start(qc->ch)) {
+            ossl_quic_channel_restore_err_state(qc->ch);
             QUIC_RAISE_NON_NORMAL_ERROR(ctx, ERR_R_INTERNAL_ERROR,
                                         "failed to start channel");
             return 0;
@@ -3533,6 +3534,16 @@ int ossl_quic_renegotiate_check(SSL *ssl, int initok)
 {
     /* We never do renegotiation. */
     return 0;
+}
+
+const SSL_CIPHER *ossl_quic_get_cipher_by_char(const unsigned char *p)
+{
+    const SSL_CIPHER *ciph = ssl3_get_cipher_by_char(p);
+
+    if ((ciph->algorithm2 & SSL_QUIC) == 0)
+        return NULL;
+
+    return ciph;
 }
 
 /*

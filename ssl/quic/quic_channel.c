@@ -44,6 +44,7 @@
  */
 #define DEFAULT_MAX_ACK_DELAY   QUIC_DEFAULT_MAX_ACK_DELAY
 
+static void ch_save_err_state(QUIC_CHANNEL *ch);
 static void ch_rx_pre(QUIC_CHANNEL *ch);
 static int ch_rx(QUIC_CHANNEL *ch);
 static int ch_tx(QUIC_CHANNEL *ch);
@@ -1269,6 +1270,8 @@ static int ch_on_transport_params(const unsigned char *params,
     int got_initial_max_stream_data_uni = 0;
     int got_initial_max_streams_bidi = 0;
     int got_initial_max_streams_uni = 0;
+    int got_stateless_reset_token = 0;
+    int got_preferred_addr = 0;
     int got_ack_delay_exp = 0;
     int got_max_ack_delay = 0;
     int got_max_udp_payload_size = 0;
@@ -1573,6 +1576,11 @@ static int ch_on_transport_params(const unsigned char *params,
             break;
 
         case QUIC_TPARAM_STATELESS_RESET_TOKEN:
+            if (got_stateless_reset_token) {
+                reason = TP_REASON_DUP("STATELESS_RESET_TOKEN");
+                goto malformed;
+            }
+
             /*
              * We must ensure a client doesn't send them because we don't have
              * processing for them.
@@ -1594,12 +1602,17 @@ static int ch_on_transport_params(const unsigned char *params,
                 goto malformed;
             }
 
+            got_stateless_reset_token = 1;
             break;
 
         case QUIC_TPARAM_PREFERRED_ADDR:
             {
                 /* TODO(QUIC FUTURE): Handle preferred address. */
                 QUIC_PREFERRED_ADDR pfa;
+                if (got_preferred_addr) {
+                    reason = TP_REASON_DUP("PREFERRED_ADDR");
+                    goto malformed;
+                }
 
                 /*
                  * RFC 9000 s. 18.2: "A server that chooses a zero-length
@@ -1628,6 +1641,8 @@ static int ch_on_transport_params(const unsigned char *params,
                     reason = "zero-length CID in PREFERRED_ADDR";
                     goto malformed;
                 }
+
+                got_preferred_addr = 1;
             }
             break;
 
@@ -2702,6 +2717,10 @@ int ossl_quic_channel_set_net_wbio(QUIC_CHANNEL *ch, BIO *net_wbio)
  */
 int ossl_quic_channel_start(QUIC_CHANNEL *ch)
 {
+    uint64_t error_code;
+    const char *error_msg;
+    ERR_STATE *error_state = NULL;
+
     if (ch->is_server)
         /*
          * This is not used by the server. The server moves to active
@@ -2730,8 +2749,14 @@ int ossl_quic_channel_start(QUIC_CHANNEL *ch)
     ch->doing_proactive_ver_neg = 0; /* not currently supported */
 
     /* Handshake layer: start (e.g. send CH). */
-    if (!ossl_quic_tls_tick(ch->qtls))
+    ossl_quic_tls_tick(ch->qtls);
+
+    if (ossl_quic_tls_get_error(ch->qtls, &error_code, &error_msg,
+                                &error_state)) {
+        ossl_quic_channel_raise_protocol_error_state(ch, error_code, 0,
+                                                     error_msg, error_state);
         return 0;
+    }
 
     ossl_quic_reactor_tick(&ch->rtor, 0); /* best effort */
     return 1;
