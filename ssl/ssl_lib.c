@@ -7318,37 +7318,43 @@ int SSL_get_event_timeout(SSL *s, struct timeval *tv, int *is_infinite)
 
 int SSL_get_rpoll_descriptor(SSL *s, BIO_POLL_DESCRIPTOR *desc)
 {
-#ifndef OPENSSL_NO_QUIC
-    if (!IS_QUIC(s))
-        return -1;
+    SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
 
-    return ossl_quic_get_rpoll_descriptor(s, desc);
-#else
-    return -1;
+#ifndef OPENSSL_NO_QUIC
+    if (IS_QUIC(s))
+        return ossl_quic_get_rpoll_descriptor(s, desc);
 #endif
+
+    if (sc == NULL || sc->rbio == NULL)
+        return 0;
+
+    return BIO_get_rpoll_descriptor(sc->rbio, desc);
 }
 
 int SSL_get_wpoll_descriptor(SSL *s, BIO_POLL_DESCRIPTOR *desc)
 {
-#ifndef OPENSSL_NO_QUIC
-    if (!IS_QUIC(s))
-        return -1;
+    SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
 
-    return ossl_quic_get_wpoll_descriptor(s, desc);
-#else
-    return -1;
+#ifndef OPENSSL_NO_QUIC
+    if (IS_QUIC(s))
+        return ossl_quic_get_wpoll_descriptor(s, desc);
 #endif
+
+    if (sc == NULL || sc->wbio == NULL)
+        return 0;
+
+    return BIO_get_wpoll_descriptor(sc->wbio, desc);
 }
 
 int SSL_net_read_desired(SSL *s)
 {
 #ifndef OPENSSL_NO_QUIC
     if (!IS_QUIC(s))
-        return 0;
+        return SSL_want_read(s);
 
     return ossl_quic_get_net_read_desired(s);
 #else
-    return 0;
+    return SSL_want_read(s);
 #endif
 }
 
@@ -7356,11 +7362,11 @@ int SSL_net_write_desired(SSL *s)
 {
 #ifndef OPENSSL_NO_QUIC
     if (!IS_QUIC(s))
-        return 0;
+        return SSL_want_write(s);
 
     return ossl_quic_get_net_write_desired(s);
 #else
-    return 0;
+    return SSL_want_write(s);
 #endif
 }
 
