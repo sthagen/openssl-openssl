@@ -66,6 +66,7 @@ struct qtest_fault {
 static void packet_plain_finish(void *arg);
 static void handshake_finish(void *arg);
 
+static int using_fake_time = 0;
 static OSSL_TIME fake_now;
 
 static OSSL_TIME fake_now_cb(void *arg)
@@ -76,7 +77,7 @@ static OSSL_TIME fake_now_cb(void *arg)
 int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
                               SSL_CTX *serverctx, char *certfile, char *keyfile,
                               int flags, QUIC_TSERVER **qtserv, SSL **cssl,
-                              QTEST_FAULT **fault)
+                              QTEST_FAULT **fault, BIO **tracebio)
 {
     /* ALPN value as recognised by QUIC_TSERVER */
     unsigned char alpn[] = { 8, 'o', 's', 's', 'l', 't', 'e', 's', 't' };
@@ -84,6 +85,7 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
     BIO *cbio = NULL, *sbio = NULL, *fisbio = NULL;
     BIO_ADDR *peeraddr = NULL;
     struct in_addr ina = {0};
+    BIO *tmpbio = NULL;
 
     *qtserv = NULL;
     if (fault != NULL)
@@ -94,6 +96,17 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
         if (!TEST_ptr(*cssl))
             return 0;
     }
+
+    if ((flags & QTEST_FLAG_CLIENT_TRACE) != 0) {
+        tmpbio = BIO_new_fp(stdout, BIO_NOCLOSE);
+        if (!TEST_ptr(tmpbio))
+            goto err;
+
+        SSL_set_msg_callback(*cssl, SSL_trace);
+        SSL_set_msg_callback_arg(*cssl, tmpbio);
+    }
+    if (tracebio != NULL)
+        *tracebio = tmpbio;
 
     /* SSL_set_alpn_protos returns 0 for success! */
     if (!TEST_false(SSL_set_alpn_protos(*cssl, alpn, sizeof(alpn))))
@@ -140,6 +153,33 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
             goto err;
     }
 
+    if ((flags & QTEST_FLAG_PACKET_SPLIT) != 0) {
+        BIO *pktsplitbio = BIO_new(bio_f_pkt_split_dgram_filter());
+
+        if (!TEST_ptr(pktsplitbio))
+            goto err;
+        cbio = BIO_push(pktsplitbio, cbio);
+
+        pktsplitbio = BIO_new(bio_f_pkt_split_dgram_filter());
+        if (!TEST_ptr(pktsplitbio))
+            goto err;
+        sbio = BIO_push(pktsplitbio, sbio);
+    }
+
+    if ((flags & QTEST_FLAG_NOISE) != 0) {
+        BIO *noisebio = BIO_new(bio_f_noisy_dgram_filter());
+
+        if (!TEST_ptr(noisebio))
+            goto err;
+        cbio = BIO_push(noisebio, cbio);
+
+        noisebio = BIO_new(bio_f_noisy_dgram_filter());
+
+        if (!TEST_ptr(noisebio))
+            goto err;
+        sbio = BIO_push(noisebio, sbio);
+    }
+
     SSL_set_bio(*cssl, cbio, cbio);
 
     if (!TEST_true(SSL_set_blocking_mode(*cssl,
@@ -161,8 +201,12 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
 
     BIO_set_data(fisbio, fault == NULL ? NULL : *fault);
 
-    if (!TEST_ptr(BIO_push(fisbio, sbio)))
+    if (!BIO_up_ref(sbio))
         goto err;
+    if (!TEST_ptr(BIO_push(fisbio, sbio))) {
+        BIO_free(sbio);
+        goto err;
+    }
 
     tserver_args.libctx = libctx;
     tserver_args.net_rbio = sbio;
@@ -172,11 +216,14 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
         goto err;
     tserver_args.ctx = serverctx;
     if ((flags & QTEST_FLAG_FAKE_TIME) != 0) {
+        using_fake_time = 1;
         fake_now = ossl_time_zero();
         /* zero time can have a special meaning, bump it */
         qtest_add_time(1);
         tserver_args.now_cb = fake_now_cb;
         (void)ossl_quic_conn_set_override_now_cb(*cssl, fake_now_cb, NULL);
+    } else {
+        using_fake_time = 0;
     }
 
     if (!TEST_ptr(*qtserv = ossl_quic_tserver_new(&tserver_args, certfile,
@@ -196,14 +243,17 @@ int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
  err:
     SSL_CTX_free(tserver_args.ctx);
     BIO_ADDR_free(peeraddr);
-    BIO_free(cbio);
-    BIO_free(fisbio);
-    BIO_free(sbio);
+    BIO_free_all(cbio);
+    BIO_free_all(fisbio);
+    BIO_free_all(sbio);
     SSL_free(*cssl);
     *cssl = NULL;
     ossl_quic_tserver_free(*qtserv);
     if (fault != NULL)
         OPENSSL_free(*fault);
+    BIO_free(tmpbio);
+    if (tracebio != NULL)
+        *tracebio = NULL;
 
     return 0;
 }
@@ -253,6 +303,47 @@ static void run_server_thread(void)
     globserverret = qtest_create_quic_connection(globtserv, NULL);
 }
 #endif
+
+int qtest_wait_for_timeout(SSL *s, QUIC_TSERVER *qtserv)
+{
+    struct timeval tv;
+    OSSL_TIME ctimeout, stimeout, mintimeout, now;
+    int cinf;
+
+    /* We don't need to wait in blocking mode */
+    if (s == NULL || SSL_get_blocking_mode(s))
+        return 1;
+
+    /* Don't wait if either BIO has data waiting */
+    if (BIO_pending(SSL_get_rbio(s)) > 0
+            || BIO_pending(ossl_quic_tserver_get0_rbio(qtserv)) > 0)
+        return 1;
+
+    /*
+     * Neither endpoint has data waiting to be read. We assume data transmission
+     * is instantaneous due to using mem based BIOs, so there is no data "in
+     * flight" and no more data will be sent by either endpoint until some time
+     * based event has occurred. Therefore, wait for a timeout to occur. This
+     * might happen if we are using the noisy BIO and datagrams have been lost.
+     */
+    if (!SSL_get_event_timeout(s, &tv, &cinf))
+        return 0;
+    if (using_fake_time)
+        now = fake_now;
+    else
+        now = ossl_time_now();
+    ctimeout = cinf ? ossl_time_infinite() : ossl_time_from_timeval(tv);
+    stimeout = ossl_time_subtract(ossl_quic_tserver_get_deadline(qtserv), now);
+    mintimeout = ossl_time_min(ctimeout, stimeout);
+    if (ossl_time_is_infinite(mintimeout))
+        return 0;
+    if (using_fake_time)
+        fake_now = ossl_time_add(now, mintimeout);
+    else
+        OSSL_sleep(ossl_time2ms(mintimeout));
+
+    return 1;
+}
 
 int qtest_create_quic_connection_ex(QUIC_TSERVER *qtserv, SSL *clientssl,
                                     int wanterr)
@@ -319,19 +410,13 @@ int qtest_create_quic_connection_ex(QUIC_TSERVER *qtserv, SSL *clientssl,
             }
         }
 
-        /*
-         * We're cheating. We don't take any notice of SSL_get_tick_timeout()
-         * and tick every time around the loop anyway. This is inefficient. We
-         * can get away with it in test code because we control both ends of
-         * the communications and don't expect network delays. This shouldn't
-         * be done in a real application.
-         */
-        if (!clienterr && retc <= 0)
+        qtest_add_time(1);
+        if (clientssl != NULL)
             SSL_handle_events(clientssl);
+        if (qtserv != NULL)
+            ossl_quic_tserver_tick(qtserv);
 
         if (!servererr && rets <= 0) {
-            qtest_add_time(1);
-            ossl_quic_tserver_tick(qtserv);
             servererr = ossl_quic_tserver_is_term_any(qtserv);
             if (!servererr)
                 rets = ossl_quic_tserver_is_handshake_confirmed(qtserv);
@@ -343,6 +428,11 @@ int qtest_create_quic_connection_ex(QUIC_TSERVER *qtserv, SSL *clientssl,
         if (clientssl != NULL && ++abortctr == MAXLOOPS) {
             TEST_info("No progress made");
             goto err;
+        }
+
+        if ((retc <= 0 && !clienterr) || (rets <= 0 && !servererr)) {
+            if (!qtest_wait_for_timeout(clientssl, qtserv))
+                goto err;
         }
     } while ((retc <= 0 && !clienterr)
              || (rets <= 0 && !servererr
@@ -992,6 +1082,67 @@ int qtest_fault_resize_datagram(QTEST_FAULT *fault, size_t newlen)
                 newlen - fault->msg.data_len);
 
     fault->msg.data_len = newlen;
+
+    return 1;
+}
+
+/* There isn't a public function to do BIO_ADDR_copy() so we create one */
+int bio_addr_copy(BIO_ADDR *dst, BIO_ADDR *src)
+{
+    size_t len;
+    void *data = NULL;
+    int res = 0;
+    int family;
+
+    if (src == NULL || dst == NULL)
+        return 0;
+
+    family = BIO_ADDR_family(src);
+    if (family == AF_UNSPEC) {
+        BIO_ADDR_clear(dst);
+        return 1;
+    }
+
+    if (!BIO_ADDR_rawaddress(src, NULL, &len))
+        return 0;
+
+    if (len > 0) {
+        data = OPENSSL_malloc(len);
+        if (!TEST_ptr(data))
+            return 0;
+    }
+
+    if (!BIO_ADDR_rawaddress(src, data, &len))
+        goto err;
+
+    if (!BIO_ADDR_rawmake(src, family, data, len, BIO_ADDR_rawport(src)))
+        goto err;
+
+    res = 1;
+ err:
+    OPENSSL_free(data);
+    return res;
+}
+
+int bio_msg_copy(BIO_MSG *dst, BIO_MSG *src)
+{
+    /*
+     * Note it is assumed that the originally allocated data sizes for dst and
+     * src are the same
+     */
+    memcpy(dst->data, src->data, src->data_len);
+    dst->data_len = src->data_len;
+    dst->flags = src->flags;
+    if (dst->local != NULL) {
+        if (src->local != NULL) {
+            if (!TEST_true(bio_addr_copy(dst->local, src->local)))
+                return 0;
+        } else {
+            BIO_ADDR_clear(dst->local);
+        }
+    }
+    if (!TEST_true(bio_addr_copy(dst->peer, src->peer)))
+        return 0;
 
     return 1;
 }

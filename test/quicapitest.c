@@ -69,7 +69,7 @@ static int test_quic_write_read(int idx)
                                                             ? QTEST_FLAG_BLOCK
                                                             : 0,
                                                         &qtserv, &clientquic,
-                                                        NULL))
+                                                        NULL, NULL))
                 || !TEST_true(SSL_set_tlsext_host_name(clientquic, "localhost")))
             goto end;
 
@@ -220,7 +220,7 @@ static int test_fin_only_blocking(void)
                                                     cert, privkey,
                                                     QTEST_FLAG_BLOCK,
                                                     &qtserv, &clientquic,
-                                                    NULL))
+                                                    NULL, NULL))
             || !TEST_true(SSL_set_tlsext_host_name(clientquic, "localhost")))
         goto end;
 
@@ -380,7 +380,7 @@ static int test_version(void)
     if (!TEST_ptr(cctx)
             || !TEST_true(qtest_create_quic_objects(libctx, cctx, NULL, cert,
                                                     privkey, 0, &qtserv,
-                                                    &clientquic, NULL))
+                                                    &clientquic, NULL, NULL))
             || !TEST_true(qtest_create_quic_connection(qtserv, clientquic)))
         goto err;
 
@@ -502,7 +502,7 @@ static int test_ssl_trace(void)
                                                     privkey,
                                                     QTEST_FLAG_FAKE_TIME,
                                                     &qtserv,
-                                                    &clientquic, NULL)))
+                                                    &clientquic, NULL, NULL)))
         goto err;
 
     SSL_set_msg_callback(clientquic, SSL_trace);
@@ -829,7 +829,8 @@ static int test_bio_ssl(void)
         goto err;
 
     if (!TEST_true(qtest_create_quic_objects(libctx, NULL, NULL, cert, privkey,
-                                             0, &qtserv, &clientquic, NULL)))
+                                             0, &qtserv, &clientquic, NULL,
+                                             NULL)))
         goto err;
 
     msglen = strlen(msg);
@@ -946,7 +947,7 @@ static int test_back_pressure(void)
     if (!TEST_ptr(cctx)
             || !TEST_true(qtest_create_quic_objects(libctx, cctx, NULL, cert,
                                                     privkey, 0, &qtserv,
-                                                    &clientquic, NULL))
+                                                    &clientquic, NULL, NULL))
             || !TEST_true(qtest_create_quic_connection(qtserv, clientquic)))
         goto err;
 
@@ -1024,7 +1025,7 @@ static int test_multiple_dgrams(void)
             || !TEST_ptr(buf)
             || !TEST_true(qtest_create_quic_objects(libctx, cctx, NULL, cert,
                                                     privkey, 0, &qtserv,
-                                                    &clientquic, NULL))
+                                                    &clientquic, NULL, NULL))
             || !TEST_true(qtest_create_quic_connection(qtserv, clientquic)))
         goto err;
 
@@ -1088,7 +1089,8 @@ static int test_non_io_retry(int idx)
 
     flags = (idx >= 1) ? QTEST_FLAG_BLOCK : 0;
     if (!TEST_true(qtest_create_quic_objects(libctx, cctx, NULL, cert, privkey,
-                                             flags, &qtserv, &clientquic, NULL))
+                                             flags, &qtserv, &clientquic, NULL,
+                                             NULL))
             || !TEST_true(qtest_create_quic_connection_ex(qtserv, clientquic,
                             SSL_ERROR_WANT_RETRY_VERIFY))
             || !TEST_int_eq(SSL_want(clientquic), SSL_RETRY_VERIFY)
@@ -1156,7 +1158,7 @@ static int test_quic_psk(void)
                /* No cert or private key for the server, i.e. PSK only */
             || !TEST_true(qtest_create_quic_objects(libctx, cctx, NULL, NULL,
                                                     NULL, 0, &qtserv,
-                                                    &clientquic, NULL)))
+                                                    &clientquic, NULL, NULL)))
         goto end;
 
     SSL_set_psk_use_session_callback(clientquic, use_session_cb);
@@ -1215,7 +1217,7 @@ static int test_alpn(int idx)
                                                     privkey,
                                                     QTEST_FLAG_FAKE_TIME,
                                                     &qtserv,
-                                                    &clientquic, NULL)))
+                                                    &clientquic, NULL, NULL)))
         goto err;
 
     if (idx == 0) {
@@ -1249,6 +1251,168 @@ static int test_alpn(int idx)
 
     return testresult;
 }
+
+#define MAX_LOOPS   2000
+
+/*
+ * Keep retrying SSL_read_ex until it succeeds or we give up. Accept a stream
+ * if we don't already have one
+ */
+static int unreliable_client_read(SSL *clientquic, SSL **stream, void *buf,
+                                  size_t buflen, size_t *readbytes,
+                                  QUIC_TSERVER *qtserv)
+{
+    int abortctr;
+
+    /* We just do this in a loop with a sleep for simplicity */
+    for (abortctr = 0; abortctr < MAX_LOOPS; abortctr++) {
+        if (*stream == NULL) {
+            SSL_handle_events(clientquic);
+            *stream = SSL_accept_stream(clientquic, 0);
+        }
+
+        if (*stream != NULL) {
+            if (SSL_read_ex(*stream, buf, buflen, readbytes))
+                return 1;
+            if (!TEST_int_eq(SSL_get_error(*stream, 0), SSL_ERROR_WANT_READ))
+                return 0;
+        }
+        ossl_quic_tserver_tick(qtserv);
+        qtest_add_time(1);
+        qtest_wait_for_timeout(clientquic, qtserv);
+    }
+
+    TEST_error("No progress made");
+    return 0;
+}
+
+/* Keep retrying ossl_quic_tserver_read until it succeeds or we give up */
+static int unreliable_server_read(QUIC_TSERVER *qtserv, uint64_t sid,
+                                  void *buf, size_t buflen, size_t *readbytes,
+                                  SSL *clientquic)
+{
+    int abortctr;
+
+    /* We just do this in a loop with a sleep for simplicity */
+    for (abortctr = 0; abortctr < MAX_LOOPS; abortctr++) {
+        if (ossl_quic_tserver_read(qtserv, sid, buf, buflen, readbytes)
+                && *readbytes > 1)
+            return 1;
+        ossl_quic_tserver_tick(qtserv);
+        SSL_handle_events(clientquic);
+        qtest_add_time(1);
+        qtest_wait_for_timeout(clientquic, qtserv);
+    }
+
+    TEST_error("No progress made");
+    return 0;
+}
+
+/*
+ * Create a connection and send data using an unreliable transport. We introduce
+ * random noise to drop, delay and duplicate datagrams.
+ * Test 0: Introduce random noise to datagrams
+ * Test 1: As with test 0 but also split datagrams containing multiple packets
+ *         into individual datagrams so that individual packets can be affected
+ *         by noise - not just a whole datagram.
+ */
+static int test_noisy_dgram(int idx)
+{
+    SSL_CTX *cctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_client_method());
+    SSL *clientquic = NULL, *stream[2] = { NULL, NULL };
+    QUIC_TSERVER *qtserv = NULL;
+    int testresult = 0;
+    uint64_t sid = 0;
+    char *msg = "Hello world!";
+    size_t msglen = strlen(msg), written, readbytes, i, j;
+    unsigned char buf[80];
+    int flags = QTEST_FLAG_NOISE | QTEST_FLAG_FAKE_TIME;
+
+    if (idx == 1)
+        flags |= QTEST_FLAG_PACKET_SPLIT;
+
+    if (!TEST_ptr(cctx)
+            || !TEST_true(qtest_create_quic_objects(libctx, cctx, NULL, cert,
+                                                    privkey, flags,
+                                                    &qtserv,
+                                                    &clientquic, NULL, NULL)))
+        goto err;
+
+    if (!TEST_true(qtest_create_quic_connection(qtserv, clientquic)))
+            goto err;
+
+    if (!TEST_true(SSL_set_incoming_stream_policy(clientquic,
+                                                  SSL_INCOMING_STREAM_POLICY_ACCEPT,
+                                                  0))
+            || !TEST_true(SSL_set_default_stream_mode(clientquic,
+                                                      SSL_DEFAULT_STREAM_MODE_NONE)))
+        goto err;
+
+    for (j = 0; j < 2; j++) {
+        if (!TEST_true(ossl_quic_tserver_stream_new(qtserv, 0, &sid)))
+            goto err;
+        ossl_quic_tserver_tick(qtserv);
+        qtest_add_time(1);
+
+        /*
+        * Send data from the server to the client. Some datagrams may get lost,
+        * dropped or re-ordered. We repeat 10 times to ensure we are sending
+        * enough datagrams for problems to be noticed.
+        */
+        for (i = 0; i < 10; i++) {
+            if (!TEST_true(ossl_quic_tserver_write(qtserv, sid,
+                                                   (unsigned char *)msg, msglen,
+                                                   &written))
+                    || !TEST_size_t_eq(msglen, written))
+                goto err;
+            ossl_quic_tserver_tick(qtserv);
+            qtest_add_time(1);
+
+            /*
+            * Since the underlying BIO is now noisy we may get failures that
+            * need to be retried - so we use unreliable_client_read() to handle
+            * that
+            */
+            if (!TEST_true(unreliable_client_read(clientquic, &stream[j], buf,
+                                                  sizeof(buf), &readbytes,
+                                                  qtserv))
+                    || !TEST_mem_eq(msg, msglen, buf, readbytes))
+                goto err;
+        }
+
+        /* Send data from the client to the server */
+        for (i = 0; i < 10; i++) {
+            if (!TEST_true(SSL_write_ex(stream[j], (unsigned char *)msg,
+                                        msglen, &written))
+                    || !TEST_size_t_eq(msglen, written))
+                goto err;
+
+            ossl_quic_tserver_tick(qtserv);
+            qtest_add_time(1);
+
+            /*
+            * Since the underlying BIO is now noisy we may get failures that
+            * need to be retried - so we use unreliable_server_read() to handle
+            * that
+            */
+            if (!TEST_true(unreliable_server_read(qtserv, sid, buf, sizeof(buf),
+                                                  &readbytes, clientquic))
+                    || !TEST_mem_eq(msg, msglen, buf, readbytes))
+                goto err;
+        }
+    }
+
+    testresult = 1;
+ err:
+    ossl_quic_tserver_free(qtserv);
+    SSL_free(stream[0]);
+    SSL_free(stream[1]);
+    SSL_free(clientquic);
+    SSL_CTX_free(cctx);
+
+    return testresult;
+}
+
 
 OPT_TEST_DECLARE_USAGE("provider config certsdir datadir\n")
 
@@ -1323,6 +1487,8 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_non_io_retry, 2);
     ADD_TEST(test_quic_psk);
     ADD_ALL_TESTS(test_alpn, 2);
+    ADD_ALL_TESTS(test_noisy_dgram, 2);
+
     return 1;
  err:
     cleanup_tests();
@@ -1331,6 +1497,8 @@ int setup_tests(void)
 
 void cleanup_tests(void)
 {
+    bio_f_noisy_dgram_filter_free();
+    bio_f_pkt_split_dgram_filter_free();
     OPENSSL_free(cert);
     OPENSSL_free(privkey);
     OSSL_PROVIDER_unload(defctxnull);

@@ -27,10 +27,15 @@ typedef struct qtest_fault_encrypted_extensions {
 /* Flags for use with qtest_create_quic_objects() */
 
 /* Indicates whether we are using blocking mode or not */
-#define QTEST_FLAG_BLOCK        1
+#define QTEST_FLAG_BLOCK        (1 << 0)
 /* Use fake time rather than real time */
-#define QTEST_FLAG_FAKE_TIME    2
-
+#define QTEST_FLAG_FAKE_TIME    (1 << 1)
+/* Introduce noise in the BIO */
+#define QTEST_FLAG_NOISE        (1 << 2)
+/* Split datagrams such that each datagram contains one packet */
+#define QTEST_FLAG_PACKET_SPLIT (1 << 3)
+/* Turn on client side tracing */
+#define QTEST_FLAG_CLIENT_TRACE (1 << 4)
 /*
  * Given an SSL_CTX for the client and filenames for the server certificate and
  * keyfile, create a server and client instances as well as a fault injector
@@ -39,7 +44,7 @@ typedef struct qtest_fault_encrypted_extensions {
 int qtest_create_quic_objects(OSSL_LIB_CTX *libctx, SSL_CTX *clientctx,
                               SSL_CTX *serverctx, char *certfile, char *keyfile,
                               int flags, QUIC_TSERVER **qtserv, SSL **cssl,
-                              QTEST_FAULT **fault);
+                              QTEST_FAULT **fault, BIO **tracebio);
 
 /* Where QTEST_FLAG_FAKE_TIME is used, add millis to the current time */
 void qtest_add_time(uint64_t millis);
@@ -61,6 +66,12 @@ int qtest_supports_blocking(void);
  * server.
  */
 int qtest_create_quic_connection(QUIC_TSERVER *qtserv, SSL *clientssl);
+
+/*
+ * Check if both client and server have no data to read and are waiting on a
+ * timeout. If so, wait until the timeout has expired.
+ */
+int qtest_wait_for_timeout(SSL *s, QUIC_TSERVER *qtserv);
 
 /*
  * Same as qtest_create_quic_connection but will stop (successfully) if the
@@ -230,3 +241,24 @@ int qtest_fault_set_datagram_listener(QTEST_FAULT *fault,
  * exceeds the over allocation.
  */
 int qtest_fault_resize_datagram(QTEST_FAULT *fault, size_t newlen);
+
+/* Copy a BIO_ADDR */
+int bio_addr_copy(BIO_ADDR *dst, BIO_ADDR *src);
+
+/* Copy a BIO_MSG */
+int bio_msg_copy(BIO_MSG *dst, BIO_MSG *src);
+
+/* BIO filter for simulating a noisy UDP socket */
+const BIO_METHOD *bio_f_noisy_dgram_filter(void);
+
+/* Free the BIO filter method object */
+void bio_f_noisy_dgram_filter_free(void);
+
+/*
+ * BIO filter for splitting QUIC datagrams containing multiple packets into
+ * individual datagrams.
+ */
+const BIO_METHOD *bio_f_pkt_split_dgram_filter(void);
+
+/* Free the BIO filter method object */
+void bio_f_pkt_split_dgram_filter_free(void);
