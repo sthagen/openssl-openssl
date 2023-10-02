@@ -536,13 +536,14 @@ static EVP_RAND_CTX *rand_new_seed(OSSL_LIB_CTX *libctx)
     EVP_RAND *rand;
     RAND_GLOBAL *dgbl = rand_get_global(libctx);
     EVP_RAND_CTX *ctx = NULL;
-    const char *propq = dgbl->seed_propq;
+    const char *propq;
     char *name, *props = NULL;
     size_t props_len;
     OSSL_PROPERTY_LIST *pl1, *pl2, *pl3 = NULL;
 
     if (dgbl == NULL)
         return NULL;
+    propq = dgbl->seed_propq;
     if (dgbl->seed_name != NULL) {
         name = dgbl->seed_name;
     } else {
@@ -608,7 +609,6 @@ static EVP_RAND_CTX *rand_new_seed(OSSL_LIB_CTX *libctx)
     }
     if (!EVP_RAND_instantiate(ctx, 0, 0, NULL, 0, NULL)) {
         ERR_raise(ERR_LIB_RAND, RAND_R_ERROR_INSTANTIATING_DRBG);
-        EVP_RAND_CTX_free(ctx);
         goto err;
     }
     OPENSSL_free(props);
