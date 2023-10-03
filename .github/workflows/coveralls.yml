@@ -26,13 +26,13 @@ jobs:
         branches: [
           {
             branch: openssl-3.1,
-            extra_config: no-afalgeng enable-fips enable-ssl-trace enable-trace enable-zlib enable-rc5 enable-md2 enable-weak-ssl-ciphers enable-ec_nistp_64_gcc_128
+            extra_config: no-afalgeng enable-fips
           }, {
             branch: openssl-3.0,
-            extra_config: no-afalgeng enable-fips enable-ssl-trace enable-trace enable-zlib enable-rc5 enable-md2 enable-weak-ssl-ciphers enable-ec_nistp_64_gcc_128
+            extra_config: no-afalgeng enable-fips
           }, {
             branch: master,
-            extra_config: no-afalgeng enable-fips enable-ssl-trace enable-trace enable-zlib enable-rc5 enable-md2 enable-weak-ssl-ciphers enable-ec_nistp_64_gcc_128 enable-tfo
+            extra_config: no-afalgeng enable-fips enable-tfo
           }
         ]
     runs-on: ubuntu-latest
@@ -56,20 +56,24 @@ jobs:
     - name: setup hostname workaround
       run: sudo hostname localhost
     - name: config
-      run: CC=gcc ./config --debug --coverage ${{ matrix.branches.extra_config }} no-asm enable-rc5 enable-md2 enable-ssl3 enable-nextprotoneg enable-ssl3-method enable-weak-ssl-ciphers enable-zlib enable-ec_nistp_64_gcc_128 no-shared enable-buildtest-c++ enable-external-tests -DPEDANTIC -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+      run: CC=gcc ./config --debug --coverage ${{ matrix.branches.extra_config }} no-asm enable-rc5 enable-md2 enable-ssl3 enable-nextprotoneg enable-ssl3-method enable-weak-ssl-ciphers enable-zlib enable-ec_nistp_64_gcc_128 enable-buildtest-c++ enable-ssl-trace enable-trace
     - name: config dump
       run: ./configdata.pm --dump
     - name: make
       run: make -s -j4
+    - name: get cpu info
+      run: |
+        cat /proc/cpuinfo
+        ./util/opensslwrap.sh version -c
     - name: make test
       run: make test HARNESS_JOBS=${HARNESS_JOBS:-4} TESTS='-test_external_krb5'
     - name: generate coverage info
-      run: lcov -d . -c \
-             --exclude "${PWD}/test/*" \
-             --exclude "${PWD}/test/helpers/*" \
-             --exclude "${PWD}/test/testutil/*" \
-             --exclude "${PWD}/fuzz/*" \
-             --exclude "/usr/include/*" \
+      run: lcov -d . -c
+             --exclude "${PWD}/test/*"
+             --exclude "${PWD}/test/helpers/*"
+             --exclude "${PWD}/test/testutil/*"
+             --exclude "${PWD}/fuzz/*"
+             --exclude "/usr/include/*"
               -o ./lcov.info
     - name: Coveralls upload
       uses: coverallsapp/github-action@v2.2.3
