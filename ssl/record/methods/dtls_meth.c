@@ -383,7 +383,6 @@ int dtls_get_more_records(OSSL_RECORD_LAYER *rl)
     size_t more, n;
     TLS_RL_RECORD *rr;
     unsigned char *p = NULL;
-    unsigned short version;
     DTLS_BITMAP *bitmap;
     unsigned int is_next_epoch;
 
@@ -430,15 +429,11 @@ int dtls_get_more_records(OSSL_RECORD_LAYER *rl)
 
         p = rl->packet;
 
-        if (rl->msg_callback != NULL)
-            rl->msg_callback(0, 0, SSL3_RT_HEADER, p, DTLS1_RT_HEADER_LENGTH,
-                            rl->cbarg);
-
         /* Pull apart the header into the DTLS1_RECORD */
         rr->type = *(p++);
         ssl_major = *(p++);
         ssl_minor = *(p++);
-        version = (ssl_major << 8) | ssl_minor;
+        rr->rec_version = (ssl_major << 8) | ssl_minor;
 
         /* sequence number is 64 bits, with top 2 bytes = epoch */
         n2s(p, rr->epoch);
@@ -448,12 +443,16 @@ int dtls_get_more_records(OSSL_RECORD_LAYER *rl)
 
         n2s(p, rr->length);
 
+        if (rl->msg_callback != NULL)
+            rl->msg_callback(0, rr->rec_version, SSL3_RT_HEADER, rl->packet, DTLS1_RT_HEADER_LENGTH,
+                             rl->cbarg);
+
         /*
          * Lets check the version. We tolerate alerts that don't have the exact
          * version number (e.g. because of protocol version errors)
          */
         if (!rl->is_first_record && rr->type != SSL3_RT_ALERT) {
-            if (version != rl->version) {
+            if (rr->rec_version != rl->version) {
                 /* unexpected version, silently discard */
                 rr->length = 0;
                 rl->packet_length = 0;
@@ -567,6 +566,11 @@ int dtls_get_more_records(OSSL_RECORD_LAYER *rl)
         rr->length = 0;
         rl->packet_length = 0; /* dump this record */
         goto again;             /* get another record */
+    }
+
+    if (rl->funcs->post_process_record && !rl->funcs->post_process_record(rl, rr)) {
+        /* RLAYERfatal already called */
+        return OSSL_RECORD_RETURN_FATAL;
     }
 
     rl->num_recs = 1;
