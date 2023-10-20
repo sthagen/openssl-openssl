@@ -635,7 +635,7 @@ int ossl_quic_channel_is_active(const QUIC_CHANNEL *ch)
     return ch != NULL && ch->state == QUIC_CHANNEL_STATE_ACTIVE;
 }
 
-static int ossl_quic_channel_is_closing(const QUIC_CHANNEL *ch)
+int ossl_quic_channel_is_closing(const QUIC_CHANNEL *ch)
 {
     return ch->state == QUIC_CHANNEL_STATE_TERMINATING_CLOSING;
 }
@@ -2302,7 +2302,7 @@ static void ch_rx_handle_packet(QUIC_CHANNEL *ch)
              * non-zero Token Length field MUST either discard the packet or
              * generate a connection error of type PROTOCOL_VIOLATION.
              *
-             * TODO(QUIC): consider the implications of RFC 9000 s. 10.2.3
+             * TODO(QUIC FUTURE): consider the implications of RFC 9000 s. 10.2.3
              * Immediate Close during the Handshake:
              *      However, at the cost of reducing feedback about
              *      errors for legitimate peers, some forms of denial of
@@ -2816,8 +2816,18 @@ static int ch_retry(QUIC_CHANNEL *ch,
     if ((buf = OPENSSL_memdup(retry_token, retry_token_len)) == NULL)
         return 0;
 
-    ossl_quic_tx_packetiser_set_initial_token(ch->txp, buf, retry_token_len,
-                                              free_token, NULL);
+    if (!ossl_quic_tx_packetiser_set_initial_token(ch->txp, buf,
+                                                   retry_token_len,
+                                                   free_token, NULL)) {
+        /*
+         * This may fail if the token we receive is too big for us to ever be
+         * able to transmit in an outgoing Initial packet.
+         */
+        ossl_quic_channel_raise_protocol_error(ch, QUIC_ERR_INVALID_TOKEN, 0,
+                                               "received oversize token");
+        OPENSSL_free(buf);
+        return 0;
+    }
 
     ch->retry_scid  = *retry_scid;
     ch->doing_retry = 1;
