@@ -828,26 +828,51 @@ int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
     if (need_padding) {
         size_t total_dgram_size = 0;
         const size_t min_dpl = QUIC_MIN_INITIAL_DGRAM_LEN;
-        uint32_t first_el = QUIC_ENC_LEVEL_NUM;
+        uint32_t pad_el = QUIC_ENC_LEVEL_NUM;
 
         for (enc_level = QUIC_ENC_LEVEL_INITIAL;
              enc_level < QUIC_ENC_LEVEL_NUM;
              ++enc_level)
             if (pkt[enc_level].h_valid && pkt[enc_level].h.bytes_appended > 0) {
-                if (first_el == QUIC_ENC_LEVEL_NUM)
-                    first_el = enc_level;
+                if (pad_el == QUIC_ENC_LEVEL_NUM
+                    /*
+                     * We might not be able to add padding, for example if we
+                     * are using the ACK_ONLY archetype.
+                     */
+                    && pkt[enc_level].geom.adata.allow_padding
+                    && !pkt[enc_level].h.done_implicit)
+                    pad_el = enc_level;
 
                 txp_pkt_postgen_update_pkt_overhead(&pkt[enc_level], txp);
                 total_dgram_size += pkt[enc_level].geom.pkt_overhead
                     + pkt[enc_level].h.bytes_appended;
             }
 
-        if (first_el != QUIC_ENC_LEVEL_NUM
-            && total_dgram_size < min_dpl) {
+        if (pad_el != QUIC_ENC_LEVEL_NUM && total_dgram_size < min_dpl) {
             size_t deficit = min_dpl - total_dgram_size;
 
-            if (!txp_pkt_append_padding(&pkt[first_el], txp, deficit))
+            if (!txp_pkt_append_padding(&pkt[pad_el], txp, deficit))
                 goto out;
+
+            total_dgram_size += deficit;
+
+            /*
+             * Padding frames make a packet ineligible for being a non-inflight
+             * packet.
+             */
+            pkt[pad_el].tpkt->ackm_pkt.is_inflight = 1;
+        }
+
+        /*
+         * If we have failed to make a datagram of adequate size, for example
+         * because we have a padding requirement but are using the ACK_ONLY
+         * archetype (because we are CC limited), which precludes us from
+         * sending padding, give up on generating the datagram - there is
+         * nothing we can do.
+         */
+        if (total_dgram_size < min_dpl) {
+            res = 1;
+            goto out;
         }
     }
 
@@ -866,10 +891,16 @@ int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
 
         rc = txp_pkt_commit(txp, &pkt[enc_level], archetype,
                             &txpim_pkt_reffed);
-        if (rc)
+        if (rc) {
             status->sent_ack_eliciting
                 = status->sent_ack_eliciting
                 || pkt[enc_level].tpkt->ackm_pkt.is_ack_eliciting;
+
+            if (enc_level == QUIC_ENC_LEVEL_HANDSHAKE)
+                status->sent_handshake
+                    = (pkt[enc_level].h_valid
+                       && pkt[enc_level].h.bytes_appended > 0);
+        }
 
         if (txpim_pkt_reffed)
             pkt[enc_level].tpkt = NULL; /* don't free */
@@ -879,10 +910,6 @@ int ossl_quic_tx_packetiser_generate(OSSL_QUIC_TX_PACKETISER *txp,
 
         ++pkts_done;
     }
-
-    status->sent_handshake
-        = (pkt[QUIC_ENC_LEVEL_HANDSHAKE].h_valid
-           && pkt[QUIC_ENC_LEVEL_HANDSHAKE].h.bytes_appended > 0);
 
     /* Flush & Cleanup */
     res = 1;
@@ -2137,7 +2164,6 @@ static int txp_generate_stream_frames(OSSL_QUIC_TX_PACKETISER *txp,
                                       QUIC_SSTREAM *sstream,
                                       QUIC_TXFC *stream_txfc,
                                       QUIC_STREAM *next_stream,
-                                      size_t min_ppl,
                                       int *have_ack_eliciting,
                                       int *packet_full,
                                       uint64_t *new_credit_consumed)
@@ -2151,7 +2177,7 @@ static int txp_generate_stream_frames(OSSL_QUIC_TX_PACKETISER *txp,
     WPACKET *wpkt;
     QUIC_TXPIM_CHUNK chunk;
     size_t i, j, space_left;
-    int needs_padding_if_implicit, can_fill_payload, use_explicit_len;
+    int can_fill_payload, use_explicit_len;
     int could_have_following_chunk;
     uint64_t orig_len;
     uint64_t hdr_len_implicit, payload_len_implicit;
@@ -2223,13 +2249,6 @@ static int txp_generate_stream_frames(OSSL_QUIC_TX_PACKETISER *txp,
         }
 
         /*
-         * If using the implicit-length representation would need padding, we
-         * can't use it.
-         */
-        needs_padding_if_implicit = (h->bytes_appended + hdr_len_implicit
-                                     + payload_len_implicit < min_ppl);
-
-        /*
          * If there is a next stream, we don't use the implicit length so we can
          * add more STREAM frames after this one, unless there is enough data
          * for this STREAM frame to fill the packet.
@@ -2246,7 +2265,7 @@ static int txp_generate_stream_frames(OSSL_QUIC_TX_PACKETISER *txp,
 
         /* Choose between explicit or implicit length representations. */
         use_explicit_len = !((can_fill_payload || !could_have_following_chunk)
-                             && !needs_padding_if_implicit);
+                             && !pkt->force_pad);
 
         if (use_explicit_len) {
             /*
@@ -2354,7 +2373,6 @@ static void txp_enlink_tmp(QUIC_STREAM **tmp_head, QUIC_STREAM *stream)
 
 static int txp_generate_stream_related(OSSL_QUIC_TX_PACKETISER *txp,
                                        struct txp_pkt *pkt,
-                                       size_t min_ppl,
                                        int *have_ack_eliciting,
                                        QUIC_STREAM **tmp_head)
 {
@@ -2495,7 +2513,7 @@ static int txp_generate_stream_related(OSSL_QUIC_TX_PACKETISER *txp,
             if (!txp_generate_stream_frames(txp, pkt,
                                             stream->id, stream->sstream,
                                             &stream->txfc,
-                                            snext, min_ppl,
+                                            snext,
                                             have_ack_eliciting,
                                             &packet_full,
                                             &stream->txp_txfc_new_credit_consumed)) {
@@ -2537,7 +2555,6 @@ static int txp_generate_for_el(OSSL_QUIC_TX_PACKETISER *txp,
     QUIC_CFQ_ITEM *cfq_item;
     QUIC_TXPIM_PKT *tpkt = NULL;
     struct tx_helper *h = &pkt->h;
-    size_t min_ppl = 0;
 
     /* Maximum PN reached? */
     if (!ossl_quic_pn_valid(txp->next_pn[pn_space]))
@@ -2740,7 +2757,7 @@ static int txp_generate_for_el(OSSL_QUIC_TX_PACKETISER *txp,
 
     /* Stream-specific frames */
     if (a.allow_stream_rel && txp->handshake_complete)
-        if (!txp_generate_stream_related(txp, pkt, min_ppl,
+        if (!txp_generate_stream_related(txp, pkt,
                                          &have_ack_eliciting,
                                          &pkt->stream_head))
             goto fatal_err;
@@ -2768,18 +2785,7 @@ static int txp_generate_for_el(OSSL_QUIC_TX_PACKETISER *txp,
         have_ack_eliciting = 1;
     }
 
-    /* PADDING */
-    if (a.allow_padding && h->bytes_appended < min_ppl) {
-        WPACKET *wpkt = tx_helper_begin(h);
-        if (wpkt == NULL)
-            goto fatal_err;
-
-        if (!ossl_quic_wire_encode_padding(wpkt, min_ppl - h->bytes_appended)
-            || !tx_helper_commit(h))
-            goto fatal_err;
-
-        can_be_non_inflight = 0;
-    }
+    /* PADDING is added by ossl_quic_tx_packetiser_generate(). */
 
     /*
      * ACKM Data
