@@ -1,9 +1,11 @@
 OpenSSL CHANGES
 ===============
 
-This is a high-level summary of the most important changes.
-For a full list of changes, see the [git commit log][log] and
-pick the appropriate release branch.
+This is a detailed breakdown of significant changes. For a high-level overview
+of changes in each release, see [NEWS.md](./NEWS.md).
+
+For a full list of changes, see the [git commit log][log] and pick the
+appropriate release branch.
 
   [log]: https://github.com/openssl/openssl/commits/
 
@@ -25,6 +27,11 @@ OpenSSL 3.3
 -----------
 
 ### Changes between 3.2 and 3.3 [xx XXX xxxx]
+
+ * In `openssl speed`, changed the default hash function used with `hmac` from
+   `md5` to `sha256`.
+
+   *James Muir*
 
  * The build of exporters (such as `.pc` files for pkg-config) cleaned up to
    be less hard coded in the build file templates, and to allow easier
