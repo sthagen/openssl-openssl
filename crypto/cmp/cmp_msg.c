@@ -984,8 +984,7 @@ static int suitable_rid(const ASN1_INTEGER *certReqId, int rid)
         return 1;
 
     trid = ossl_cmp_asn1_get_int(certReqId);
-
-    if (trid == OSSL_CMP_CERTREQID_NONE) {
+    if (trid <= OSSL_CMP_CERTREQID_INVALID) {
         ERR_raise(ERR_LIB_CMP, CMP_R_BAD_REQUEST_ID);
         return 0;
     }
@@ -1199,4 +1198,14 @@ OSSL_CMP_MSG *d2i_OSSL_CMP_MSG_bio(BIO *bio, OSSL_CMP_MSG **msg)
 int i2d_OSSL_CMP_MSG_bio(BIO *bio, const OSSL_CMP_MSG *msg)
 {
     return ASN1_i2d_bio_of(OSSL_CMP_MSG, i2d_OSSL_CMP_MSG, bio, msg);
+}
+
+int ossl_cmp_is_error_with_waiting(const OSSL_CMP_MSG *msg)
+{
+    if (!ossl_assert(msg != NULL))
+        return 0;
+
+    return (OSSL_CMP_MSG_get_bodytype(msg) == OSSL_CMP_PKIBODY_ERROR
+            && ossl_cmp_pkisi_get_status(msg->body->value.error->pKIStatusInfo)
+            == OSSL_CMP_PKISTATUS_waiting);
 }

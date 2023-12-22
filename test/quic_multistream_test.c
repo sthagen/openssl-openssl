@@ -13,6 +13,8 @@
 #include "internal/quic_tserver.h"
 #include "internal/quic_ssl.h"
 #include "internal/quic_error.h"
+#include "internal/quic_stream_map.h"
+#include "internal/quic_engine.h"
 #include "testutil.h"
 #include "helpers/quictestlib.h"
 #if defined(OPENSSL_THREADS)
@@ -180,6 +182,7 @@ struct script_op {
 #define OPK_C_SKIP_IF_UNBOUND                       48
 #define OPK_S_SET_INJECT_DATAGRAM                   49
 #define OPK_S_SHUTDOWN                              50
+#define OPK_POP_ERR                                 51
 
 #define EXPECT_CONN_CLOSE_APP       (1U << 0)
 #define EXPECT_CONN_CLOSE_REMOTE    (1U << 1)
@@ -318,6 +321,8 @@ struct script_op {
     {OPK_S_SET_INJECT_DATAGRAM, NULL, 0, NULL, NULL, 0, NULL, NULL, (f)},
 #define OP_S_SHUTDOWN(error_code) \
     {OPK_S_SHUTDOWN, NULL, (error_code)},
+#define OP_POP_ERR() \
+    {OPK_POP_ERR},
 
 static OSSL_TIME get_time(void *arg)
 {
@@ -1108,6 +1113,7 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
                 case OPK_C_EXPECT_SSL_ERR:
                 case OPK_EXPECT_ERR_REASON:
                 case OPK_EXPECT_ERR_LIB:
+                case OPK_POP_ERR:
                 case OPK_SLEEP:
                     break;
 
@@ -1593,7 +1599,7 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
                 QUIC_CHANNEL *ch = ossl_quic_conn_get_channel(h->c_conn);
                 SSL_SHUTDOWN_EX_ARGS args = {0};
 
-                ossl_quic_channel_set_inhibit_tick(ch, 0);
+                ossl_quic_engine_set_inhibit_tick(ossl_quic_channel_get0_engine(ch), 0);
 
                 if (!TEST_ptr(c_tgt))
                     goto out;
@@ -1852,16 +1858,20 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
 
         case OPK_EXPECT_ERR_REASON:
             {
-                if (!TEST_size_t_eq((size_t)ERR_GET_REASON(ERR_get_error()), op->arg1))
+                if (!TEST_size_t_eq((size_t)ERR_GET_REASON(ERR_peek_last_error()), op->arg1))
                     goto out;
             }
             break;
 
         case OPK_EXPECT_ERR_LIB:
             {
-                if (!TEST_size_t_eq((size_t)ERR_GET_LIB(ERR_get_error()), op->arg1))
+                if (!TEST_size_t_eq((size_t)ERR_GET_LIB(ERR_peek_last_error()), op->arg1))
                     goto out;
             }
+            break;
+
+        case OPK_POP_ERR:
+            ERR_pop();
             break;
 
         case OPK_SLEEP:
@@ -1917,7 +1927,8 @@ static int run_script_worker(struct helper *h, const struct script_op *script,
             {
                 QUIC_CHANNEL *ch = ossl_quic_conn_get_channel(h->c_conn);
 
-                ossl_quic_channel_set_inhibit_tick(ch, op->arg1);
+                ossl_quic_engine_set_inhibit_tick(ossl_quic_channel_get0_engine(ch),
+                                                  op->arg1);
             }
             break;
 
@@ -2712,8 +2723,14 @@ static const struct script_op script_20_child[] = {
 
     OP_C_READ_FAIL_WAIT     (a)
     OP_C_EXPECT_SSL_ERR     (a, SSL_ERROR_SYSCALL)
-    OP_EXPECT_ERR_LIB       (ERR_LIB_SYS)
+
+    OP_EXPECT_ERR_LIB       (ERR_LIB_SSL)
+    OP_EXPECT_ERR_REASON    (SSL_R_PROTOCOL_IS_SHUTDOWN)
+
+    OP_POP_ERR              ()
+    OP_EXPECT_ERR_LIB       (ERR_LIB_SSL)
     OP_EXPECT_ERR_REASON    (SSL_R_QUIC_NETWORK_ERROR)
+
     OP_C_FREE_STREAM        (a)
 
     OP_END

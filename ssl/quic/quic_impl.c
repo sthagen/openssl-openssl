@@ -15,6 +15,8 @@
 #include "internal/quic_tls.h"
 #include "internal/quic_rx_depack.h"
 #include "internal/quic_error.h"
+#include "internal/quic_engine.h"
+#include "internal/quic_port.h"
 #include "internal/time.h"
 
 typedef struct qctx_st QCTX;
@@ -63,7 +65,7 @@ static int block_until_pred(QUIC_CONNECTION *qc,
      * Any attempt to block auto-disables tick inhibition as otherwise we will
      * hang around forever.
      */
-    ossl_quic_channel_set_inhibit_tick(qc->ch, 0);
+    ossl_quic_engine_set_inhibit_tick(qc->engine, 0);
 
     rtor = ossl_quic_channel_get_reactor(qc->ch);
     return ossl_quic_reactor_block_until_pred(rtor, pred, pred_arg, flags,
@@ -543,6 +545,8 @@ void ossl_quic_free(SSL *s)
 #endif
 
     ossl_quic_channel_free(ctx.qc->ch);
+    ossl_quic_port_free(ctx.qc->port);
+    ossl_quic_engine_free(ctx.qc->engine);
 
     BIO_free_all(ctx.qc->net_rbio);
     BIO_free_all(ctx.qc->net_wbio);
@@ -854,7 +858,7 @@ static int qc_can_support_blocking_cached(QUIC_CONNECTION *qc)
 
 static void qc_update_can_support_blocking(QUIC_CONNECTION *qc)
 {
-    ossl_quic_channel_update_poll_descriptors(qc->ch); /* best effort */
+    ossl_quic_port_update_poll_descriptors(qc->port); /* best effort */
 }
 
 static void qc_update_blocking_mode(QUIC_CONNECTION *qc)
@@ -872,7 +876,7 @@ void ossl_quic_conn_set0_net_rbio(SSL *s, BIO *net_rbio)
     if (ctx.qc->net_rbio == net_rbio)
         return;
 
-    if (!ossl_quic_channel_set_net_rbio(ctx.qc->ch, net_rbio))
+    if (!ossl_quic_port_set_net_rbio(ctx.qc->port, net_rbio))
         return;
 
     BIO_free_all(ctx.qc->net_rbio);
@@ -899,7 +903,7 @@ void ossl_quic_conn_set0_net_wbio(SSL *s, BIO *net_wbio)
     if (ctx.qc->net_wbio == net_wbio)
         return;
 
-    if (!ossl_quic_channel_set_net_wbio(ctx.qc->ch, net_wbio))
+    if (!ossl_quic_port_set_net_wbio(ctx.qc->port, net_wbio))
         return;
 
     BIO_free_all(ctx.qc->net_wbio);
@@ -1476,8 +1480,8 @@ static int configure_channel(QUIC_CONNECTION *qc)
 {
     assert(qc->ch != NULL);
 
-    if (!ossl_quic_channel_set_net_rbio(qc->ch, qc->net_rbio)
-        || !ossl_quic_channel_set_net_wbio(qc->ch, qc->net_wbio)
+    if (!ossl_quic_port_set_net_rbio(qc->port, qc->net_rbio)
+        || !ossl_quic_port_set_net_wbio(qc->port, qc->net_wbio)
         || !ossl_quic_channel_set_peer_addr(qc->ch, &qc->init_peer_addr))
         return 0;
 
@@ -1487,19 +1491,33 @@ static int configure_channel(QUIC_CONNECTION *qc)
 QUIC_NEEDS_LOCK
 static int create_channel(QUIC_CONNECTION *qc)
 {
-    QUIC_CHANNEL_ARGS args = {0};
+    QUIC_ENGINE_ARGS engine_args = {0};
+    QUIC_PORT_ARGS port_args = {0};
 
-    args.libctx     = qc->ssl.ctx->libctx;
-    args.propq      = qc->ssl.ctx->propq;
-    args.is_server  = qc->as_server;
-    args.tls        = qc->tls;
-    args.mutex      = qc->mutex;
-    args.now_cb     = get_time_cb;
-    args.now_cb_arg = qc;
+    engine_args.libctx        = qc->ssl.ctx->libctx;
+    engine_args.propq         = qc->ssl.ctx->propq;
+    engine_args.mutex         = qc->mutex;
+    engine_args.now_cb        = get_time_cb;
+    engine_args.now_cb_arg    = qc;
+    qc->engine = ossl_quic_engine_new(&engine_args);
+    if (qc->engine == NULL) {
+        QUIC_RAISE_NON_NORMAL_ERROR(NULL, ERR_R_INTERNAL_ERROR, NULL);
+        return 0;
+    }
 
-    qc->ch = ossl_quic_channel_new(&args);
+    port_args.channel_ctx = qc->ssl.ctx;
+    qc->port = ossl_quic_engine_create_port(qc->engine, &port_args);
+    if (qc->port == NULL) {
+        QUIC_RAISE_NON_NORMAL_ERROR(NULL, ERR_R_INTERNAL_ERROR, NULL);
+        ossl_quic_engine_free(qc->engine);
+        return 0;
+    }
+
+    qc->ch = ossl_quic_port_create_outgoing(qc->port, qc->tls);
     if (qc->ch == NULL) {
         QUIC_RAISE_NON_NORMAL_ERROR(NULL, ERR_R_INTERNAL_ERROR, NULL);
+        ossl_quic_port_free(qc->port);
+        ossl_quic_engine_free(qc->engine);
         return 0;
     }
 

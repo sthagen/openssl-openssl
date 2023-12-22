@@ -12,9 +12,9 @@
 
 # include <openssl/ssl.h>
 # include "internal/quic_types.h"
-# include "internal/quic_stream_map.h"
-# include "internal/quic_reactor.h"
-# include "internal/quic_statm.h"
+# include "internal/quic_record_tx.h"
+# include "internal/quic_wire.h"
+# include "internal/quic_predef.h"
 # include "internal/time.h"
 # include "internal/thread.h"
 
@@ -106,33 +106,19 @@
 #  define QUIC_CHANNEL_STATE_TERMINATED                  4
 
 typedef struct quic_channel_args_st {
-    OSSL_LIB_CTX    *libctx;
-    const char      *propq;
+    /*
+     * The QUIC_PORT which the channel is to belong to. The lifetime of the
+     * QUIC_PORT must exceed that of the created channel.
+     */
+    QUIC_PORT       *port;
+    /* LCIDM to register LCIDs with. */
+    QUIC_LCIDM      *lcidm;
+    /* SRTM to register SRTs with. */
+    QUIC_SRTM       *srtm;
+
     int             is_server;
     SSL             *tls;
-
-    /*
-     * This must be a mutex the lifetime of which will exceed that of the
-     * channel. The instantiator of the channel is responsible for providing a
-     * mutex as this makes it easier to handle instantiation and teardown of
-     * channels in situations potentially requiring locking.
-     *
-     * Note that this is a MUTEX not a RWLOCK as it needs to be an OS mutex for
-     * compatibility with an OS's condition variable wait API, whereas RWLOCK
-     * may, depending on the build configuration, be implemented using an OS's
-     * mutex primitive or using its RW mutex primitive.
-     */
-    CRYPTO_MUTEX    *mutex;
-
-    /*
-     * Optional function pointer to use to retrieve the current time. If NULL,
-     * ossl_time_now() is used.
-     */
-    OSSL_TIME       (*now_cb)(void *arg);
-    void            *now_cb_arg;
 } QUIC_CHANNEL_ARGS;
-
-typedef struct quic_channel_st QUIC_CHANNEL;
 
 /* Represents the cause for a connection's termination. */
 typedef struct quic_terminate_cause_st {
@@ -176,10 +162,11 @@ typedef struct quic_terminate_cause_st {
     unsigned int                    remote : 1;
 } QUIC_TERMINATE_CAUSE;
 
-
 /*
  * Create a new QUIC channel using the given arguments. The argument structure
  * does not need to remain allocated. Returns NULL on failure.
+ *
+ * Only QUIC_PORT should use this function.
  */
 QUIC_CHANNEL *ossl_quic_channel_new(const QUIC_CHANNEL_ARGS *args);
 
@@ -276,6 +263,23 @@ void ossl_quic_channel_on_remote_conn_close(QUIC_CHANNEL *ch,
 void ossl_quic_channel_on_new_conn_id(QUIC_CHANNEL *ch,
                                       OSSL_QUIC_FRAME_NEW_CONN_ID *f);
 
+/* Temporarily exposed during QUIC_PORT transition. */
+int ossl_quic_channel_on_new_conn(QUIC_CHANNEL *ch, const BIO_ADDR *peer,
+                                  const QUIC_CONN_ID *peer_scid,
+                                  const QUIC_CONN_ID *peer_dcid);
+
+/* For use by QUIC_PORT. You should not need to call this directly. */
+void ossl_quic_channel_subtick(QUIC_CHANNEL *ch, QUIC_TICK_RESULT *r,
+                               uint32_t flags);
+
+/* For use by QUIC_PORT only. */
+void ossl_quic_channel_raise_net_error(QUIC_CHANNEL *ch);
+
+/* For use by QUIC_PORT only. */
+void ossl_quic_channel_on_stateless_reset(QUIC_CHANNEL *ch);
+
+void ossl_quic_channel_inject(QUIC_CHANNEL *ch, QUIC_URXE *e);
+
 /*
  * Queries and Accessors
  * =====================
@@ -297,18 +301,6 @@ OSSL_STATM *ossl_quic_channel_get_statm(QUIC_CHANNEL *ch);
 int ossl_quic_channel_get_peer_addr(QUIC_CHANNEL *ch, BIO_ADDR *peer_addr);
 int ossl_quic_channel_set_peer_addr(QUIC_CHANNEL *ch, const BIO_ADDR *peer_addr);
 
-/* Gets/sets the underlying network read and write BIOs. */
-BIO *ossl_quic_channel_get_net_rbio(QUIC_CHANNEL *ch);
-BIO *ossl_quic_channel_get_net_wbio(QUIC_CHANNEL *ch);
-int ossl_quic_channel_set_net_rbio(QUIC_CHANNEL *ch, BIO *net_rbio);
-int ossl_quic_channel_set_net_wbio(QUIC_CHANNEL *ch, BIO *net_wbio);
-
-/*
- * Re-poll the network BIOs already set to determine if their support
- * for polling has changed.
- */
-int ossl_quic_channel_update_poll_descriptors(QUIC_CHANNEL *ch);
-
 /*
  * Returns an existing stream by stream ID. Returns NULL if the stream does not
  * exist.
@@ -326,6 +318,8 @@ int ossl_quic_channel_is_active(const QUIC_CHANNEL *ch);
 int ossl_quic_channel_is_handshake_complete(const QUIC_CHANNEL *ch);
 int ossl_quic_channel_is_handshake_confirmed(const QUIC_CHANNEL *ch);
 
+QUIC_PORT *ossl_quic_channel_get0_port(QUIC_CHANNEL *ch);
+QUIC_ENGINE *ossl_quic_channel_get0_engine(QUIC_CHANNEL *ch);
 QUIC_DEMUX *ossl_quic_channel_get0_demux(QUIC_CHANNEL *ch);
 
 SSL *ossl_quic_channel_get0_ssl(QUIC_CHANNEL *ch);
@@ -403,9 +397,6 @@ int ossl_quic_channel_has_pending(const QUIC_CHANNEL *ch);
 
 /* Force transmission of an ACK-eliciting packet. */
 int ossl_quic_channel_ping(QUIC_CHANNEL *ch);
-
-/* For testing use. While enabled, ticking is not performed. */
-void ossl_quic_channel_set_inhibit_tick(QUIC_CHANNEL *ch, int inhibit);
 
 /*
  * These queries exist for diagnostic purposes only. They may roll over.
