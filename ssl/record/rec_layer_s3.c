@@ -466,6 +466,10 @@ int ossl_tls_handle_rlayer_return(SSL_CONNECTION *s, int writing, int ret,
             } else {
                 ERR_new();
                 ERR_set_debug(file, line, 0);
+                /*
+                 * This reason code is part of the API and may be used by
+                 * applications for control flow decisions.
+                 */
                 ossl_statem_fatal(s, SSL_AD_DECODE_ERROR,
                                   SSL_R_UNEXPECTED_EOF_WHILE_READING, NULL);
             }
@@ -1318,7 +1322,7 @@ int ssl_set_new_record_layer(SSL_CONNECTION *s, int version,
             prev = s->rlayer.rrlnext;
             if (SSL_CONNECTION_IS_DTLS(s)
                     && level != OSSL_RECORD_PROTECTION_LEVEL_NONE)
-                epoch =  DTLS_RECORD_LAYER_get_r_epoch(&s->rlayer) + 1; /* new epoch */
+                epoch = dtls1_get_epoch(s, SSL3_CC_READ); /* new epoch */
 
 #ifndef OPENSSL_NO_DGRAM
             if (SSL_CONNECTION_IS_DTLS(s))
@@ -1335,7 +1339,7 @@ int ssl_set_new_record_layer(SSL_CONNECTION *s, int version,
         } else {
             if (SSL_CONNECTION_IS_DTLS(s)
                     && level != OSSL_RECORD_PROTECTION_LEVEL_NONE)
-                epoch =  DTLS_RECORD_LAYER_get_w_epoch(&s->rlayer) + 1; /* new epoch */
+                epoch = dtls1_get_epoch(s, SSL3_CC_WRITE); /* new epoch */
         }
 
         /*
