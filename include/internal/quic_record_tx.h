@@ -15,6 +15,7 @@
 # include "internal/quic_types.h"
 # include "internal/quic_predef.h"
 # include "internal/quic_record_util.h"
+# include "internal/qlog.h"
 
 # ifndef OPENSSL_NO_QUIC
 
@@ -47,6 +48,9 @@ typedef struct ossl_qtx_args_st {
 
     /* Maximum datagram payload length (MDPL) for TX purposes. */
     size_t          mdpl;
+
+    /* QLOG instance to use, or NULL. */
+    QLOG           *qlog;
 } OSSL_QTX_ARGS;
 
 /* Instantiates a new QTX. */
@@ -63,6 +67,9 @@ void ossl_qtx_set_mutator(OSSL_QTX *qtx, ossl_mutate_packet_cb mutatecb,
 void ossl_qtx_set_msg_callback(OSSL_QTX *qtx, ossl_msg_cb msg_callback,
                                SSL *msg_callback_ssl);
 void ossl_qtx_set_msg_callback_arg(OSSL_QTX *qtx, void *msg_callback_arg);
+
+/* Change QLOG instance in use after instantiation. */
+void ossl_qtx_set0_qlog(OSSL_QTX *qtx, QLOG *qlog);
 
 /*
  * Secret Management

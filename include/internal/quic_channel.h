@@ -15,6 +15,7 @@
 # include "internal/quic_record_tx.h"
 # include "internal/quic_wire.h"
 # include "internal/quic_predef.h"
+# include "internal/qlog.h"
 # include "internal/time.h"
 # include "internal/thread.h"
 
@@ -118,6 +119,12 @@ typedef struct quic_channel_args_st {
 
     int             is_server;
     SSL             *tls;
+
+    /* Whether to use qlog. */
+    int             use_qlog;
+
+    /* Title to use for the qlog session, or NULL. */
+    const char      *qlog_title;
 } QUIC_CHANNEL_ARGS;
 
 /* Represents the cause for a connection's termination. */

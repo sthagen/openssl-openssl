@@ -420,6 +420,7 @@ my @disablables = (
     "asan",
     "asm",
     "async",
+    "atexit",
     "autoalginit",
     "autoerrinit",
     "autoload-config",
@@ -490,6 +491,7 @@ my @disablables = (
     "posix-io",
     "psk",
     "quic",
+    "unstable-qlog",
     "rc2",
     "rc4",
     "rc5",
@@ -577,6 +579,7 @@ our %disabled = ( # "what"         => "comment"
                   "ktls"                => "default",
                   "md2"                 => "default",
                   "msan"                => "default",
+                  "unstable-qlog"       => "default",
                   "rc5"                 => "default",
                   "sctp"                => "default",
                   "ssl3"                => "default",
@@ -596,7 +599,7 @@ our %disabled = ( # "what"         => "comment"
 my @disable_cascades = (
     # "what"            => [ "cascade", ... ]
     "bulk"              => [ "shared", "dso",
-                             "aria", "async", "autoload-config",
+                             "aria", "async", "atexit", "autoload-config",
                              "blake2", "bf", "camellia", "cast", "chacha",
                              "cmac", "cms", "cmp", "comp", "ct",
                              "des", "dgram", "dh", "dsa",
@@ -631,6 +634,7 @@ my @disable_cascades = (
     sub { 0 == scalar grep { !$disabled{$_} } @tls }
                         => [ "tls" ],
     "tls1_3"            => [ "quic" ],
+    "quic"              => [ "unstable-qlog" ],
 
     "crypto-mdebug"     => [ "crypto-mdebug-backtrace" ],
 
@@ -1550,6 +1554,10 @@ foreach (grep /^-fsanitize=/, @{$config{CFLAGS} || []}) {
 # code knows about it.  Any other flag is taken care of by the configs.
 unless($disabled{threads}) {
     push @{$config{openssl_feature_defines}}, "OPENSSL_THREADS";
+}
+
+if ($disabled{"unstable-qlog"}) {
+    $disabled{"qlog"} = 1;
 }
 
 my $no_shared_warn=0;
@@ -2965,6 +2973,21 @@ platform, so we will pretend you gave the option 'no-pic', which also disables
 'shared' and 'dynamic-engine'.  If you know how to implement shared libraries
 or position independent code, please let us know (but please first make sure
 you have tried with a current version of OpenSSL).
+EOF
+
+print <<"EOF" if (!$disabled{qlog});
+
+============================== WARNING ===============================
+
+WARNING: You have enabled qlog. This functionality is unstable and
+    implements a draft version of the qlog specification. The qlog
+    output from OpenSSL *will* change in incompatible ways in future,
+    and is not subject to any format stability or compatibility
+    guarantees at this time. See the manpage openssl-qlog(7) for
+    details.
+
+============================== WARNING ===============================
+
 EOF
 
 print $banner;

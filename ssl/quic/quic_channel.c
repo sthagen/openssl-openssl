@@ -14,6 +14,7 @@
 #include "internal/quic_rx_depack.h"
 #include "internal/quic_lcidm.h"
 #include "internal/quic_srtm.h"
+#include "internal/qlog_event_helpers.h"
 #include "../ssl_local.h"
 #include "quic_channel_local.h"
 #include "quic_port_local.h"
@@ -100,8 +101,42 @@ static void ch_on_txp_ack_tx(const OSSL_QUIC_FRAME_ACK *ack, uint32_t pn_space,
                              void *arg);
 static void ch_rx_handle_version_neg(QUIC_CHANNEL *ch, OSSL_QRX_PKT *pkt);
 static void ch_raise_version_neg_failure(QUIC_CHANNEL *ch);
+static void ch_record_state_transition(QUIC_CHANNEL *ch, uint32_t new_state);
 
 DEFINE_LHASH_OF_EX(QUIC_SRT_ELEM);
+
+QUIC_NEEDS_LOCK
+static QLOG *ch_get_qlog(QUIC_CHANNEL *ch)
+{
+#ifndef OPENSSL_NO_QLOG
+    QLOG_TRACE_INFO qti = {0};
+
+    if (ch->qlog != NULL)
+        return ch->qlog;
+
+    if (!ch->use_qlog)
+        return NULL;
+
+    if (ch->is_server && ch->init_dcid.id_len == 0)
+        return NULL;
+
+    qti.odcid       = ch->init_dcid;
+    qti.title       = ch->qlog_title;
+    qti.description = NULL;
+    qti.group_id    = NULL;
+    qti.is_server   = ch->is_server;
+    qti.now_cb      = get_time;
+    qti.now_cb_arg  = ch;
+    if ((ch->qlog = ossl_qlog_new_from_env(&qti)) == NULL) {
+        ch->use_qlog = 0; /* don't try again */
+        return NULL;
+    }
+
+    return ch->qlog;
+#else
+    return NULL;
+#endif
+}
 
 /*
  * QUIC Channel Initialization and Teardown
@@ -139,6 +174,7 @@ static int ch_init(QUIC_CHANNEL *ch)
 
     /* We plug in a network write BIO to the QTX later when we get one. */
     qtx_args.libctx = ch->port->engine->libctx;
+    qtx_args.qlog = ch_get_qlog(ch);
     qtx_args.mdpl = QUIC_MIN_INITIAL_DGRAM_LEN;
     ch->rx_max_udp_payload_size = qtx_args.mdpl;
 
@@ -230,6 +266,7 @@ static int ch_init(QUIC_CHANNEL *ch)
     txp_args.cc_data                = ch->cc_data;
     txp_args.now                    = get_time;
     txp_args.now_arg                = ch;
+    txp_args.qlog                   = ch_get_qlog(ch);
 
     for (pn_space = QUIC_PN_SPACE_INITIAL; pn_space < QUIC_PN_SPACE_NUM; ++pn_space) {
         ch->crypto_send[pn_space] = ossl_quic_sstream_new(INIT_CRYPTO_SEND_BUF_LEN);
@@ -364,6 +401,14 @@ static void ch_cleanup(QUIC_CHANNEL *ch)
         ossl_list_ch_remove(&ch->port->channel_list, ch);
         ch->on_port_list = 0;
     }
+
+#ifndef OPENSSL_NO_QLOG
+    if (ch->qlog != NULL)
+        ossl_qlog_flush(ch->qlog); /* best effort */
+
+    OPENSSL_free(ch->qlog_title);
+    ossl_qlog_free(ch->qlog);
+#endif
 }
 
 QUIC_CHANNEL *ossl_quic_channel_new(const QUIC_CHANNEL_ARGS *args)
@@ -378,6 +423,16 @@ QUIC_CHANNEL *ossl_quic_channel_new(const QUIC_CHANNEL_ARGS *args)
     ch->tls         = args->tls;
     ch->lcidm       = args->lcidm;
     ch->srtm        = args->srtm;
+#ifndef OPENSSL_NO_QLOG
+    ch->use_qlog    = args->use_qlog;
+
+    if (ch->use_qlog && args->qlog_title != NULL) {
+        if ((ch->qlog_title = OPENSSL_strdup(args->qlog_title)) == NULL) {
+            OPENSSL_free(ch);
+            return NULL;
+        }
+    }
+#endif
 
     if (!ch_init(ch)) {
         OPENSSL_free(ch);
@@ -991,6 +1046,7 @@ static int ch_on_handshake_complete(void *arg)
         ossl_quic_tx_packetiser_schedule_handshake_done(ch->txp);
     }
 
+    ch_record_state_transition(ch, ch->state);
     return 1;
 }
 
@@ -1112,6 +1168,9 @@ static int ch_on_transport_params(const unsigned char *params,
     int got_disable_active_migration = 0;
     QUIC_CONN_ID cid;
     const char *reason = "bad transport parameter";
+    ossl_unused uint64_t rx_max_idle_timeout = 0;
+    ossl_unused const void *stateless_reset_token_p = NULL;
+    QUIC_PREFERRED_ADDR pfa;
 
     if (ch->got_remote_transport_params) {
         reason = "multiple transport parameter extensions";
@@ -1375,6 +1434,7 @@ static int ch_on_transport_params(const unsigned char *params,
 
             ch_update_idle(ch);
             got_max_idle_timeout = 1;
+            rx_max_idle_timeout = v;
             break;
 
         case QUIC_TPARAM_MAX_UDP_PAYLOAD_SIZE:
@@ -1439,48 +1499,46 @@ static int ch_on_transport_params(const unsigned char *params,
                 goto malformed;
             }
 
-            got_stateless_reset_token = 1;
+            stateless_reset_token_p     = body;
+            got_stateless_reset_token   = 1;
             break;
 
         case QUIC_TPARAM_PREFERRED_ADDR:
-            {
-                /* TODO(QUIC FUTURE): Handle preferred address. */
-                QUIC_PREFERRED_ADDR pfa;
-                if (got_preferred_addr) {
-                    reason = TP_REASON_DUP("PREFERRED_ADDR");
-                    goto malformed;
-                }
-
-                /*
-                 * RFC 9000 s. 18.2: "A server that chooses a zero-length
-                 * connection ID MUST NOT provide a preferred address.
-                 * Similarly, a server MUST NOT include a zero-length connection
-                 * ID in this transport parameter. A client MUST treat a
-                 * violation of these requirements as a connection error of type
-                 * TRANSPORT_PARAMETER_ERROR."
-                 */
-                if (ch->is_server) {
-                    reason = TP_REASON_SERVER_ONLY("PREFERRED_ADDR");
-                    goto malformed;
-                }
-
-                if (ch->cur_remote_dcid.id_len == 0) {
-                    reason = "PREFERRED_ADDR provided for zero-length CID";
-                    goto malformed;
-                }
-
-                if (!ossl_quic_wire_decode_transport_param_preferred_addr(&pkt, &pfa)) {
-                    reason = TP_REASON_MALFORMED("PREFERRED_ADDR");
-                    goto malformed;
-                }
-
-                if (pfa.cid.id_len == 0) {
-                    reason = "zero-length CID in PREFERRED_ADDR";
-                    goto malformed;
-                }
-
-                got_preferred_addr = 1;
+            /* TODO(QUIC FUTURE): Handle preferred address. */
+            if (got_preferred_addr) {
+                reason = TP_REASON_DUP("PREFERRED_ADDR");
+                goto malformed;
             }
+
+            /*
+             * RFC 9000 s. 18.2: "A server that chooses a zero-length
+             * connection ID MUST NOT provide a preferred address.
+             * Similarly, a server MUST NOT include a zero-length connection
+             * ID in this transport parameter. A client MUST treat a
+             * violation of these requirements as a connection error of type
+             * TRANSPORT_PARAMETER_ERROR."
+             */
+            if (ch->is_server) {
+                reason = TP_REASON_SERVER_ONLY("PREFERRED_ADDR");
+                goto malformed;
+            }
+
+            if (ch->cur_remote_dcid.id_len == 0) {
+                reason = "PREFERRED_ADDR provided for zero-length CID";
+                goto malformed;
+            }
+
+            if (!ossl_quic_wire_decode_transport_param_preferred_addr(&pkt, &pfa)) {
+                reason = TP_REASON_MALFORMED("PREFERRED_ADDR");
+                goto malformed;
+            }
+
+            if (pfa.cid.id_len == 0) {
+                reason = "zero-length CID in PREFERRED_ADDR";
+                goto malformed;
+            }
+
+            got_preferred_addr = 1;
             break;
 
         case QUIC_TPARAM_DISABLE_ACTIVE_MIGRATION:
@@ -1537,6 +1595,65 @@ static int ch_on_transport_params(const unsigned char *params,
     }
 
     ch->got_remote_transport_params = 1;
+
+#ifndef OPENSSL_NO_QLOG
+    QLOG_EVENT_BEGIN(ch_get_qlog(ch), transport, parameters_set)
+        QLOG_STR("owner", "remote");
+
+        if (got_orig_dcid)
+            QLOG_CID("original_destination_connection_id",
+                     &ch->init_dcid);
+        if (got_initial_scid)
+            QLOG_CID("original_source_connection_id",
+                     &ch->init_dcid);
+        if (got_retry_scid)
+            QLOG_CID("retry_source_connection_id",
+                     &ch->retry_scid);
+        if (got_initial_max_data)
+            QLOG_U64("initial_max_data",
+                     ossl_quic_txfc_get_cwm(&ch->conn_txfc));
+        if (got_initial_max_stream_data_bidi_local)
+            QLOG_U64("initial_max_stream_data_bidi_local",
+                     ch->rx_init_max_stream_data_bidi_local);
+        if (got_initial_max_stream_data_bidi_remote)
+            QLOG_U64("initial_max_stream_data_bidi_remote",
+                     ch->rx_init_max_stream_data_bidi_remote);
+        if (got_initial_max_stream_data_uni)
+            QLOG_U64("initial_max_stream_data_uni",
+                     ch->rx_init_max_stream_data_uni);
+        if (got_initial_max_streams_bidi)
+            QLOG_U64("initial_max_streams_bidi",
+                     ch->max_local_streams_bidi);
+        if (got_initial_max_streams_uni)
+            QLOG_U64("initial_max_streams_uni",
+                     ch->max_local_streams_uni);
+        if (got_ack_delay_exp)
+            QLOG_U64("ack_delay_exponent", ch->rx_ack_delay_exp);
+        if (got_max_ack_delay)
+            QLOG_U64("max_ack_delay", ch->rx_max_ack_delay);
+        if (got_max_udp_payload_size)
+            QLOG_U64("max_udp_payload_size", ch->rx_max_udp_payload_size);
+        if (got_max_idle_timeout)
+            QLOG_U64("max_idle_timeout", rx_max_idle_timeout);
+        if (got_active_conn_id_limit)
+            QLOG_U64("active_connection_id_limit", ch->rx_active_conn_id_limit);
+        if (got_stateless_reset_token)
+            QLOG_BIN("stateless_reset_token", stateless_reset_token_p,
+                     QUIC_STATELESS_RESET_TOKEN_LEN);
+        if (got_preferred_addr) {
+            QLOG_BEGIN("preferred_addr")
+                QLOG_U64("port_v4", pfa.ipv4_port);
+                QLOG_U64("port_v6", pfa.ipv6_port);
+                QLOG_BIN("ip_v4", pfa.ipv4, sizeof(pfa.ipv4));
+                QLOG_BIN("ip_v6", pfa.ipv6, sizeof(pfa.ipv6));
+                QLOG_BIN("stateless_reset_token", pfa.stateless_reset.token,
+                         sizeof(pfa.stateless_reset.token));
+                QLOG_CID("connection_id", &pfa.cid);
+            QLOG_END()
+        }
+        QLOG_BOOL("disable_active_migration", got_disable_active_migration);
+    QLOG_EVENT_END()
+#endif
 
     if (got_initial_max_data || got_initial_max_stream_data_bidi_remote
         || got_initial_max_streams_bidi || got_initial_max_streams_uni)
@@ -1661,6 +1778,34 @@ static int ch_generate_transport_params(QUIC_CHANNEL *ch)
     if (!ossl_quic_tls_set_transport_params(ch->qtls, ch->local_transport_params,
                                             buf_len))
         goto err;
+
+#ifndef OPENSSL_NO_QLOG
+    QLOG_EVENT_BEGIN(ch_get_qlog(ch), transport, parameters_set)
+        QLOG_STR("owner", "local");
+        QLOG_BOOL("disable_active_migration", 1);
+        if (ch->is_server) {
+            QLOG_CID("original_destination_connection_id", &ch->init_dcid);
+            QLOG_CID("initial_source_connection_id", &ch->cur_local_cid);
+        } else {
+            QLOG_STR("initial_source_connection_id", "");
+        }
+        QLOG_U64("max_idle_timeout", ch->max_idle_timeout);
+        QLOG_U64("max_udp_payload_size", QUIC_MIN_INITIAL_DGRAM_LEN);
+        QLOG_U64("active_connection_id_limit", QUIC_MIN_ACTIVE_CONN_ID_LIMIT);
+        QLOG_U64("max_ack_delay", ch->tx_max_ack_delay);
+        QLOG_U64("initial_max_data", ossl_quic_rxfc_get_cwm(&ch->conn_rxfc));
+        QLOG_U64("initial_max_stream_data_bidi_local",
+                 ch->tx_init_max_stream_data_bidi_local);
+        QLOG_U64("initial_max_stream_data_bidi_remote",
+                 ch->tx_init_max_stream_data_bidi_remote);
+        QLOG_U64("initial_max_stream_data_uni",
+                 ch->tx_init_max_stream_data_uni);
+        QLOG_U64("initial_max_streams_bidi",
+                 ossl_quic_rxfc_get_cwm(&ch->max_streams_bidi_rxfc));
+        QLOG_U64("initial_max_streams_uni",
+                 ossl_quic_rxfc_get_cwm(&ch->max_streams_uni_rxfc));
+    QLOG_EVENT_END()
+#endif
 
     ok = 1;
 err:
@@ -1954,6 +2099,7 @@ static void ch_rx_handle_packet(QUIC_CHANNEL *ch, int channel_only)
 {
     uint32_t enc_level;
     int old_have_processed_any_pkt = ch->have_processed_any_pkt;
+    OSSL_QTX_IOVEC iovec;
 
     assert(ch->qrx_pkt != NULL);
 
@@ -2039,6 +2185,12 @@ static void ch_rx_handle_packet(QUIC_CHANNEL *ch, int channel_only)
                                                0, "packet header reserved bits");
         return;
     }
+
+    iovec.buf       = ch->qrx_pkt->hdr->data;
+    iovec.buf_len   = ch->qrx_pkt->hdr->len;
+    ossl_qlog_event_transport_packet_received(ch_get_qlog(ch), ch->qrx_pkt->hdr,
+                                              ch->qrx_pkt->pn, &iovec, 1,
+                                              ch->qrx_pkt->datagram_id);
 
     /* Handle incoming packet. */
     switch (ch->qrx_pkt->hdr->type) {
@@ -2382,6 +2534,24 @@ static OSSL_TIME ch_determine_next_tick_deadline(QUIC_CHANNEL *ch)
  * QUIC Channel: Lifecycle Events
  * ==============================
  */
+
+/*
+ * Record a state transition. This is not necessarily a change to ch->state but
+ * also includes the handshake becoming complete or confirmed, etc.
+ */
+static void ch_record_state_transition(QUIC_CHANNEL *ch, uint32_t new_state)
+{
+    uint32_t old_state = ch->state;
+
+    ch->state = new_state;
+
+    ossl_qlog_event_connectivity_connection_state_updated(ch_get_qlog(ch),
+                                                          old_state,
+                                                          new_state,
+                                                          ch->handshake_complete,
+                                                          ch->handshake_confirmed);
+}
+
 int ossl_quic_channel_start(QUIC_CHANNEL *ch)
 {
     if (ch->is_server)
@@ -2408,8 +2578,11 @@ int ossl_quic_channel_start(QUIC_CHANNEL *ch)
         return 0;
 
     /* Change state. */
-    ch->state                   = QUIC_CHANNEL_STATE_ACTIVE;
+    ch_record_state_transition(ch, QUIC_CHANNEL_STATE_ACTIVE);
     ch->doing_proactive_ver_neg = 0; /* not currently supported */
+
+    ossl_qlog_event_connectivity_connection_started(ch_get_qlog(ch),
+                                                    &ch->init_dcid);
 
     /* Handshake layer: start (e.g. send CH). */
     if (!ch_tick_tls(ch, /*channel_only=*/0))
@@ -2568,6 +2741,7 @@ int ossl_quic_channel_on_handshake_confirmed(QUIC_CHANNEL *ch)
 
     ch_discard_el(ch, QUIC_ENC_LEVEL_HANDSHAKE);
     ch->handshake_confirmed = 1;
+    ch_record_state_transition(ch, ch->state);
     ossl_ackm_on_handshake_confirmed(ch->ackm);
     return 1;
 }
@@ -2666,9 +2840,12 @@ static void ch_start_terminating(QUIC_CHANNEL *ch,
     case QUIC_CHANNEL_STATE_ACTIVE:
         copy_tcause(&ch->terminate_cause, tcause);
 
+        ossl_qlog_event_connectivity_connection_closed(ch_get_qlog(ch), tcause);
+
         if (!force_immediate) {
-            ch->state = tcause->remote ? QUIC_CHANNEL_STATE_TERMINATING_DRAINING
-                                       : QUIC_CHANNEL_STATE_TERMINATING_CLOSING;
+            ch_record_state_transition(ch, tcause->remote
+                                           ? QUIC_CHANNEL_STATE_TERMINATING_DRAINING
+                                           : QUIC_CHANNEL_STATE_TERMINATING_CLOSING);
             /*
              * RFC 9000 s. 10.2 Immediate Close
              *  These states SHOULD persist for at least three times
@@ -2713,7 +2890,7 @@ static void ch_start_terminating(QUIC_CHANNEL *ch,
              *  closing state if it receives a CONNECTION_CLOSE frame,
              *  which indicates that the peer is also closing or draining.
              */
-            ch->state = QUIC_CHANNEL_STATE_TERMINATING_DRAINING;
+            ch_record_state_transition(ch, QUIC_CHANNEL_STATE_TERMINATING_DRAINING);
 
         break;
 
@@ -3047,7 +3224,7 @@ void ossl_quic_channel_raise_protocol_error_loc(QUIC_CHANNEL *ch,
  */
 static void ch_on_terminating_timeout(QUIC_CHANNEL *ch)
 {
-    ch->state = QUIC_CHANNEL_STATE_TERMINATED;
+    ch_record_state_transition(ch, QUIC_CHANNEL_STATE_TERMINATED);
 }
 
 /*
@@ -3122,7 +3299,7 @@ static void ch_on_idle_timeout(QUIC_CHANNEL *ch)
     ch->terminate_cause.error_code  = UINT64_MAX;
     ch->terminate_cause.frame_type  = 0;
 
-    ch->state = QUIC_CHANNEL_STATE_TERMINATED;
+    ch_record_state_transition(ch, QUIC_CHANNEL_STATE_TERMINATED);
 }
 
 /* Called when we, as a server, get a new incoming connection. */
@@ -3153,6 +3330,10 @@ int ossl_quic_channel_on_new_conn(QUIC_CHANNEL *ch, const BIO_ADDR *peer,
     if (!ossl_quic_tx_packetiser_set_cur_scid(ch->txp, &ch->cur_local_cid))
         return 0;
 
+    /* Setup QLOG, which did not happen earlier due to lacking an Initial ODCID. */
+    ossl_qtx_set0_qlog(ch->qtx, ch_get_qlog(ch));
+    ossl_quic_tx_packetiser_set0_qlog(ch->txp, ch_get_qlog(ch));
+
     /* Plug in secrets for the Initial EL. */
     if (!ossl_quic_provide_initial_secret(ch->port->engine->libctx,
                                           ch->port->engine->propq,
@@ -3166,7 +3347,7 @@ int ossl_quic_channel_on_new_conn(QUIC_CHANNEL *ch, const BIO_ADDR *peer,
         return 0;
 
     /* Change state. */
-    ch->state                   = QUIC_CHANNEL_STATE_ACTIVE;
+    ch_record_state_transition(ch, QUIC_CHANNEL_STATE_ACTIVE);
     ch->doing_proactive_ver_neg = 0; /* not currently supported */
     return 1;
 }

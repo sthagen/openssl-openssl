@@ -481,7 +481,8 @@ OSSL_QUIC_TX_PACKETISER *ossl_quic_tx_packetiser_new(const OSSL_QUIC_TX_PACKETIS
                              get_sstream_by_id, txp,
                              on_regen_notify, txp,
                              on_confirm_notify, txp,
-                             on_sstream_updated, txp)) {
+                             on_sstream_updated, txp,
+                             args->qlog)) {
         OPENSSL_free(txp);
         return NULL;
     }
@@ -623,6 +624,12 @@ void ossl_quic_tx_packetiser_set_ack_tx_cb(OSSL_QUIC_TX_PACKETISER *txp,
 {
     txp->ack_tx_cb      = cb;
     txp->ack_tx_cb_arg  = cb_arg;
+}
+
+void ossl_quic_tx_packetiser_set0_qlog(OSSL_QUIC_TX_PACKETISER *txp,
+                                       QLOG *qlog)
+{
+    ossl_quic_fifd_set0_qlog(&txp->fifd, qlog);
 }
 
 int ossl_quic_tx_packetiser_discard_enc_level(OSSL_QUIC_TX_PACKETISER *txp,
@@ -2811,6 +2818,7 @@ static int txp_generate_for_el(OSSL_QUIC_TX_PACKETISER *txp,
     tpkt->ackm_pkt.is_pto_probe     = 0;
     tpkt->ackm_pkt.is_mtu_probe     = 0;
     tpkt->ackm_pkt.time             = txp->args.now(txp->args.now_arg);
+    tpkt->pkt_type                  = pkt->phdr.type;
 
     /* Done. */
     return rc;

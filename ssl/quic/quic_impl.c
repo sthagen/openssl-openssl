@@ -3702,3 +3702,19 @@ QUIC_CHANNEL *ossl_quic_conn_get_channel(SSL *s)
 
     return ctx.qc->ch;
 }
+
+int ossl_quic_set_diag_title(SSL_CTX *ctx, const char *title)
+{
+#ifndef OPENSSL_NO_QLOG
+    OPENSSL_free(ctx->qlog_title);
+    ctx->qlog_title = NULL;
+
+    if (title == NULL)
+        return 1;
+
+    if ((ctx->qlog_title = OPENSSL_strdup(title)) == NULL)
+        return 0;
+#endif
+
+    return 1;
+}
