@@ -327,6 +327,8 @@ struct script_op {
     {OPK_POP_ERR},
 #define OP_C_WRITE_EX2(stream_name, buf, buf_len, flags) \
     {OPK_C_WRITE_EX2, (buf), (buf_len), NULL, #stream_name, (flags)},
+#define OP_CHECK2(func, arg1, arg2) \
+    {OPK_CHECK, NULL, (arg1), (func), NULL, (arg2)},
 
 static OSSL_TIME get_time(void *arg)
 {
@@ -5072,6 +5074,8 @@ static int check_got_session_ticket(struct helper *h, struct helper_local *hl)
     return 1;
 }
 
+static int check_idle_timeout(struct helper *h, struct helper_local *hl);
+
 static const struct script_op script_78[] = {
     OP_C_SET_ALPN           ("ossltest")
     OP_CHECK                (setup_session, 0)
@@ -5094,6 +5098,8 @@ static const struct script_op script_78[] = {
     OP_C_READ_EXPECT        (a, "Strawberry", 10)
 
     OP_CHECK                (check_got_session_ticket, 0)
+    OP_CHECK2               (check_idle_timeout,
+                             SSL_VALUE_CLASS_FEATURE_NEGOTIATED, 30000)
 
     OP_END
 };
@@ -5113,11 +5119,12 @@ static const struct script_op script_79[] = {
     OP_END
 };
 
+/* 80. Stateless reset detection test */
 static QUIC_STATELESS_RESET_TOKEN test_reset_token = {
     { 0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0xbe, 0xef,
      0xde, 0xad, 0xbe, 0xef }};
+
 /*
- * 80. stateless reset
  * Generate a packet in the following format:
  * https://www.rfc-editor.org/rfc/rfc9000.html#name-stateless-reset
  * Stateless Reset {
@@ -5226,6 +5233,197 @@ static const struct script_op script_80[] = {
     OP_END
 };
 
+/* 81. Idle timeout configuration */
+static int modify_idle_timeout(struct helper *h, struct helper_local *hl)
+{
+    uint64_t v = 0;
+
+    /* Test bad value is rejected. */
+    if (!TEST_false(SSL_set_feature_request_uint(h->c_conn,
+                                                 SSL_VALUE_QUIC_IDLE_TIMEOUT,
+                                                 (1ULL << 62))))
+        return 0;
+
+    /* Set value. */
+    if (!TEST_true(SSL_set_feature_request_uint(h->c_conn,
+                                                SSL_VALUE_QUIC_IDLE_TIMEOUT,
+                                                hl->check_op->arg2)))
+        return 0;
+
+    if (!TEST_true(SSL_get_feature_request_uint(h->c_conn,
+                                                SSL_VALUE_QUIC_IDLE_TIMEOUT,
+                                                &v)))
+        return 0;
+
+    if (!TEST_uint64_t_eq(v, hl->check_op->arg2))
+        return 0;
+
+    return 1;
+}
+
+static int check_idle_timeout(struct helper *h, struct helper_local *hl)
+{
+    uint64_t v = 0;
+
+    if (!TEST_true(SSL_get_value_uint(h->c_conn, hl->check_op->arg1,
+                                      SSL_VALUE_QUIC_IDLE_TIMEOUT,
+                                      &v)))
+        return 0;
+
+    if (!TEST_uint64_t_eq(v, hl->check_op->arg2))
+        return 0;
+
+    return 1;
+}
+
+static const struct script_op script_81[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_CHECK                (modify_idle_timeout, 25000)
+    OP_C_CONNECT_WAIT       ()
+
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_CHECK2               (check_idle_timeout,
+                             SSL_VALUE_CLASS_FEATURE_PEER_REQUEST, 30000)
+    OP_CHECK2               (check_idle_timeout,
+                             SSL_VALUE_CLASS_FEATURE_NEGOTIATED, 25000)
+
+    OP_END
+};
+
+/* 82. Negotiated default idle timeout if not configured */
+static const struct script_op script_82[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_CHECK2               (check_idle_timeout,
+                             SSL_VALUE_CLASS_FEATURE_PEER_REQUEST, 30000)
+    OP_CHECK2               (check_idle_timeout,
+                             SSL_VALUE_CLASS_FEATURE_NEGOTIATED, 30000)
+
+    OP_END
+};
+
+/* 83. No late changes to idle timeout */
+static int cannot_change_idle_timeout(struct helper *h, struct helper_local *hl)
+{
+    uint64_t v = 0;
+
+    if (!TEST_true(SSL_get_feature_request_uint(h->c_conn,
+                                                SSL_VALUE_QUIC_IDLE_TIMEOUT,
+                                                &v)))
+        return 0;
+
+    if (!TEST_uint64_t_eq(v, 30000))
+        return 0;
+
+    if (!TEST_false(SSL_set_feature_request_uint(h->c_conn,
+                                                 SSL_VALUE_QUIC_IDLE_TIMEOUT,
+                                                 5000)))
+        return 0;
+
+    return 1;
+}
+
+static const struct script_op script_83[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_CHECK                (cannot_change_idle_timeout, 0)
+    OP_CHECK2               (check_idle_timeout,
+                             SSL_VALUE_CLASS_FEATURE_PEER_REQUEST, 30000)
+    OP_CHECK2               (check_idle_timeout,
+                             SSL_VALUE_CLASS_FEATURE_NEGOTIATED, 30000)
+
+    OP_END
+};
+
+/* 84. Test query of available streams */
+static int check_avail_streams(struct helper *h, struct helper_local *hl)
+{
+    uint64_t v = 0;
+
+    switch (hl->check_op->arg1) {
+    case 0:
+        if (!TEST_true(SSL_get_quic_stream_bidi_local_avail(h->c_conn, &v)))
+            return 0;
+        break;
+    case 1:
+        if (!TEST_true(SSL_get_quic_stream_bidi_remote_avail(h->c_conn, &v)))
+            return 0;
+        break;
+    case 2:
+        if (!TEST_true(SSL_get_quic_stream_uni_local_avail(h->c_conn, &v)))
+            return 0;
+        break;
+    case 3:
+        if (!TEST_true(SSL_get_quic_stream_uni_remote_avail(h->c_conn, &v)))
+            return 0;
+        break;
+    default:
+        return 0;
+    }
+
+    if (!TEST_uint64_t_eq(v, hl->check_op->arg2))
+        return 0;
+
+    return 1;
+}
+
+static const struct script_op script_84[] = {
+    OP_C_SET_ALPN           ("ossltest")
+    OP_C_CONNECT_WAIT       ()
+
+    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE)
+
+    OP_CHECK2               (check_avail_streams, 0, 100)
+    OP_CHECK2               (check_avail_streams, 1, 100)
+    OP_CHECK2               (check_avail_streams, 2, 100)
+    OP_CHECK2               (check_avail_streams, 3, 100)
+
+    OP_C_NEW_STREAM_BIDI    (a, C_BIDI_ID(0))
+
+    OP_CHECK2               (check_avail_streams, 0, 99)
+    OP_CHECK2               (check_avail_streams, 1, 100)
+    OP_CHECK2               (check_avail_streams, 2, 100)
+    OP_CHECK2               (check_avail_streams, 3, 100)
+
+    OP_C_NEW_STREAM_UNI     (b, C_UNI_ID(0))
+
+    OP_CHECK2               (check_avail_streams, 0, 99)
+    OP_CHECK2               (check_avail_streams, 1, 100)
+    OP_CHECK2               (check_avail_streams, 2, 99)
+    OP_CHECK2               (check_avail_streams, 3, 100)
+
+    OP_S_NEW_STREAM_BIDI    (c, S_BIDI_ID(0))
+    OP_S_WRITE              (c, "x", 1)
+
+    OP_C_ACCEPT_STREAM_WAIT (c)
+    OP_C_READ_EXPECT        (c, "x", 1)
+
+    OP_CHECK2               (check_avail_streams, 0, 99)
+    OP_CHECK2               (check_avail_streams, 1, 99)
+    OP_CHECK2               (check_avail_streams, 2, 99)
+    OP_CHECK2               (check_avail_streams, 3, 100)
+
+    OP_S_NEW_STREAM_UNI     (d, S_UNI_ID(0))
+    OP_S_WRITE              (d, "x", 1)
+
+    OP_C_ACCEPT_STREAM_WAIT (d)
+    OP_C_READ_EXPECT        (d, "x", 1)
+
+    OP_CHECK2               (check_avail_streams, 0, 99)
+    OP_CHECK2               (check_avail_streams, 1, 99)
+    OP_CHECK2               (check_avail_streams, 2, 99)
+    OP_CHECK2               (check_avail_streams, 3, 99)
+
+    OP_END
+};
+
 static const struct script_op *const scripts[] = {
     script_1,
     script_2,
@@ -5306,7 +5504,11 @@ static const struct script_op *const scripts[] = {
     script_77,
     script_78,
     script_79,
-    script_80
+    script_80,
+    script_81,
+    script_82,
+    script_83,
+    script_84
 };
 
 static int test_script(int idx)

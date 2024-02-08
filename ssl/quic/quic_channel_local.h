@@ -119,15 +119,15 @@ struct quic_channel_st {
      */
     QUIC_CONN_ID                    retry_scid;
 
+    /* Server only: The DCID we currently expect the peer to use to talk to us. */
+    QUIC_CONN_ID                    cur_local_cid;
+
     /*
      * The DCID we currently use to talk to the peer and its sequence num.
      */
     QUIC_CONN_ID                    cur_remote_dcid;
     uint64_t                        cur_remote_seq_num;
     uint64_t                        cur_retire_prior_to;
-
-    /* Server only: The DCID we currently expect the peer to use to talk to us. */
-    QUIC_CONN_ID                    cur_local_cid;
 
     /* Transport parameter values we send to our peer. */
     uint64_t                        tx_init_max_stream_data_bidi_local;
@@ -142,6 +142,9 @@ struct quic_channel_st {
     uint64_t                        rx_max_ack_delay; /* ms */
     unsigned char                   rx_ack_delay_exp;
 
+    /* Diagnostic counters for testing purposes only. May roll over. */
+    uint16_t                        diag_num_rx_ack; /* Number of ACK frames received */
+
     /*
      * Temporary staging area to store information about the incoming packet we
      * are currently processing.
@@ -154,6 +157,10 @@ struct quic_channel_st {
      */
     uint64_t                        max_local_streams_bidi;
     uint64_t                        max_local_streams_uni;
+
+    /* The idle timeout values we and our peer requested. */
+    uint64_t                        max_idle_timeout_local_req;
+    uint64_t                        max_idle_timeout_remote_req;
 
     /* The negotiated maximum idle timeout in milliseconds. */
     uint64_t                        max_idle_timeout;
@@ -196,9 +203,6 @@ struct quic_channel_st {
      * use only. Usually set to UINT64_MAX.
      */
     uint64_t                        txku_threshold_override;
-
-    /* Diagnostic counters for testing purposes only. May roll over. */
-    uint16_t                        diag_num_rx_ack; /* Number of ACK frames received */
 
     /* Valid if we are in the TERMINATING or TERMINATED states. */
     QUIC_TERMINATE_CAUSE            terminate_cause;
@@ -288,6 +292,8 @@ struct quic_channel_st {
 
     /* We have received transport parameters from the peer. */
     unsigned int                    got_remote_transport_params    : 1;
+    /* We have generated our local transport parameters. */
+    unsigned int                    got_local_transport_params     : 1;
 
     /*
      * This monotonically transitions to 1 once the TLS state machine is
