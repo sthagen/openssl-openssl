@@ -142,6 +142,10 @@ int ossl_quic_get_shutdown(const SSL *s);
  */
 int ossl_quic_set_diag_title(SSL_CTX *ctx, const char *title);
 
+/* APIs used by the polling infrastructure */
+int ossl_quic_conn_poll_events(SSL *ssl, uint64_t events, int do_tick,
+                               uint64_t *revents);
+
 # endif
 
 #endif
