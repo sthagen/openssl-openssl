@@ -64,11 +64,11 @@ static const unsigned char ccm_tag[] = {
  * algorithm implementations. If they are NULL then the default library
  * context and properties are used.
  */
-OSSL_LIB_CTX *libctx = NULL;
-const char *propq = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
+static const char *propq = NULL;
 
 
-int aes_ccm_encrypt(void)
+static int aes_ccm_encrypt(void)
 {
     int ret = 0;
     EVP_CIPHER_CTX *ctx;
@@ -155,7 +155,7 @@ err:
     return ret;
 }
 
-int aes_ccm_decrypt(void)
+static int aes_ccm_decrypt(void)
 {
     int ret = 0;
     EVP_CIPHER_CTX *ctx;

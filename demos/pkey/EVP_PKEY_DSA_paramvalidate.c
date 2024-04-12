@@ -47,16 +47,16 @@ static const char hexseed[] =
     "cba30ccd905aa7675a0b81769704bf3c"
     "ccf2ca1892b2eaf6b9e2b38d9bf6affc"
     "42ada55986d8a1772b442770954d0b65";
-const int gindex = 42;
-const int pcounter = 363;
+static const int gindex = 42;
+static const int pcounter = 363;
 static const char digest[] = "SHA384";
 
 /*
  * Create a new dsa param key that is the combination of an existing param key
  * plus extra parameters.
  */
-EVP_PKEY_CTX *create_merged_key(EVP_PKEY *dsaparams, const OSSL_PARAM *newparams,
-                                OSSL_LIB_CTX *libctx, const char *propq)
+static EVP_PKEY_CTX *create_merged_key(EVP_PKEY *dsaparams, const OSSL_PARAM *newparams,
+                                       OSSL_LIB_CTX *libctx, const char *propq)
 {
     EVP_PKEY_CTX *out = NULL;
     EVP_PKEY_CTX *ctx = NULL;
