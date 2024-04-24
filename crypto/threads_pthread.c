@@ -16,6 +16,24 @@
 #include "internal/rcu.h"
 #include "rcu_internal.h"
 
+#if defined(__clang__) && defined(__has_feature)
+# if __has_feature(thread_sanitizer)
+#  define __SANITIZE_THREAD__
+# endif
+#endif
+
+#if defined(__SANITIZE_THREAD__)
+# include <sanitizer/tsan_interface.h>
+# define TSAN_FAKE_UNLOCK(x)   __tsan_mutex_pre_unlock((x), 0); \
+__tsan_mutex_post_unlock((x), 0)
+
+# define TSAN_FAKE_LOCK(x)  __tsan_mutex_pre_lock((x), 0); \
+__tsan_mutex_post_lock((x), 0, 0)
+#else
+# define TSAN_FAKE_UNLOCK(x)
+# define TSAN_FAKE_LOCK(x)
+#endif
+
 #if defined(__sun)
 # include <atomic.h>
 #endif
@@ -548,10 +566,12 @@ static struct rcu_qp *allocate_new_qp_group(CRYPTO_RCU_LOCK *lock,
 void ossl_rcu_write_lock(CRYPTO_RCU_LOCK *lock)
 {
     pthread_mutex_lock(&lock->write_lock);
+    TSAN_FAKE_UNLOCK(&lock->write_lock);
 }
 
 void ossl_rcu_write_unlock(CRYPTO_RCU_LOCK *lock)
 {
+    TSAN_FAKE_LOCK(&lock->write_lock);
     pthread_mutex_unlock(&lock->write_lock);
 }
 
@@ -561,12 +581,10 @@ void ossl_synchronize_rcu(CRYPTO_RCU_LOCK *lock)
     uint64_t count;
     struct rcu_cb_item *cb_items, *tmpcb;
 
-    /*
-     * __ATOMIC_ACQ_REL is used here to ensure that we get any prior published
-     * writes before we read, and publish our write immediately
-     */
-    cb_items = ATOMIC_EXCHANGE_N(prcu_cb_item, &lock->cb_items, NULL,
-                                 __ATOMIC_ACQ_REL);
+    pthread_mutex_lock(&lock->write_lock);
+    cb_items = lock->cb_items;
+    lock->cb_items = NULL;
+    pthread_mutex_unlock(&lock->write_lock);
 
     qp = update_qp(lock);
 
@@ -895,6 +913,29 @@ int CRYPTO_atomic_load(uint64_t *val, uint64_t *ret, CRYPTO_RWLOCK *lock)
     if (lock == NULL || !CRYPTO_THREAD_read_lock(lock))
         return 0;
     *ret  = *val;
+    if (!CRYPTO_THREAD_unlock(lock))
+        return 0;
+
+    return 1;
+}
+
+int CRYPTO_atomic_store(uint64_t *dst, uint64_t val, CRYPTO_RWLOCK *lock)
+{
+# if defined(__GNUC__) && defined(__ATOMIC_ACQUIRE) && !defined(BROKEN_CLANG_ATOMICS)
+    if (__atomic_is_lock_free(sizeof(*dst), dst)) {
+        __atomic_store(dst, &val, __ATOMIC_RELEASE);
+        return 1;
+    }
+# elif defined(__sun) && (defined(__SunOS_5_10) || defined(__SunOS_5_11))
+    /* This will work for all future Solaris versions. */
+    if (ret != NULL) {
+        atomic_swap_64(dst, val);
+        return 1;
+    }
+# endif
+    if (lock == NULL || !CRYPTO_THREAD_read_lock(lock))
+        return 0;
+    *dst  = val;
     if (!CRYPTO_THREAD_unlock(lock))
         return 0;
 
