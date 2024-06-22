@@ -16,7 +16,7 @@ use OpenSSL::Test qw/:DEFAULT srctop_file/;
 
 setup("test_x509");
 
-plan tests => 60;
+plan tests => 66;
 
 # Prevent MSys2 filename munging for arguments that look like file paths but
 # aren't
@@ -171,6 +171,28 @@ cert_contains($tgt_info_cert,
 cert_contains($tgt_info_cert,
               "Digest Type: Public Key",
               1, 'X.509 Targeting Information Object Digest Type');
+
+my $hnc_cert = srctop_file(@certs, "ext-holderNameConstraints.pem");
+cert_contains($hnc_cert,
+              "X509v3 Holder Name Constraints",
+              1, 'X.509 Holder Name Constraints');
+cert_contains($hnc_cert,
+              "Permitted:",
+              1, 'X.509 Holder Name Constraints Permitted');
+cert_contains($hnc_cert,
+              "DirName:CN = Wildboar",
+              1, 'X.509 Holder Name Constraint');
+
+my $dnc_cert = srctop_file(@certs, "ext-delegatedNameConstraints.pem");
+cert_contains($dnc_cert,
+              "X509v3 Delegated Name Constraints",
+              1, 'X.509 Delegated Name Constraints');
+cert_contains($dnc_cert,
+              "Permitted:",
+              1, 'X.509 Delegated Name Constraints Permitted');
+cert_contains($dnc_cert,
+              "DirName:CN = Wildboar",
+              1, 'X.509 Delegated Name Constraint');
 
 sub test_errors { # actually tests diagnostics of OSSL_STORE
     my ($expected, $cert, @opts) = @_;
@@ -333,5 +355,7 @@ ok(run(app(["openssl", "x509", "-req", "-text",
 SKIP: {
     skip "EC is not supported by this OpenSSL build", 1
         if disabled("ec");
-    ok(run(test(["x509_test"])), "running x509_test");
+    my $psscert = srctop_file(@certs, "ee-self-signed-pss.pem");
+
+    ok(run(test(["x509_test", $psscert])), "running x509_test");
 }
