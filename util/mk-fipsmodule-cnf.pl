@@ -13,10 +13,13 @@ use Getopt::Long;
 my $conditional_errors = 1;
 my $security_checks = 1;
 my $ems_check = 1;
+my $no_short_mac = 1;
 my $drgb_no_trunc_dgst = 1;
 my $kdf_digest_check = 1;
+my $dsa_sign_disabled = 1;
 
 my $activate = 1;
+my $version = 1;
 my $mac_key;
 my $module_name;
 my $section_name = "fips_sect";
@@ -44,10 +47,13 @@ my $module_mac = join(':', @module_mac);
 print <<_____;
 [$section_name]
 activate = $activate
+install-version = $version
 conditional-errors = $conditional_errors
 security-checks = $security_checks
 tls1-prf-ems-check = $ems_check
+no-short-mac = $no_short_mac
 drbg-no-trunc-md = $drgb_no_trunc_dgst
+dsa-sign-disabled = $dsa_sign_disabled
 module-mac = $module_mac
 hkdf-digest-check = $kdf_digest_check
 tls13-kdf-digest-check = $kdf_digest_check

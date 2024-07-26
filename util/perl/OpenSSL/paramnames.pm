@@ -32,6 +32,7 @@ my %params = (
     'PROV_PARAM_STATUS' =>             "status",             # uint
     'PROV_PARAM_SECURITY_CHECKS' =>    "security-checks",    # uint
     'PROV_PARAM_TLS1_PRF_EMS_CHECK' => "tls1-prf-ems-check", # uint
+    'PROV_PARAM_NO_SHORT_MAC' =>       "no-short-mac",       # uint
     'PROV_PARAM_DRBG_TRUNC_DIGEST' =>  "drbg-no-trunc-md",   # uint
     'PROV_PARAM_HKDF_DIGEST_CHECK' =>      "hkdf-digest-check",      # uint
     'PROV_PARAM_TLS13_KDF_DIGEST_CHECK' => "tls13-kdf-digest-check", # uint
@@ -39,6 +40,7 @@ my %params = (
     'PROV_PARAM_SSHKDF_DIGEST_CHECK' =>    "sshkdf-digest-check",    # uint
     'PROV_PARAM_SSKDF_DIGEST_CHECK' =>     "sskdf-digest-check",     # uint
     'PROV_PARAM_X963KDF_DIGEST_CHECK' =>   "x963kdf-digest-check",   # uint
+    'PROV_PARAM_DSA_SIGN_DISABLED' =>      "dsa-sign-disabled",      # uint
 
 # Self test callback parameters
     'PROV_PARAM_SELF_TEST_PHASE' =>  "st-phase",# utf8_string
@@ -150,6 +152,7 @@ my %params = (
     'MAC_PARAM_SIZE' =>             "size",                     # size_t
     'MAC_PARAM_BLOCK_SIZE' =>       "block-size",               # size_t
     'MAC_PARAM_TLS_DATA_SIZE' =>    "tls-data-size",            # size_t
+    'MAC_PARAM_FIPS_APPROVED_INDICATOR' => '*ALG_PARAM_FIPS_APPROVED_INDICATOR',
 
 # KDF / PRF parameters
     'KDF_PARAM_SECRET' =>       "secret",                   # octet string
@@ -407,6 +410,7 @@ my %params = (
     'SIGNATURE_PARAM_CONTEXT_STRING' =>     "context-string",
     'SIGNATURE_PARAM_FIPS_DIGEST_CHECK' =>  '*PKEY_PARAM_FIPS_DIGEST_CHECK',
     'SIGNATURE_PARAM_FIPS_KEY_CHECK' =>     '*PKEY_PARAM_FIPS_KEY_CHECK',
+    'SIGNATURE_PARAM_FIPS_SIGN_CHECK' =>    "sign-check",
     'SIGNATURE_PARAM_FIPS_APPROVED_INDICATOR' => '*ALG_PARAM_FIPS_APPROVED_INDICATOR',
 
 # Asym cipher parameters
