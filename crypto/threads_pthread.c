@@ -59,7 +59,11 @@ __tsan_mutex_post_lock((x), 0, 0)
 
 # include <assert.h>
 
-# ifdef PTHREAD_RWLOCK_INITIALIZER
+/*
+ * The Non-Stop KLT thread model currently seems broken in its rwlock
+ * implementation
+ */
+# if defined(PTHREAD_RWLOCK_INITIALIZER) && !defined(_KLT_MODEL_)
 #  define USE_RWLOCK
 # endif
 
@@ -994,7 +998,7 @@ int CRYPTO_atomic_store(uint64_t *dst, uint64_t val, CRYPTO_RWLOCK *lock)
         return 1;
     }
 # endif
-    if (lock == NULL || !CRYPTO_THREAD_read_lock(lock))
+    if (lock == NULL || !CRYPTO_THREAD_write_lock(lock))
         return 0;
     *dst  = val;
     if (!CRYPTO_THREAD_unlock(lock))
