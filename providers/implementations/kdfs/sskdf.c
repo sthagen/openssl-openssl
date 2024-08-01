@@ -394,6 +394,24 @@ static size_t sskdf_size(KDF_SSKDF *ctx)
     return (len <= 0) ? 0 : (size_t)len;
 }
 
+#ifdef FIPS_MODULE
+static int fips_sskdf_key_check_passed(KDF_SSKDF *ctx)
+{
+    OSSL_LIB_CTX *libctx = PROV_LIBCTX_OF(ctx->provctx);
+    int key_approved = ossl_kdf_check_key_size(ctx->secret_len);
+
+    if (!key_approved) {
+        if (!OSSL_FIPS_IND_ON_UNAPPROVED(ctx, OSSL_FIPS_IND_SETTABLE0,
+                                         libctx, "SSKDF", "Key size",
+                                         FIPS_sskdf_key_check)) {
+            ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
+            return 0;
+        }
+    }
+    return 1;
+}
+#endif
+
 static int sskdf_derive(void *vctx, unsigned char *key, size_t keylen,
                         const OSSL_PARAM params[])
 {
@@ -480,6 +498,22 @@ static int fips_x963kdf_digest_check_passed(KDF_SSKDF *ctx, const EVP_MD *md)
                                          libctx, "X963KDF", "Digest",
                                          FIPS_x963kdf_digest_check)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_DIGEST_NOT_ALLOWED);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int fips_x963kdf_key_check_passed(KDF_SSKDF *ctx)
+{
+    OSSL_LIB_CTX *libctx = PROV_LIBCTX_OF(ctx->provctx);
+    int key_approved = ossl_kdf_check_key_size(ctx->secret_len);
+
+    if (!key_approved) {
+        if (!OSSL_FIPS_IND_ON_UNAPPROVED(ctx, OSSL_FIPS_IND_SETTABLE1,
+                                         libctx, "X963KDF", "Key size",
+                                         FIPS_x963kdf_key_check)) {
+            ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
             return 0;
         }
     }
@@ -583,8 +617,19 @@ static int sskdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     if (params == NULL)
         return 1;
 
+    if (!OSSL_FIPS_IND_SET_CTX_PARAM(ctx, OSSL_FIPS_IND_SETTABLE0, params,
+                                     OSSL_KDF_PARAM_FIPS_KEY_CHECK))
+        return 0;
+
     if (!sskdf_common_set_ctx_params(ctx, params))
         return 0;
+
+#ifdef FIPS_MODULE
+    if ((OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_KEY) != NULL) ||
+        (OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_SECRET) != NULL))
+        if (!fips_sskdf_key_check_passed(ctx))
+            return 0;
+#endif
 
     return 1;
 }
@@ -594,6 +639,7 @@ static const OSSL_PARAM *sskdf_settable_ctx_params(ossl_unused void *ctx,
 {
     static const OSSL_PARAM known_settable_ctx_params[] = {
         SSKDF_COMMON_SETTABLES,
+        OSSL_FIPS_IND_SETTABLE_CTX_PARAM(OSSL_KDF_PARAM_FIPS_KEY_CHECK)
         OSSL_PARAM_END
     };
     return known_settable_ctx_params;
@@ -624,6 +670,9 @@ static int sskdf_get_ctx_params(void *vctx, OSSL_PARAM params[])
     if (!sskdf_common_get_ctx_params(ctx, params))
         return 0;
 
+    if (!OSSL_FIPS_IND_GET_CTX_PARAM(ctx, params))
+        return 0;
+
     return 1;
 }
 
@@ -632,6 +681,7 @@ static const OSSL_PARAM *sskdf_gettable_ctx_params(ossl_unused void *ctx,
 {
     static const OSSL_PARAM known_gettable_ctx_params[] = {
         SSKDF_COMMON_GETTABLES,
+        OSSL_FIPS_IND_GETTABLE_CTX_PARAM()
         OSSL_PARAM_END
     };
     return known_gettable_ctx_params;
@@ -647,6 +697,9 @@ static int x963kdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     if (!OSSL_FIPS_IND_SET_CTX_PARAM(ctx, OSSL_FIPS_IND_SETTABLE0, params,
                                      OSSL_KDF_PARAM_FIPS_DIGEST_CHECK))
         return 0;
+    if (!OSSL_FIPS_IND_SET_CTX_PARAM(ctx, OSSL_FIPS_IND_SETTABLE1, params,
+                                     OSSL_KDF_PARAM_FIPS_KEY_CHECK))
+        return 0;
 
     if (!sskdf_common_set_ctx_params(ctx, params))
         return 0;
@@ -658,6 +711,11 @@ static int x963kdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
         if (!fips_x963kdf_digest_check_passed(ctx, md))
             return 0;
     }
+
+    if ((OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_KEY) != NULL) ||
+        (OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_SECRET) != NULL))
+        if (!fips_x963kdf_key_check_passed(ctx))
+            return 0;
 #endif
 
     return 1;
@@ -669,6 +727,7 @@ static const OSSL_PARAM *x963kdf_settable_ctx_params(ossl_unused void *ctx,
     static const OSSL_PARAM known_settable_ctx_params[] = {
         SSKDF_COMMON_SETTABLES,
         OSSL_FIPS_IND_SETTABLE_CTX_PARAM(OSSL_KDF_PARAM_FIPS_DIGEST_CHECK)
+        OSSL_FIPS_IND_SETTABLE_CTX_PARAM(OSSL_KDF_PARAM_FIPS_KEY_CHECK)
         OSSL_PARAM_END
     };
     return known_settable_ctx_params;
