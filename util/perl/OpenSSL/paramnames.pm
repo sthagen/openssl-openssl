@@ -44,6 +44,7 @@ my %params = (
     'PROV_PARAM_TDES_ENCRYPT_DISABLED' =>  "tdes-encrypt-disabled",  # uint
     'PROV_PARAM_RSA_SIGN_X931_PAD_DISABLED' =>  "rsa-sign-x931-pad-disabled",   # uint
     'PROV_PARAM_HKDF_KEY_CHECK' =>         "hkdf-key-check",         # uint
+    'PROV_PARAM_KBKDF_KEY_CHECK' =>        "kbkdf-key-check",        # uint
     'PROV_PARAM_TLS13_KDF_KEY_CHECK' =>    "tls13-kdf-key-check",    # uint
     'PROV_PARAM_TLS1_PRF_KEY_CHECK' =>     "tls1-prf-key-check",     # uint
     'PROV_PARAM_SSHKDF_KEY_CHECK' =>       "sshkdf-key-check",       # uint
@@ -444,6 +445,7 @@ my %params = (
     'ASYM_CIPHER_PARAM_TLS_CLIENT_VERSION' =>       "tls-client-version",
     'ASYM_CIPHER_PARAM_TLS_NEGOTIATED_VERSION' =>   "tls-negotiated-version",
     'ASYM_CIPHER_PARAM_IMPLICIT_REJECTION' =>       "implicit-rejection",
+    'ASYM_CIPHER_PARAM_PKCS15_PADDING_DISABLED' =>  "pkcs15-padding-disabled",
     'ASYM_CIPHER_PARAM_FIPS_KEY_CHECK' =>           '*PKEY_PARAM_FIPS_KEY_CHECK',
     'ASYM_CIPHER_PARAM_FIPS_APPROVED_INDICATOR' =>  '*ALG_PARAM_FIPS_APPROVED_INDICATOR',
 
