@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -25,6 +25,7 @@
 
 #if (!defined(OPENSSL_NO_KTLS) || !defined(OPENSSL_NO_QUIC)) && !defined(OPENSSL_NO_POSIX_IO) && !defined(OPENSSL_NO_SOCK)
 # define OSSL_USE_SOCKETS 1
+# include "internal/e_winsock.h"
 # include "internal/sockets.h"
 # include <openssl/bio.h>
 #endif

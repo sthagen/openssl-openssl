@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -26,6 +26,7 @@
 
 /* We need to use some deprecated APIs */
 #define OPENSSL_SUPPRESS_DEPRECATED
+#include "internal/e_os.h"
 
 #include <stdio.h>
 #include <stdlib.h>

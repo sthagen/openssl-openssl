@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -47,6 +47,9 @@
 #include <openssl/core_names.h>
 #include "s_apps.h"
 #include "apps.h"
+
+#include "internal/sockets.h" /* for openssl_fdset() */
+#include "internal/e_os.h"
 
 #ifdef _WIN32
 static int WIN32_rename(const char *from, const char *to);

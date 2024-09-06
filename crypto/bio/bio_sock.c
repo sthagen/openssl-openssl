@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "bio_local.h"
+
 #ifndef OPENSSL_NO_SOCK
 # define SOCKET_PROTOCOL IPPROTO_TCP
 # ifdef SO_MAXCONN
@@ -38,6 +39,7 @@ static int wsa_init_done = 0;
 #   include <sys/select.h>
 #  endif
 # endif
+# include "internal/sockets.h" /* for openssl_fdset() */
 
 # ifndef OPENSSL_NO_DEPRECATED_1_1_0
 int BIO_get_host_ip(const char *str, unsigned char *ip)
