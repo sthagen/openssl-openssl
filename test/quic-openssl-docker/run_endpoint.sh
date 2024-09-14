@@ -35,25 +35,39 @@ if [ "$ROLE" == "client" ]; then
     rm -f $CURLRC 
 
     case "$TESTCASE" in
-    "http3"|"transfer")
+    "http3")
         echo -e "--verbose\n--parallel" >> $CURLRC
         generate_outputs_http3
         dump_curlrc
         SSL_CERT_FILE=/certs/ca.pem curl --config $CURLRC || exit 1
         exit 0
         ;;
-    "handshake")
-       OUTFILE=$(basename $REQUESTS)
-       echo -e "--verbose\n--http3\n-H \"Connection: close\"\n-o /downloads/$OUTFILE\n--url $REQUESTS" >> $CURLRC
-       dump_curlrc
-       SSL_CERT_FILE=/certs/ca.pem curl --config $CURLRC || exit 1
+    "handshake"|"transfer"|"retry")
+       HOSTNAME=none
+       for req in $REQUESTS
+       do
+           OUTFILE=$(basename $req)
+           if [ "$HOSTNAME" == "none" ]
+           then
+               HOSTNAME=$(printf "%s\n" "$req" | sed -ne 's,^https://\([^/:]*\).*,\1,p')
+               HOSTPORT=$(printf "%s\n" "$req" | sed -ne 's,^https://[^:/]*:\([^/]*\).*,\1,p')
+           fi
+           echo -n "$OUTFILE " >> ./reqfile.txt
+       done
+       SSLKEYLOGFILE=/logs/keys.log SSL_CERT_FILE=/certs/ca.pem SSL_CERT_DIR=/certs quic-hq-interop $HOSTNAME $HOSTPORT ./reqfile.txt || exit 1
        exit 0
        ;; 
-    "retry")
-       OUTFILE=$(basename $REQUESTS)
-       SSL_CERT_FILE=/certs/ca.pem curl --verbose --http3 -o /downloads/$OUTFILE $REQUESTS || exit 1
+    "resumption")
+       for req in $REQUESTS
+       do
+           OUTFILE=$(basename $req)
+           echo -n "$OUTFILE " > ./reqfile.txt
+           HOSTNAME=$(printf "%s\n" "$req" | sed -ne 's,^https://\([^/:]*\).*,\1,p')
+           HOSTPORT=$(printf "%s\n" "$req" | sed -ne 's,^https://[^:/]*:\([^/]*\).*,\1,p')
+           SSL_SESSION_FILE=./session.db SSLKEYLOGFILE=/logs/keys.log SSL_CERT_FILE=/certs/ca.pem SSL_CERT_DIR=/certs quic-hq-interop $HOSTNAME $HOSTPORT ./reqfile.txt || exit 1
+       done
        exit 0
-       ;; 
+       ;;
     "chacha20")
        OUTFILE=$(basename $REQUESTS)
        SSL_CERT_FILE=/certs/ca.pem curl --verbose --tlsv1.3 --tls13-ciphers TLS_CHACHA20_POLY1305_SHA256 --http3 -o /downloads/$OUTFILE $REQUESTS || exit 1
