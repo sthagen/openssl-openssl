@@ -47,6 +47,7 @@ B<openssl fipsinstall>
 [B<-sshkdf_key_check>]
 [B<-sskdf_key_check>]
 [B<-x963kdf_key_check>]
+[B<-x942kdf_key_check>]
 [B<-ecdh_cofactor_check>]
 [B<-self_test_onload>]
 [B<-self_test_oninstall>]
@@ -340,6 +341,12 @@ Configure the module to enable a run-time short key-derivation key check when
 deriving a key by X963KDF.
 See NIST SP 800-131Ar2 for details.
 
+=item B<-x942kdf_key_check>
+
+Configure the module to enable a run-time short key-derivation key check when
+deriving a key by X942KDF.
+See NIST SP 800-131Ar2 for details.
+
 =item B<-no_pbkdf2_lower_bound_check>
 
 Configure the module to not perform run-time lower bound check for PBKDF2.
@@ -438,6 +445,48 @@ L<config(5)>,
 L<fips_config(5)>,
 L<OSSL_PROVIDER-FIPS(7)>,
 L<EVP_MAC(3)>
+
+=head1 HISTORY
+
+The B<openssl-fipsinstall> application was added in OpenSSL 3.0.
+
+The following options were added in OpenSSL 3.1:
+
+B<-ems_check>,
+B<-self_test_oninstall>
+
+The following options were added in OpenSSL 3.2:
+
+B<-pedantic>,
+B<-no_drbg_truncated_digests>
+
+The following options were added in OpenSSL 3.4:
+
+B<-hmac_key_check>,
+B<-kmac_key_check>,
+B<-signature_digest_check>,
+B<-hkdf_digest_check>,
+B<-tls13_kdf_digest_check>,
+B<-tls1_prf_digest_check>,
+B<-sshkdf_digest_check>,
+B<-sskdf_digest_check>,
+B<-x963kdf_digest_check>,
+B<-dsa_sign_disabled>,
+B<-no_pbkdf2_lower_bound_check>,
+B<-no_short_mac>,
+B<-tdes_encrypt_disabled>,
+B<-rsa_pkcs15_padding_disabled>,
+B<-rsa_pss_saltlen_check>,
+B<-rsa_sign_x931_disabled>,
+B<-hkdf_key_check>,
+B<-kbkdf_key_check>,
+B<-tls13_kdf_key_check>,
+B<-tls1_prf_key_check>,
+B<-sshkdf_key_check>,
+B<-sskdf_key_check>,
+B<-x963kdf_key_check>,
+B<-x942kdf_key_check>,
+B<-ecdh_cofactor_check>
 
 =head1 COPYRIGHT
 
