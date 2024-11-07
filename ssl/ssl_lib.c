@@ -728,7 +728,8 @@ int ossl_ssl_init(SSL *ssl, SSL_CTX *ctx, const SSL_METHOD *method, int type)
     return 1;
 }
 
-SSL *ossl_ssl_connection_new_int(SSL_CTX *ctx, const SSL_METHOD *method)
+SSL *ossl_ssl_connection_new_int(SSL_CTX *ctx, SSL *user_ssl,
+                                 const SSL_METHOD *method)
 {
     SSL_CONNECTION *s;
     SSL *ssl;
@@ -738,6 +739,8 @@ SSL *ossl_ssl_connection_new_int(SSL_CTX *ctx, const SSL_METHOD *method)
         return NULL;
 
     ssl = &s->ssl;
+    s->user_ssl = (user_ssl == NULL) ? ssl : user_ssl;
+
     if (!ossl_ssl_init(ssl, ctx, method, SSL_TYPE_SSL_CONNECTION)) {
         OPENSSL_free(s);
         s = NULL;
@@ -933,7 +936,7 @@ SSL *ossl_ssl_connection_new_int(SSL_CTX *ctx, const SSL_METHOD *method)
 
 SSL *ossl_ssl_connection_new(SSL_CTX *ctx)
 {
-    return ossl_ssl_connection_new_int(ctx, ctx->method);
+    return ossl_ssl_connection_new_int(ctx, NULL, ctx->method);
 }
 
 int SSL_is_dtls(const SSL *s)
@@ -4672,7 +4675,7 @@ void ssl_update_cache(SSL_CONNECTION *s, int mode)
          */
         if (s->session_ctx->new_session_cb != NULL) {
             SSL_SESSION_up_ref(s->session);
-            if (!s->session_ctx->new_session_cb(SSL_CONNECTION_GET_SSL(s),
+            if (!s->session_ctx->new_session_cb(SSL_CONNECTION_GET_USER_SSL(s),
                                                 s->session))
                 SSL_SESSION_free(s->session);
         }
@@ -6912,7 +6915,7 @@ static int nss_keylog_int(const char *prefix,
         do_sslkeylogfile(SSL_CONNECTION_GET_SSL(sc), (const char *)out);
 #endif
     if (sctx->keylog_callback != NULL)
-        sctx->keylog_callback(SSL_CONNECTION_GET_SSL(sc), (const char *)out);
+        sctx->keylog_callback(SSL_CONNECTION_GET_USER_SSL(sc), (const char *)out);
     OPENSSL_clear_free(out, out_len);
     return 1;
 }
