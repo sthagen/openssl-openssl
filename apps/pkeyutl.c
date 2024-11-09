@@ -43,12 +43,17 @@ static int do_raw_keyop(int pkey_op, EVP_MD_CTX *mctx,
                         int filesize, unsigned char *sig, int siglen,
                         unsigned char **out, size_t *poutlen);
 
-static int only_rawin(const EVP_PKEY *pkey)
+static int is_EdDSA(const EVP_PKEY *pkey)
 {
     if (pkey == NULL)
         return 0;
     return EVP_PKEY_is_a(pkey, "ED25519")
         || EVP_PKEY_is_a(pkey, "ED448");
+}
+
+static int only_rawin(const EVP_PKEY *pkey)
+{
+    return is_EdDSA(pkey);
 }
 
 typedef enum OPTION_choice {
@@ -96,10 +101,11 @@ const OPTIONS pkeyutl_options[] = {
     OPT_SECTION("Output"),
     {"out", OPT_OUT, '>', "Output file - default stdout"},
     {"secret", OPT_SECOUT, '>', "File to store secret on encapsulation"},
-    {"asn1parse", OPT_ASN1PARSE, '-', "asn1parse the output data"},
+    {"asn1parse", OPT_ASN1PARSE, '-',
+     "parse the output as ASN.1 data to check its DER encoding and print errors"},
     {"hexdump", OPT_HEXDUMP, '-', "Hex dump output"},
     {"verifyrecover", OPT_VERIFYRECOVER, '-',
-     "Verify with public key, recover original data"},
+     "Verify RSA signature, recovering original signature input data"},
 
     OPT_SECTION("Signing/Derivation/Encapsulation"),
     {"rawin", OPT_RAWIN, '-',
@@ -309,10 +315,15 @@ int pkeyutl_main(int argc, char **argv)
     }
 
     pkey = get_pkey(kdfalg, inkey, keyform, key_type, passinarg, pkey_op, e);
+
+    if (pkey_op == EVP_PKEY_OP_VERIFYRECOVER && !EVP_PKEY_is_a(pkey, "RSA")) {
+        BIO_printf(bio_err, "%s: -verifyrecover can be used only with RSA\n", prog);
+        goto end;
+    }
+
     if (pkey_op == EVP_PKEY_OP_SIGN || pkey_op == EVP_PKEY_OP_VERIFY) {
         if (only_rawin(pkey)) {
-            if ((EVP_PKEY_is_a(pkey, "ED25519") || EVP_PKEY_is_a(pkey, "ED448"))
-                && digestname != NULL) {
+            if (is_EdDSA(pkey) && digestname != NULL) {
                 BIO_printf(bio_err,
                            "%s: -digest (prehash) is not supported with EdDSA\n", prog);
                 EVP_PKEY_free(pkey);
@@ -490,8 +501,7 @@ int pkeyutl_main(int argc, char **argv)
 
     /* Sanity check the input if the input is not raw */
     if (!rawin
-        && (pkey_op == EVP_PKEY_OP_SIGN || pkey_op == EVP_PKEY_OP_VERIFY
-            || pkey_op == EVP_PKEY_OP_VERIFYRECOVER)) {
+        && (pkey_op == EVP_PKEY_OP_SIGN || pkey_op == EVP_PKEY_OP_VERIFY)) {
         if (buf_inlen > EVP_MAX_MD_SIZE) {
             BIO_printf(bio_err,
                        "Error: The non-raw input data length %d is too long - max supported hashed size is %d\n",
