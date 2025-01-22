@@ -1107,7 +1107,6 @@ static int ec_gen_set_params(void *genctx, const OSSL_PARAM params[])
     int ret = 0;
     struct ec_gen_ctx *gctx = genctx;
     const OSSL_PARAM *p;
-    EC_GROUP *group = NULL;
 
     if (!OSSL_FIPS_IND_SET_CTX_PARAM(gctx, OSSL_FIPS_IND_SETTABLE0, params,
                                      OSSL_PKEY_PARAM_FIPS_KEY_CHECK))
@@ -1136,7 +1135,6 @@ static int ec_gen_set_params(void *genctx, const OSSL_PARAM params[])
 
     ret = 1;
 err:
-    EC_GROUP_free(group);
     return ret;
 }
 
@@ -1306,14 +1304,10 @@ static void *ec_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
         }
     }
 #ifdef FIPS_MODULE
-    if (!ossl_ec_check_security_strength(gctx->gen_group, 1)) {
-        if (!OSSL_FIPS_IND_ON_UNAPPROVED(gctx, OSSL_FIPS_IND_SETTABLE0,
-                                         gctx->libctx, "EC KeyGen", "key size",
-                                         ossl_fips_config_securitycheck_enabled)) {
-            ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
-            goto err;
-        }
-    }
+    if (!ossl_fips_ind_ec_key_check(OSSL_FIPS_IND_GET(gctx),
+                                    OSSL_FIPS_IND_SETTABLE0, gctx->libctx,
+                                    gctx->gen_group, "EC KeyGen", 1))
+        goto err;
 #endif
 
     /* We must always assign a group, no matter what */
