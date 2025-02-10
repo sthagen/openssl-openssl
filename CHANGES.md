@@ -30,6 +30,13 @@ OpenSSL 3.5
 
 ### Changes between 3.4 and 3.5 [xx XXX xxxx]
 
+* For TLSv1.3: Add capability for a client to send multiple key shares. Extend the scope of
+  `SSL_OP_CIPHER_SERVER_PREFERENCE` to cover server-side key exchange group selection.
+  Extend the server-side key exchange group selection algorithm and related group list syntax
+  to support multiple group priorities, e.g. to prioritize (hybrid-)KEMs.
+
+  *David Kelsey*, *Martin Schmatz*
+
 * A new random generation API has been introduced which modifies all
   of the L<RAND_bytes(3)> family of calls so they are routed through a
   specific named provider instead of being resolved via the normal DRBG
@@ -134,6 +141,15 @@ OpenSSL 3.5
    The new `-no_signing_time` option of the `cms` command enables this flag.
 
    *Juhász Péter*
+
+ * Parallel dual-prime 1024/1536/2048-bit modular exponentiation for
+   AVX_IFMA capable processors (Intel Sierra Forest and its successor).
+
+   This optimization brings performance enhancement, ranging from 1.8 to 2.2
+   times, for the sign/decryption operations of rsaz-2k/3k/4k (`openssl speed rsa`)
+   on the Intel Sierra Forest.
+
+   *Zhiguo Zhou, Wangyang Guo (Intel Corp)*
 
 OpenSSL 3.4
 -----------
