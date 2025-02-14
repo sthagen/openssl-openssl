@@ -13,6 +13,7 @@
  */
 #include "internal/deprecated.h"
 
+#include <openssl/byteorder.h>
 #include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/core_object.h>
@@ -21,22 +22,26 @@
 #include <openssl/params.h>
 #include <openssl/pem.h>         /* PEM_BUFSIZE and public PEM functions */
 #include <openssl/pkcs12.h>
+#include <openssl/provider.h>
 #include <openssl/x509.h>
 #include <openssl/proverr.h>
 #include "internal/cryptlib.h"   /* ossl_assert() */
-#include "internal/asn1.h"
 #include "crypto/dh.h"
 #include "crypto/dsa.h"
 #include "crypto/ec.h"
 #include "crypto/evp.h"
 #include "crypto/ecx.h"
 #include "crypto/rsa.h"
+#include "crypto/ml_dsa.h"
 #include "crypto/x509.h"
+#include "crypto/ml_kem.h"
 #include "openssl/obj_mac.h"
 #include "prov/bio.h"
 #include "prov/implementations.h"
 #include "endecoder_local.h"
 #include "internal/nelem.h"
+#include "ml_dsa_codecs.h"
+#include "ml_kem_codecs.h"
 
 struct der2key_ctx_st;           /* Forward declaration */
 typedef int check_key_fn(void *, struct der2key_ctx_st *ctx);
@@ -552,6 +557,67 @@ static void *sm2_d2i_PKCS8(const unsigned char **der, long der_len,
                              (key_from_pkcs8_t *)ossl_ec_key_from_pkcs8);
 }
 # endif
+
+#endif
+
+/* ---------------------------------------------------------------------- */
+
+#ifndef OPENSSL_NO_ML_KEM
+static void *
+ml_kem_d2i_PKCS8(const uint8_t **der, long der_len, struct der2key_ctx_st *ctx)
+{
+    ML_KEM_KEY *key;
+
+    key = ossl_ml_kem_d2i_PKCS8(*der, der_len, ctx->desc->evp_type,
+                                ctx->provctx, ctx->propq);
+    if (key != NULL)
+        *der += der_len;
+    return key;
+}
+
+static ossl_inline void *
+ml_kem_d2i_PUBKEY(const uint8_t **der, long der_len,
+                  struct der2key_ctx_st *ctx)
+{
+    ML_KEM_KEY *key;
+
+    key = ossl_ml_kem_d2i_PUBKEY(*der, der_len, ctx->desc->evp_type,
+                                 ctx->provctx, ctx->propq);
+    if (key != NULL)
+        *der += der_len;
+    return key;
+}
+
+# define ml_kem_512_evp_type                EVP_PKEY_ML_KEM_512
+# define ml_kem_512_d2i_private_key         NULL
+# define ml_kem_512_d2i_public_key          NULL
+# define ml_kem_512_d2i_key_params          NULL
+# define ml_kem_512_d2i_PUBKEY              ml_kem_d2i_PUBKEY
+# define ml_kem_512_d2i_PKCS8               ml_kem_d2i_PKCS8
+# define ml_kem_512_free                    (free_key_fn *)ossl_ml_kem_key_free
+# define ml_kem_512_check                   NULL
+# define ml_kem_512_adjust                  NULL
+
+# define ml_kem_768_evp_type                EVP_PKEY_ML_KEM_768
+# define ml_kem_768_d2i_private_key         NULL
+# define ml_kem_768_d2i_public_key          NULL
+# define ml_kem_768_d2i_key_params          NULL
+# define ml_kem_768_d2i_PUBKEY              ml_kem_d2i_PUBKEY
+# define ml_kem_768_d2i_PKCS8               ml_kem_d2i_PKCS8
+# define ml_kem_768_free                    (free_key_fn *)ossl_ml_kem_key_free
+# define ml_kem_768_check                   NULL
+# define ml_kem_768_adjust                  NULL
+
+# define ml_kem_1024_evp_type               EVP_PKEY_ML_KEM_1024
+# define ml_kem_1024_d2i_private_key        NULL
+# define ml_kem_1024_d2i_public_key         NULL
+# define ml_kem_1024_d2i_PUBKEY             ml_kem_d2i_PUBKEY
+# define ml_kem_1024_d2i_PKCS8              ml_kem_d2i_PKCS8
+# define ml_kem_1024_d2i_key_params         NULL
+# define ml_kem_1024_free                   (free_key_fn *)ossl_ml_kem_key_free
+# define ml_kem_1024_check                  NULL
+# define ml_kem_1024_adjust                 NULL
+
 #endif
 
 /* ---------------------------------------------------------------------- */
@@ -611,6 +677,65 @@ static void rsa_adjust(void *key, struct der2key_ctx_st *ctx)
 #define rsapss_free                     (free_key_fn *)RSA_free
 #define rsapss_check                    rsa_check
 #define rsapss_adjust                   rsa_adjust
+
+/* ---------------------------------------------------------------------- */
+
+#ifndef OPENSSL_NO_ML_DSA
+static void *
+ml_dsa_d2i_PKCS8(const uint8_t **der, long der_len, struct der2key_ctx_st *ctx)
+{
+    ML_DSA_KEY *key;
+
+    key = ossl_ml_dsa_d2i_PKCS8(*der, der_len, ctx->desc->evp_type,
+                                ctx->provctx, ctx->propq);
+    if (key != NULL)
+        *der += der_len;
+    return key;
+}
+
+static ossl_inline void * ml_dsa_d2i_PUBKEY(const uint8_t **der, long der_len,
+                                            struct der2key_ctx_st *ctx)
+{
+    ML_DSA_KEY *key;
+
+    key = ossl_ml_dsa_d2i_PUBKEY(*der, der_len, ctx->desc->evp_type,
+                                 ctx->provctx, ctx->propq);
+    if (key != NULL)
+        *der += der_len;
+    return key;
+}
+
+# define ml_dsa_44_evp_type                EVP_PKEY_ML_DSA_44
+# define ml_dsa_44_d2i_private_key         NULL
+# define ml_dsa_44_d2i_public_key          NULL
+# define ml_dsa_44_d2i_key_params          NULL
+# define ml_dsa_44_d2i_PUBKEY              ml_dsa_d2i_PUBKEY
+# define ml_dsa_44_d2i_PKCS8               ml_dsa_d2i_PKCS8
+# define ml_dsa_44_free                    (free_key_fn *)ossl_ml_dsa_key_free
+# define ml_dsa_44_check                   NULL
+# define ml_dsa_44_adjust                  NULL
+
+# define ml_dsa_65_evp_type                EVP_PKEY_ML_DSA_65
+# define ml_dsa_65_d2i_private_key         NULL
+# define ml_dsa_65_d2i_public_key          NULL
+# define ml_dsa_65_d2i_key_params          NULL
+# define ml_dsa_65_d2i_PUBKEY              ml_dsa_d2i_PUBKEY
+# define ml_dsa_65_d2i_PKCS8               ml_dsa_d2i_PKCS8
+# define ml_dsa_65_free                    (free_key_fn *)ossl_ml_dsa_key_free
+# define ml_dsa_65_check                   NULL
+# define ml_dsa_65_adjust                  NULL
+
+# define ml_dsa_87_evp_type               EVP_PKEY_ML_DSA_87
+# define ml_dsa_87_d2i_private_key        NULL
+# define ml_dsa_87_d2i_public_key         NULL
+# define ml_dsa_87_d2i_PUBKEY             ml_dsa_d2i_PUBKEY
+# define ml_dsa_87_d2i_PKCS8              ml_dsa_d2i_PKCS8
+# define ml_dsa_87_d2i_key_params         NULL
+# define ml_dsa_87_free                   (free_key_fn *)ossl_ml_dsa_key_free
+# define ml_dsa_87_check                  NULL
+# define ml_dsa_87_adjust                 NULL
+
+#endif
 
 /* ---------------------------------------------------------------------- */
 
@@ -866,9 +991,26 @@ MAKE_DECODER("SM2", sm2, ec, SubjectPublicKeyInfo);
 MAKE_DECODER("SM2", sm2, sm2, type_specific_no_pub);
 # endif
 #endif
+#ifndef OPENSSL_NO_ML_KEM
+MAKE_DECODER("ML-KEM-512", ml_kem_512, ml_kem_512, PrivateKeyInfo);
+MAKE_DECODER("ML-KEM-512", ml_kem_512, ml_kem_512, SubjectPublicKeyInfo);
+MAKE_DECODER("ML-KEM-768", ml_kem_768, ml_kem_768, PrivateKeyInfo);
+MAKE_DECODER("ML-KEM-768", ml_kem_768, ml_kem_768, SubjectPublicKeyInfo);
+MAKE_DECODER("ML-KEM-1024", ml_kem_1024, ml_kem_1024, PrivateKeyInfo);
+MAKE_DECODER("ML-KEM-1024", ml_kem_1024, ml_kem_1024, SubjectPublicKeyInfo);
+#endif
 MAKE_DECODER("RSA", rsa, rsa, PrivateKeyInfo);
 MAKE_DECODER("RSA", rsa, rsa, SubjectPublicKeyInfo);
 MAKE_DECODER("RSA", rsa, rsa, type_specific_keypair);
 MAKE_DECODER("RSA", rsa, rsa, RSA);
 MAKE_DECODER("RSA-PSS", rsapss, rsapss, PrivateKeyInfo);
 MAKE_DECODER("RSA-PSS", rsapss, rsapss, SubjectPublicKeyInfo);
+
+#ifndef OPENSSL_NO_ML_DSA
+MAKE_DECODER("ML-DSA-44", ml_dsa_44, ml_dsa_44, PrivateKeyInfo);
+MAKE_DECODER("ML-DSA-44", ml_dsa_44, ml_dsa_44, SubjectPublicKeyInfo);
+MAKE_DECODER("ML-DSA-65", ml_dsa_65, ml_dsa_65, PrivateKeyInfo);
+MAKE_DECODER("ML-DSA-65", ml_dsa_65, ml_dsa_65, SubjectPublicKeyInfo);
+MAKE_DECODER("ML-DSA-87", ml_dsa_87, ml_dsa_87, PrivateKeyInfo);
+MAKE_DECODER("ML-DSA-87", ml_dsa_87, ml_dsa_87, SubjectPublicKeyInfo);
+#endif

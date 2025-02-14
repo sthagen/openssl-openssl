@@ -12,6 +12,7 @@
  */
 #include "internal/deprecated.h"
 
+#include <openssl/byteorder.h>
 #include <openssl/core.h>
 #include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
@@ -29,12 +30,16 @@
 #include "internal/passphrase.h"
 #include "internal/cryptlib.h"
 #include "crypto/ecx.h"
+#include "crypto/ml_kem.h"
 #include "crypto/rsa.h"
+#include "crypto/ml_dsa.h"
 #include "prov/implementations.h"
 #include "prov/bio.h"
 #include "prov/provider_ctx.h"
 #include "prov/der_rsa.h"
 #include "endecoder_local.h"
+#include "ml_dsa_codecs.h"
+#include "ml_kem_codecs.h"
 
 #if defined(OPENSSL_NO_DH) && defined(OPENSSL_NO_DSA) && defined(OPENSSL_NO_EC)
 # define OPENSSL_NO_KEYPARAMS
@@ -846,6 +851,65 @@ static int ecx_pki_priv_to_der(const void *vecxkey, unsigned char **pder,
 
 /* ---------------------------------------------------------------------- */
 
+#ifndef OPENSSL_NO_ML_DSA
+static int ml_dsa_spki_pub_to_der(const void *vkey, unsigned char **pder,
+                                  ossl_unused void *ctx)
+{
+    return ossl_ml_dsa_i2d_pubkey(vkey, pder);
+}
+
+static int ml_dsa_pki_priv_to_der(const void *vkey, unsigned char **pder,
+                                  void *vctx)
+{
+    KEY2ANY_CTX *ctx = vctx;
+
+    return ossl_ml_dsa_i2d_prvkey(vkey, pder, ctx->provctx);
+}
+
+# define ml_dsa_epki_priv_to_der ml_dsa_pki_priv_to_der
+# define prepare_ml_dsa_params   NULL
+# define ml_dsa_check_key_type   NULL
+
+# define ml_dsa_44_evp_type        EVP_PKEY_ML_DSA_44
+# define ml_dsa_44_pem_type        "ML-DSA-44"
+# define ml_dsa_65_evp_type        EVP_PKEY_ML_DSA_65
+# define ml_dsa_65_pem_type        "ML-DSA-65"
+# define ml_dsa_87_evp_type        EVP_PKEY_ML_DSA_87
+# define ml_dsa_87_pem_type        "ML-DSA-87"
+#endif /* OPENSSL_NO_ML_DSA */
+
+/* ---------------------------------------------------------------------- */
+
+#ifndef OPENSSL_NO_ML_KEM
+
+static int ml_kem_spki_pub_to_der(const void *vkey, unsigned char **pder,
+                                  ossl_unused void *ctx)
+{
+    return ossl_ml_kem_i2d_pubkey(vkey, pder);
+}
+
+static int ml_kem_pki_priv_to_der(const void *vkey, unsigned char **pder,
+                                  void *vctx)
+{
+    KEY2ANY_CTX *ctx = vctx;
+
+    return ossl_ml_kem_i2d_prvkey(vkey, pder, ctx->provctx);
+}
+
+# define ml_kem_epki_priv_to_der ml_kem_pki_priv_to_der
+# define prepare_ml_kem_params   NULL
+# define ml_kem_check_key_type   NULL
+
+# define ml_kem_512_evp_type        EVP_PKEY_ML_KEM_512
+# define ml_kem_512_pem_type        "ML-KEM-512"
+# define ml_kem_768_evp_type        EVP_PKEY_ML_KEM_768
+# define ml_kem_768_pem_type        "ML-KEM-768"
+# define ml_kem_1024_evp_type       EVP_PKEY_ML_KEM_1024
+# define ml_kem_1024_pem_type       "ML-KEM-1024"
+#endif
+
+/* ---------------------------------------------------------------------- */
+
 /*
  * Helper functions to prepare RSA-PSS params for encoding.  We would
  * have simply written the whole AlgorithmIdentifier, but existing libcrypto
@@ -1447,6 +1511,29 @@ MAKE_ENCODER(x448, ecx, SubjectPublicKeyInfo, pem);
 # endif
 #endif
 
+#ifndef OPENSSL_NO_ML_KEM
+MAKE_ENCODER(ml_kem_512, ml_kem, EncryptedPrivateKeyInfo, der);
+MAKE_ENCODER(ml_kem_512, ml_kem, EncryptedPrivateKeyInfo, pem);
+MAKE_ENCODER(ml_kem_512, ml_kem, PrivateKeyInfo, der);
+MAKE_ENCODER(ml_kem_512, ml_kem, PrivateKeyInfo, pem);
+MAKE_ENCODER(ml_kem_512, ml_kem, SubjectPublicKeyInfo, der);
+MAKE_ENCODER(ml_kem_512, ml_kem, SubjectPublicKeyInfo, pem);
+
+MAKE_ENCODER(ml_kem_768, ml_kem, EncryptedPrivateKeyInfo, der);
+MAKE_ENCODER(ml_kem_768, ml_kem, EncryptedPrivateKeyInfo, pem);
+MAKE_ENCODER(ml_kem_768, ml_kem, PrivateKeyInfo, der);
+MAKE_ENCODER(ml_kem_768, ml_kem, PrivateKeyInfo, pem);
+MAKE_ENCODER(ml_kem_768, ml_kem, SubjectPublicKeyInfo, der);
+MAKE_ENCODER(ml_kem_768, ml_kem, SubjectPublicKeyInfo, pem);
+
+MAKE_ENCODER(ml_kem_1024, ml_kem, EncryptedPrivateKeyInfo, der);
+MAKE_ENCODER(ml_kem_1024, ml_kem, EncryptedPrivateKeyInfo, pem);
+MAKE_ENCODER(ml_kem_1024, ml_kem, PrivateKeyInfo, der);
+MAKE_ENCODER(ml_kem_1024, ml_kem, PrivateKeyInfo, pem);
+MAKE_ENCODER(ml_kem_1024, ml_kem, SubjectPublicKeyInfo, der);
+MAKE_ENCODER(ml_kem_1024, ml_kem, SubjectPublicKeyInfo, pem);
+#endif
+
 /*
  * Support for key type specific output formats.  Not all key types have
  * this, we only aim to duplicate what is available in 1.1.1 as
@@ -1491,3 +1578,26 @@ MAKE_ENCODER(dhx, dh, X9_42, pem); /* parameters only */
 MAKE_ENCODER(ec, ec, X9_62, der);
 MAKE_ENCODER(ec, ec, X9_62, pem);
 #endif
+
+#ifndef OPENSSL_NO_ML_DSA
+MAKE_ENCODER(ml_dsa_44, ml_dsa, EncryptedPrivateKeyInfo, der);
+MAKE_ENCODER(ml_dsa_44, ml_dsa, EncryptedPrivateKeyInfo, pem);
+MAKE_ENCODER(ml_dsa_44, ml_dsa, PrivateKeyInfo, der);
+MAKE_ENCODER(ml_dsa_44, ml_dsa, PrivateKeyInfo, pem);
+MAKE_ENCODER(ml_dsa_44, ml_dsa, SubjectPublicKeyInfo, der);
+MAKE_ENCODER(ml_dsa_44, ml_dsa, SubjectPublicKeyInfo, pem);
+
+MAKE_ENCODER(ml_dsa_65, ml_dsa, EncryptedPrivateKeyInfo, der);
+MAKE_ENCODER(ml_dsa_65, ml_dsa, EncryptedPrivateKeyInfo, pem);
+MAKE_ENCODER(ml_dsa_65, ml_dsa, PrivateKeyInfo, der);
+MAKE_ENCODER(ml_dsa_65, ml_dsa, PrivateKeyInfo, pem);
+MAKE_ENCODER(ml_dsa_65, ml_dsa, SubjectPublicKeyInfo, der);
+MAKE_ENCODER(ml_dsa_65, ml_dsa, SubjectPublicKeyInfo, pem);
+
+MAKE_ENCODER(ml_dsa_87, ml_dsa, EncryptedPrivateKeyInfo, der);
+MAKE_ENCODER(ml_dsa_87, ml_dsa, EncryptedPrivateKeyInfo, pem);
+MAKE_ENCODER(ml_dsa_87, ml_dsa, PrivateKeyInfo, der);
+MAKE_ENCODER(ml_dsa_87, ml_dsa, PrivateKeyInfo, pem);
+MAKE_ENCODER(ml_dsa_87, ml_dsa, SubjectPublicKeyInfo, der);
+MAKE_ENCODER(ml_dsa_87, ml_dsa, SubjectPublicKeyInfo, pem);
+#endif /* OPENSSL_NO_ML_DSA */

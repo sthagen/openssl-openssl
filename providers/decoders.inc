@@ -74,6 +74,14 @@ DECODER_w_structure("SM2", der, SubjectPublicKeyInfo, sm2, no),
 DECODER_w_structure("SM2", der, type_specific_no_pub, sm2, no),
 # endif
 #endif
+#ifndef OPENSSL_NO_ML_KEM
+DECODER_w_structure("ML-KEM-512", der, PrivateKeyInfo, ml_kem_512, yes),
+DECODER_w_structure("ML-KEM-512", der, SubjectPublicKeyInfo, ml_kem_512, yes),
+DECODER_w_structure("ML-KEM-768", der, PrivateKeyInfo, ml_kem_768, yes),
+DECODER_w_structure("ML-KEM-768", der, SubjectPublicKeyInfo, ml_kem_768, yes),
+DECODER_w_structure("ML-KEM-1024", der, PrivateKeyInfo, ml_kem_1024, yes),
+DECODER_w_structure("ML-KEM-1024", der, SubjectPublicKeyInfo, ml_kem_1024, yes),
+#endif
 DECODER_w_structure("RSA", der, PrivateKeyInfo, rsa, yes),
 DECODER_w_structure("RSA", der, SubjectPublicKeyInfo, rsa, yes),
 DECODER_w_structure("RSA", der, type_specific_keypair, rsa, yes),
@@ -82,6 +90,14 @@ DECODER_w_structure("RSA-PSS", der, PrivateKeyInfo, rsapss, yes),
 DECODER_w_structure("RSA-PSS", der, SubjectPublicKeyInfo, rsapss, yes),
 DECODER("RSA", msblob, rsa, yes),
 DECODER("RSA", pvk, rsa, yes),
+#ifndef OPENSSL_NO_ML_DSA
+DECODER_w_structure("ML-DSA-44", der, PrivateKeyInfo, ml_dsa_44, yes),
+DECODER_w_structure("ML-DSA-65", der, PrivateKeyInfo, ml_dsa_65, yes),
+DECODER_w_structure("ML-DSA-87", der, PrivateKeyInfo, ml_dsa_87, yes),
+DECODER_w_structure("ML-DSA-44", der, SubjectPublicKeyInfo, ml_dsa_44, yes),
+DECODER_w_structure("ML-DSA-65", der, SubjectPublicKeyInfo, ml_dsa_65, yes),
+DECODER_w_structure("ML-DSA-87", der, SubjectPublicKeyInfo, ml_dsa_87, yes),
+#endif /* OPENSSL_NO_ML_DSA */
 
 /*
  * A decoder that takes a SubjectPublicKeyInfo and figures out the types of key

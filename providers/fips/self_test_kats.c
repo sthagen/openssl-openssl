@@ -13,10 +13,12 @@
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
 #include <openssl/rand.h>
+#include "crypto/ml_dsa.h"
 #include "crypto/rand.h"
 #include "internal/cryptlib.h"
 #include "internal/nelem.h"
 #include "self_test.h"
+#include "crypto/ml_kem.h"
 #include "self_test_data.inc"
 
 static int set_kat_drbg(OSSL_LIB_CTX *ctx,
@@ -450,13 +452,13 @@ static int self_test_digest_sign(const ST_KAT_SIGN *t,
                                  OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int ret = 0;
-    OSSL_PARAM *paramskey = NULL, *paramsinit = NULL;
-    OSSL_PARAM_BLD *bldkey = NULL, *bldinit = NULL;
+    OSSL_PARAM *paramskey = NULL, *paramsinit = NULL, *paramsverify = NULL;
+    OSSL_PARAM_BLD *bldkey = NULL, *bldinit = NULL, *bldverify = NULL;
     EVP_SIGNATURE *sigalg = NULL;
     EVP_PKEY_CTX *ctx = NULL;
     EVP_PKEY_CTX *fromctx = NULL;
     EVP_PKEY *pkey = NULL;
-    unsigned char sig[256];
+    unsigned char sig[MAX_ML_DSA_SIG_LEN];
     BN_CTX *bnctx = NULL;
     size_t siglen = sizeof(sig);
     int digested = 0;
@@ -482,19 +484,23 @@ static int self_test_digest_sign(const ST_KAT_SIGN *t,
 
     bldkey = OSSL_PARAM_BLD_new();
     bldinit = OSSL_PARAM_BLD_new();
-    if (bldkey == NULL || bldinit == NULL)
+    bldverify = OSSL_PARAM_BLD_new();
+    if (bldkey == NULL || bldinit == NULL || bldverify == NULL)
         goto err;
 
     if (!add_params(bldkey, t->key, bnctx)
-            || !add_params(bldinit, t->init, bnctx))
+            || !add_params(bldinit, t->init, bnctx)
+            || !add_params(bldverify, t->verify, bnctx))
         goto err;
     paramskey = OSSL_PARAM_BLD_to_param(bldkey);
     paramsinit = OSSL_PARAM_BLD_to_param(bldinit);
+    paramsverify = OSSL_PARAM_BLD_to_param(bldverify);
 
     fromctx = EVP_PKEY_CTX_new_from_name(libctx, t->keytype, NULL);
     if (fromctx == NULL
             || paramskey == NULL
-            || paramsinit == NULL)
+            || paramsinit == NULL
+            || paramsverify == NULL)
         goto err;
     if (EVP_PKEY_fromdata_init(fromctx) <= 0
             || EVP_PKEY_fromdata(fromctx, &pkey, EVP_PKEY_KEYPAIR, paramskey) <= 0)
@@ -531,10 +537,10 @@ static int self_test_digest_sign(const ST_KAT_SIGN *t,
 
     if ((t->mode & SIGNATURE_MODE_SIGN_ONLY) == 0) {
         if (digested) {
-            if (EVP_PKEY_verify_init_ex2(ctx, sigalg, NULL) <= 0)
+            if (EVP_PKEY_verify_init_ex2(ctx, sigalg, paramsverify) <= 0)
                 goto err;
         } else {
-            if (EVP_PKEY_verify_message_init(ctx, sigalg, NULL) <= 0)
+            if (EVP_PKEY_verify_message_init(ctx, sigalg, paramsverify) <= 0)
                 goto err;
         }
         OSSL_SELF_TEST_oncorrupt_byte(st, sig);
@@ -550,8 +556,10 @@ err:
     EVP_SIGNATURE_free(sigalg);
     OSSL_PARAM_free(paramskey);
     OSSL_PARAM_free(paramsinit);
+    OSSL_PARAM_free(paramsverify);
     OSSL_PARAM_BLD_free(bldkey);
     OSSL_PARAM_BLD_free(bldinit);
+    OSSL_PARAM_BLD_free(bldverify);
     if (t->entropy != NULL) {
         if (!reset_main_drbg(libctx))
             ret = 0;
@@ -559,6 +567,261 @@ err:
     OSSL_SELF_TEST_onend(st, ret);
     return ret;
 }
+
+#ifndef OPENSSL_NO_ML_DSA
+/*
+ * Test that a deterministic key generation produces the correct key
+ */
+static int self_test_asym_keygen(const ST_KAT_ASYM_KEYGEN *t, OSSL_SELF_TEST *st,
+                                 OSSL_LIB_CTX *libctx)
+{
+    int ret = 0;
+    const ST_KAT_PARAM *expected;
+    OSSL_PARAM *key_params = NULL;
+    OSSL_PARAM_BLD *key_bld = NULL;
+    EVP_PKEY_CTX *key_ctx = NULL;
+    EVP_PKEY *key = NULL;
+    uint8_t out[MAX_ML_DSA_PRIV_LEN];
+    size_t out_len = 0;
+
+    OSSL_SELF_TEST_onbegin(st, OSSL_SELF_TEST_TYPE_KAT_ASYM_KEYGEN, t->desc);
+
+    key_ctx = EVP_PKEY_CTX_new_from_name(libctx, t->algorithm, NULL);
+    if (key_ctx == NULL)
+        goto err;
+    if (t->keygen_params != NULL) {
+        key_bld = OSSL_PARAM_BLD_new();
+        if (key_bld == NULL
+                || !add_params(key_bld, t->keygen_params, NULL))
+            goto err;
+        key_params = OSSL_PARAM_BLD_to_param(key_bld);
+        if (key_params == NULL)
+            goto err;
+    }
+    if (EVP_PKEY_keygen_init(key_ctx) != 1
+            || EVP_PKEY_CTX_set_params(key_ctx, key_params) != 1
+            || EVP_PKEY_generate(key_ctx, &key) != 1)
+        goto err;
+
+    for (expected = t->expected_params; expected->data != NULL; ++expected) {
+        if (expected->type != OSSL_PARAM_OCTET_STRING
+                || !EVP_PKEY_get_octet_string_param(key, expected->name,
+                                                    out, sizeof(out), &out_len))
+            goto err;
+        OSSL_SELF_TEST_oncorrupt_byte(st, out);
+        /* Check the KAT */
+        if (out_len != expected->data_len
+                || memcmp(out, expected->data, expected->data_len) != 0)
+            goto err;
+    }
+    ret = 1;
+err:
+    EVP_PKEY_free(key);
+    EVP_PKEY_CTX_free(key_ctx);
+    OSSL_PARAM_free(key_params);
+    OSSL_PARAM_BLD_free(key_bld);
+    OSSL_SELF_TEST_onend(st, ret);
+    return ret;
+}
+#endif /* OPENSSL_NO_ML_DSA */
+
+#ifndef OPENSSL_NO_ML_KEM
+/*
+ * FIPS 140-3 IG 10.3.A resolution 14 mandates a CAST for ML-KEM
+ * encapsulation.
+ */
+static int self_test_kem_encapsulate(const ST_KAT_KEM *t, OSSL_SELF_TEST *st,
+                                     OSSL_LIB_CTX *libctx, EVP_PKEY *pkey)
+{
+    int ret = 0;
+    EVP_PKEY_CTX *ctx;
+    unsigned char *wrapped = NULL, *secret = NULL;
+    size_t wrappedlen = t->cipher_text_len, secretlen = t->secret_len;
+    OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
+
+    OSSL_SELF_TEST_onbegin(st, OSSL_SELF_TEST_TYPE_KAT_KEM,
+                           OSSL_SELF_TEST_DESC_ENCAP_KEM);
+
+    ctx = EVP_PKEY_CTX_new_from_pkey(libctx, pkey, "");
+    if (ctx == NULL)
+        goto err;
+
+    *params = OSSL_PARAM_construct_octet_string(OSSL_KEM_PARAM_IKME,
+                                                (unsigned char *)t->entropy,
+                                                t->entropy_len);
+    if (EVP_PKEY_encapsulate_init(ctx, params) <= 0)
+        goto err;
+
+    /* Allocate output buffers */
+    wrapped = OPENSSL_malloc(wrappedlen);
+    secret = OPENSSL_malloc(secretlen);
+    if (wrapped == NULL || secret == NULL)
+        goto err;
+
+    /* Encapsulate */
+    if (EVP_PKEY_encapsulate(ctx, wrapped, &wrappedlen, secret, &secretlen) <= 0)
+        goto err;
+
+    /* Compare outputs */
+    OSSL_SELF_TEST_oncorrupt_byte(st, wrapped);
+    if (wrappedlen != t->cipher_text_len
+            || memcmp(wrapped, t->cipher_text, t->cipher_text_len) != 0)
+        goto err;
+
+    OSSL_SELF_TEST_oncorrupt_byte(st, secret);
+    if (secretlen != t->secret_len
+            || memcmp(secret, t->secret, t->secret_len) != 0)
+        goto err;
+
+    ret = 1;
+ err:
+    OPENSSL_free(wrapped);
+    OPENSSL_free(secret);
+    EVP_PKEY_CTX_free(ctx);
+    OSSL_SELF_TEST_onend(st, ret);
+    return ret;
+}
+
+/*
+ * FIPS 140-3 IG 10.3.A resolution 14 mandates a CAST for ML-KEM
+ * decapsulation both for the rejection path and the normal path.
+ */
+static int self_test_kem_decapsulate(const ST_KAT_KEM *t, OSSL_SELF_TEST *st,
+                                     OSSL_LIB_CTX *libctx, EVP_PKEY *pkey,
+                                     int reject)
+{
+    int ret = 0;
+    EVP_PKEY_CTX *ctx = NULL;
+    unsigned char *secret = NULL, *alloced = NULL;
+    const unsigned char *test_secret = t->secret;
+    const unsigned char *cipher_text = t->cipher_text;
+    size_t secretlen = t->secret_len;
+
+    OSSL_SELF_TEST_onbegin(st, OSSL_SELF_TEST_TYPE_KAT_KEM,
+                           reject ? OSSL_SELF_TEST_DESC_DECAP_KEM_FAIL
+                                  : OSSL_SELF_TEST_DESC_DECAP_KEM);
+
+    if (reject) {
+        cipher_text = alloced = OPENSSL_zalloc(t->cipher_text_len);
+        if (alloced == NULL)
+            goto err;
+        test_secret = t->reject_secret;
+    }
+
+    ctx = EVP_PKEY_CTX_new_from_pkey(libctx, pkey, "");
+    if (ctx == NULL)
+        goto err;
+
+    if (EVP_PKEY_decapsulate_init(ctx, NULL) <= 0)
+        goto err;
+
+    /* Allocate output buffer */
+    secret = OPENSSL_malloc(secretlen);
+    if (secret == NULL)
+        goto err;
+
+    /* Decapsulate */
+    if (EVP_PKEY_decapsulate(ctx, secret, &secretlen,
+                             cipher_text, t->cipher_text_len) <= 0)
+        goto err;
+
+    /* Compare output */
+    OSSL_SELF_TEST_oncorrupt_byte(st, secret);
+    if (secretlen != t->secret_len
+            || memcmp(secret, test_secret, t->secret_len) != 0)
+        goto err;
+
+    ret = 1;
+ err:
+    OPENSSL_free(alloced);
+    OPENSSL_free(secret);
+    EVP_PKEY_CTX_free(ctx);
+    OSSL_SELF_TEST_onend(st, ret);
+    return ret;
+}
+
+/*
+ * FIPS 140-3 IG 10.3.A resolution 14 mandates a CAST for ML-KEM
+ * key generation.
+ */
+static EVP_PKEY *self_test_kem_keygen(const ST_KAT_KEM *t, OSSL_SELF_TEST *st,
+                                      OSSL_LIB_CTX *libctx)
+{
+    EVP_PKEY_CTX *genctx;
+    EVP_PKEY *ret = NULL, *r = NULL;
+    OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
+    unsigned char *buf = NULL;
+    const size_t s = t->public_key_len < t->private_key_len ? t->private_key_len
+                                                            : t->public_key_len;
+
+    OSSL_SELF_TEST_onbegin(st, OSSL_SELF_TEST_TYPE_KAT_KEM,
+                           OSSL_SELF_TEST_DESC_KEYGEN_KEM);
+
+    genctx = EVP_PKEY_CTX_new_from_name(libctx, t->algorithm, "");
+    if (genctx == NULL || EVP_PKEY_keygen_init(genctx) <= 0)
+        goto err;
+    *params = OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_ML_KEM_SEED,
+                                                (unsigned char *)t->seed,
+                                                t->seed_len);
+    if (!EVP_PKEY_CTX_set_params(genctx, params)
+            || !EVP_PKEY_keygen(genctx, &r))
+        goto err;
+
+    /* Allocate output space */
+    buf = OPENSSL_malloc(s);
+    if (buf == NULL)
+        goto err;
+
+    /* Compare outputs */
+    *params = OSSL_PARAM_construct_octet_string(
+        OSSL_PKEY_PARAM_PRIV_KEY, buf, s);
+    if (!EVP_PKEY_get_params(r, params))
+        goto err;
+    OSSL_SELF_TEST_oncorrupt_byte(st, buf);
+    if (params->return_size != t->private_key_len
+            || memcmp(buf, t->private_key, t->private_key_len) != 0)
+        goto err;
+
+    ret = r;
+    r = NULL;
+ err:
+    OPENSSL_free(buf);
+    EVP_PKEY_CTX_free(genctx);
+    EVP_PKEY_free(r);
+    OSSL_SELF_TEST_onend(st, ret != NULL);
+    return ret;
+}
+
+/*
+ * Test encapsulation, decapsulation for KEM.
+ *
+ * FIPS 140-3 IG 10.3.A resolution 14 mandates a CAST for:
+ * 1   ML-KEM encapsulation
+ * 2a  ML-KEM decapsulation non-rejection path
+ * 2b  ML-KEM decapsulation implicit rejection path
+ * 3   ML-KEM key generation
+ */
+static int self_test_kem(const ST_KAT_KEM *t, OSSL_SELF_TEST *st,
+                         OSSL_LIB_CTX *libctx)
+{
+    int ret = 0;
+    EVP_PKEY *pkey = NULL;
+
+    pkey = self_test_kem_keygen(t, st, libctx);
+    if (pkey == NULL)
+        goto err;
+
+    if (!self_test_kem_encapsulate(t, st, libctx, pkey)
+            || !self_test_kem_decapsulate(t, st, libctx, pkey, 0)
+            || !self_test_kem_decapsulate(t, st, libctx, pkey, 1))
+        goto err;
+
+    ret = 1;
+err:
+    EVP_PKEY_free(pkey);
+    return ret;
+}
+#endif
 
 /*
  * Test a data driven list of KAT's for digest algorithms.
@@ -584,6 +847,20 @@ static int self_test_ciphers(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
         if (!self_test_cipher(&st_kat_cipher_tests[i], st, libctx))
             ret = 0;
     }
+    return ret;
+}
+
+static int self_test_kems(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
+{
+    int ret = 1;
+#ifndef OPENSSL_NO_ML_KEM
+    int i;
+
+    for (i = 0; i < (int)OSSL_NELEM(st_kat_kem_tests); ++i) {
+        if (!self_test_kem(&st_kat_kem_tests[i], st, libctx))
+            ret = 0;
+    }
+#endif
     return ret;
 }
 
@@ -775,6 +1052,21 @@ static int setup_main_random(OSSL_LIB_CTX *libctx)
     return 0;
 }
 
+static int self_test_asym_keygens(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
+{
+#ifndef OPENSSL_NO_ML_DSA
+    int i, ret = 1;
+
+    for (i = 0; i < (int)OSSL_NELEM(st_kat_asym_keygen_tests); ++i) {
+        if (!self_test_asym_keygen(&st_kat_asym_keygen_tests[i], st, libctx))
+            ret = 0;
+    }
+    return ret;
+#else
+    return 1;
+#endif /* OPENSSL_NO_ML_DSA */
+}
+
 /*
  * Run the algorithm KAT's.
  * Return 1 is successful, otherwise return 0.
@@ -806,6 +1098,10 @@ int SELF_TEST_kats(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
     if (!self_test_drbgs(st, libctx))
         ret = 0;
     if (!self_test_kas(st, libctx))
+        ret = 0;
+    if (!self_test_asym_keygens(st, libctx))
+        ret = 0;
+    if (!self_test_kems(st, libctx))
         ret = 0;
 
     RAND_set0_private(libctx, saved_rand);

@@ -242,7 +242,6 @@ static int add_provider_groups(const OSSL_PARAM params[], void *data)
 {
     struct provider_ctx_data_st *pgd = data;
     SSL_CTX *ctx = pgd->ctx;
-    OSSL_PROVIDER *provider = pgd->provider;
     const OSSL_PARAM *p;
     TLS_GROUP_INFO *ginf = NULL;
     EVP_KEYMGMT *keymgmt;
@@ -352,23 +351,9 @@ static int add_provider_groups(const OSSL_PARAM params[], void *data)
     ERR_set_mark();
     keymgmt = EVP_KEYMGMT_fetch(ctx->libctx, ginf->algorithm, ctx->propq);
     if (keymgmt != NULL) {
-        /*
-         * We have successfully fetched the algorithm - however if the provider
-         * doesn't match this one then we ignore it.
-         *
-         * Note: We're cheating a little here. Technically if the same algorithm
-         * is available from more than one provider then it is undefined which
-         * implementation you will get back. Theoretically this could be
-         * different every time...we assume here that you'll always get the
-         * same one back if you repeat the exact same fetch. Is this a reasonable
-         * assumption to make (in which case perhaps we should document this
-         * behaviour)?
-         */
-        if (EVP_KEYMGMT_get0_provider(keymgmt) == provider) {
-            /* We have a match - so we will use this group */
-            ctx->group_list_len++;
-            ginf = NULL;
-        }
+        /* We have successfully fetched the algorithm, we can use the group. */
+        ctx->group_list_len++;
+        ginf = NULL;
         EVP_KEYMGMT_free(keymgmt);
     }
     ERR_pop_to_mark();
@@ -975,6 +960,81 @@ static int tls1_in_list(uint16_t id, const uint16_t *list, size_t listlen)
         if (list[i] == id)
             return 1;
     return 0;
+}
+
+typedef struct {
+    TLS_GROUP_INFO *grp;
+    size_t ix;
+} TLS_GROUP_IX;
+
+DEFINE_STACK_OF(TLS_GROUP_IX)
+
+static void free_wrapper(TLS_GROUP_IX *a)
+{
+    OPENSSL_free(a);
+}
+
+static int tls_group_ix_cmp(const TLS_GROUP_IX *const *a,
+                            const TLS_GROUP_IX *const *b)
+{
+    int idcmpab = (*a)->grp->group_id < (*b)->grp->group_id;
+    int idcmpba = (*b)->grp->group_id < (*a)->grp->group_id;
+    int ixcmpab = (*a)->ix < (*b)->ix;
+    int ixcmpba = (*b)->ix < (*a)->ix;
+
+    /* Ascending by group id */
+    if (idcmpab != idcmpba)
+        return (idcmpba - idcmpab);
+    /* Ascending by original appearance index */
+    return ixcmpba - ixcmpab;
+}
+
+int tls1_get0_implemented_groups(int min_proto_version, int max_proto_version,
+                                 TLS_GROUP_INFO *grps, size_t num, long all,
+                                 STACK_OF(OPENSSL_CSTRING) *out)
+{
+    STACK_OF(TLS_GROUP_IX) *collect = NULL;
+    TLS_GROUP_IX *gix;
+    uint16_t id = 0;
+    int ret = 0;
+    size_t ix;
+
+    if ((collect = sk_TLS_GROUP_IX_new(tls_group_ix_cmp)) == NULL)
+        return 0;
+
+    if (grps == NULL || out == NULL)
+        return 0;
+    for (ix = 0; ix < num; ++ix, ++grps) {
+        if (grps->mintls > 0 && max_proto_version > 0
+             && grps->mintls > max_proto_version)
+            continue;
+        if (grps->maxtls > 0 && min_proto_version > 0
+            && grps->maxtls < min_proto_version)
+            continue;
+
+        if ((gix = OPENSSL_malloc(sizeof(*gix))) == NULL)
+            goto end;
+        gix->grp = grps;
+        gix->ix = ix;
+        if (sk_TLS_GROUP_IX_push(collect, gix) <= 0)
+            goto end;
+    }
+
+    sk_TLS_GROUP_IX_sort(collect);
+    num = sk_TLS_GROUP_IX_num(collect);
+    for (ix = 0; ix < num; ++ix) {
+        gix = sk_TLS_GROUP_IX_value(collect, ix);
+        if (!all && gix->grp->group_id == id)
+            continue;
+        id = gix->grp->group_id;
+        if (sk_OPENSSL_CSTRING_push(out, gix->grp->tlsname) <= 0)
+            goto end;
+    }
+    return 1;
+
+  end:
+    sk_TLS_GROUP_IX_pop_free(collect, free_wrapper);
+    return ret;
 }
 
 /*-
@@ -1615,18 +1675,19 @@ int tls1_set_groups_list(SSL_CTX *ctx,
     }
 
     /*
-     * We check whether a tuple was completly emptied by using "-" prefix excessively,
-     * in which case we remove the tuple
+     * We check whether a tuple was completly emptied by using "-" prefix
+     * excessively, in which case we remove the tuple
      */
-    for (i = 0; i < gcb.tplcnt; i++) {
-        if (gcb.tuplcnt_arr[i] == 0) {
-            for (j = i; j < (gcb.tplcnt - 1); j++) /* Move tuples to the left */
-                gcb.tuplcnt_arr[j] = gcb.tuplcnt_arr[j + 1];
-
-            gcb.tplcnt--; /* We just deleted a tuple, update book keeping */
-            i--; /* Acount for the fact that the list is shorter now */
-        }
+    for (i = j = 0; j < gcb.tplcnt; j++) {
+        if (gcb.tuplcnt_arr[j] == 0)
+            continue;
+        /* If there's a gap, move to first unfilled slot */
+        if (j == i)
+            ++i;
+        else
+            gcb.tuplcnt_arr[i++] = gcb.tuplcnt_arr[j];
     }
+    gcb.tplcnt = i;
 
     /* Some more checks (at least one remaining group, not more that nominally 4 key shares */
     if (gcb.gidcnt == 0) {
@@ -3558,8 +3619,10 @@ static int sig_cb(const char *elem, int len, void *arg)
             /* Check if a provider supports the sigalg */
             for (i = 0; i < sarg->ctx->sigalg_list_len; i++) {
                 if (sarg->ctx->sigalg_list[i].sigalg_name != NULL
-                    && strcmp(etmp,
-                              sarg->ctx->sigalg_list[i].sigalg_name) == 0) {
+                    && (strcmp(etmp,
+                               sarg->ctx->sigalg_list[i].sigalg_name) == 0
+                        || strcmp(etmp,
+                                  sarg->ctx->sigalg_list[i].name) == 0)) {
                     sarg->sigalgs[sarg->sigalgcnt++] =
                         sarg->ctx->sigalg_list[i].code_point;
                     break;
