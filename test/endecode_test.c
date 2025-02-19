@@ -110,7 +110,8 @@ static EVP_PKEY *make_template(const char *type, OSSL_PARAM *genparams)
     !defined(OPENSSL_NO_DSA) || \
     !defined(OPENSSL_NO_EC) || \
     !defined(OPENSSL_NO_ML_DSA) || \
-    !defined(OPENSSL_NO_ML_KEM)
+    !defined(OPENSSL_NO_ML_KEM) || \
+    !defined(OPENSSL_NO_SLH_DSA)
 static EVP_PKEY *make_key(const char *type, EVP_PKEY *template,
                           OSSL_PARAM *genparams)
 {
@@ -1068,6 +1069,32 @@ IMPLEMENT_TEST_SUITE(ML_KEM_768, "ML-KEM-768", 1)
 KEYS(ML_KEM_1024);
 IMPLEMENT_TEST_SUITE(ML_KEM_1024, "ML-KEM-1024", 1)
 #endif
+#ifndef OPENSSL_NO_SLH_DSA
+KEYS(SLH_DSA_SHA2_128s);
+KEYS(SLH_DSA_SHA2_128f);
+KEYS(SLH_DSA_SHA2_192s);
+KEYS(SLH_DSA_SHA2_192f);
+KEYS(SLH_DSA_SHA2_256s);
+KEYS(SLH_DSA_SHA2_256f);
+KEYS(SLH_DSA_SHAKE_128s);
+KEYS(SLH_DSA_SHAKE_128f);
+KEYS(SLH_DSA_SHAKE_192s);
+KEYS(SLH_DSA_SHAKE_192f);
+KEYS(SLH_DSA_SHAKE_256s);
+KEYS(SLH_DSA_SHAKE_256f);
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHA2_128s, "SLH-DSA-SHA2-128s", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHA2_128f, "SLH-DSA-SHA2-128f", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHA2_192s, "SLH-DSA-SHA2-192s", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHA2_192f, "SLH-DSA-SHA2-192f", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHA2_256s, "SLH-DSA-SHA2-256s", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHA2_256f, "SLH-DSA-SHA2-256f", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHAKE_128s, "SLH-DSA-SHAKE-128s", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHAKE_128f, "SLH-DSA-SHAKE-128f", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHAKE_192s, "SLH-DSA-SHAKE-192s", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHAKE_192f, "SLH-DSA-SHAKE-192f", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHAKE_256s, "SLH-DSA-SHAKE-256s", 1)
+IMPLEMENT_TEST_SUITE(SLH_DSA_SHAKE_256f, "SLH-DSA-SHAKE-256f", 1)
+#endif /* OPENSSL_NO_SLH_DSA */
 KEYS(RSA);
 IMPLEMENT_TEST_SUITE(RSA, "RSA", 1)
 IMPLEMENT_TEST_SUITE_LEGACY(RSA, "RSA")
@@ -1370,7 +1397,7 @@ int setup_tests(void)
 
     /* FIPS(3.0.0): provider imports explicit params but they won't work #17998 */
     is_fips_3_0_0 = is_fips && fips_provider_version_eq(testctx, 3, 0, 0);
-    /* FIPS(3.5.0) is the first to support ML-KEM and ML-DSA */
+    /* FIPS(3.5.0) is the first to support ML-DSA, ML-KEM and SLH-DSA */
     is_fips_lt_3_5 = is_fips && fips_provider_version_lt(testctx, 3, 5, 0);
 
 #ifdef STATIC_LEGACY
@@ -1453,6 +1480,22 @@ int setup_tests(void)
         MAKE_KEYS(ML_KEM_1024, "ML-KEM-1024", NULL);
     }
 #endif
+#ifndef OPENSSL_NO_SLH_DSA
+    if (!is_fips_lt_3_5) {
+        MAKE_KEYS(SLH_DSA_SHA2_128s, "SLH-DSA-SHA2-128s", NULL);
+        MAKE_KEYS(SLH_DSA_SHA2_128f, "SLH-DSA-SHA2-128f", NULL);
+        MAKE_KEYS(SLH_DSA_SHA2_192s, "SLH-DSA-SHA2-192s", NULL);
+        MAKE_KEYS(SLH_DSA_SHA2_192f, "SLH-DSA-SHA2-192f", NULL);
+        MAKE_KEYS(SLH_DSA_SHA2_256s, "SLH-DSA-SHA2-256s", NULL);
+        MAKE_KEYS(SLH_DSA_SHA2_256f, "SLH-DSA-SHA2-256f", NULL);
+        MAKE_KEYS(SLH_DSA_SHAKE_128s, "SLH-DSA-SHAKE-128s", NULL);
+        MAKE_KEYS(SLH_DSA_SHAKE_128f, "SLH-DSA-SHAKE-128f", NULL);
+        MAKE_KEYS(SLH_DSA_SHAKE_192s, "SLH-DSA-SHAKE-192s", NULL);
+        MAKE_KEYS(SLH_DSA_SHAKE_192f, "SLH-DSA-SHAKE-192f", NULL);
+        MAKE_KEYS(SLH_DSA_SHAKE_256s, "SLH-DSA-SHAKE-256s", NULL);
+        MAKE_KEYS(SLH_DSA_SHAKE_256f, "SLH-DSA-SHAKE-256f", NULL);
+    }
+#endif /* OPENSSL_NO_SLH_DSA */
 
     TEST_info("Loading RSA key...");
     ok = ok && TEST_ptr(key_RSA = load_pkey_pem(rsa_file, keyctx));
@@ -1507,6 +1550,10 @@ int setup_tests(void)
         ADD_TEST_SUITE(ED448);
         ADD_TEST_SUITE(X25519);
         ADD_TEST_SUITE(X448);
+        /*
+         * ED25519, ED448, X25519 and X448 have no support for
+         * PEM_write_bio_PrivateKey_traditional(), so no legacy tests.
+         */
 #endif
 #ifndef OPENSSL_NO_ML_KEM
         if (!is_fips_lt_3_5) {
@@ -1515,10 +1562,6 @@ int setup_tests(void)
             ADD_TEST_SUITE(ML_KEM_1024);
         }
 #endif
-        /*
-         * ED25519, ED448, X25519 and X448 have no support for
-         * PEM_write_bio_PrivateKey_traditional(), so no legacy tests.
-         */
         ADD_TEST_SUITE(RSA);
         ADD_TEST_SUITE_LEGACY(RSA);
         ADD_TEST_SUITE(RSA_PSS);
@@ -1539,6 +1582,23 @@ int setup_tests(void)
             ADD_TEST_SUITE(ML_DSA_87);
         }
 #endif /* OPENSSL_NO_ML_DSA */
+
+#ifndef OPENSSL_NO_SLH_DSA
+        if (!is_fips_lt_3_5) {
+            ADD_TEST_SUITE(SLH_DSA_SHA2_128s);
+            ADD_TEST_SUITE(SLH_DSA_SHA2_128f);
+            ADD_TEST_SUITE(SLH_DSA_SHA2_192s);
+            ADD_TEST_SUITE(SLH_DSA_SHA2_192f);
+            ADD_TEST_SUITE(SLH_DSA_SHA2_256s);
+            ADD_TEST_SUITE(SLH_DSA_SHA2_256f);
+            ADD_TEST_SUITE(SLH_DSA_SHAKE_128s);
+            ADD_TEST_SUITE(SLH_DSA_SHAKE_128f);
+            ADD_TEST_SUITE(SLH_DSA_SHAKE_192s);
+            ADD_TEST_SUITE(SLH_DSA_SHAKE_192f);
+            ADD_TEST_SUITE(SLH_DSA_SHAKE_256s);
+            ADD_TEST_SUITE(SLH_DSA_SHAKE_256f);
+        }
+#endif /* OPENSSL_NO_SLH_DSA */
     }
 
     return 1;
@@ -1602,6 +1662,23 @@ void cleanup_tests(void)
         FREE_KEYS(ML_DSA_87);
     }
 #endif /* OPENSSL_NO_ML_DSA */
+
+#ifndef OPENSSL_NO_SLH_DSA
+    if (!is_fips_lt_3_5) {
+        FREE_KEYS(SLH_DSA_SHA2_128s);
+        FREE_KEYS(SLH_DSA_SHA2_128f);
+        FREE_KEYS(SLH_DSA_SHA2_192s);
+        FREE_KEYS(SLH_DSA_SHA2_192f);
+        FREE_KEYS(SLH_DSA_SHA2_256s);
+        FREE_KEYS(SLH_DSA_SHA2_256f);
+        FREE_KEYS(SLH_DSA_SHAKE_128s);
+        FREE_KEYS(SLH_DSA_SHAKE_128f);
+        FREE_KEYS(SLH_DSA_SHAKE_192s);
+        FREE_KEYS(SLH_DSA_SHAKE_192f);
+        FREE_KEYS(SLH_DSA_SHAKE_256s);
+        FREE_KEYS(SLH_DSA_SHAKE_256f);
+    }
+#endif /* OPENSSL_NO_SLH_DSA */
 
     OSSL_PROVIDER_unload(nullprov);
     OSSL_PROVIDER_unload(deflprov);

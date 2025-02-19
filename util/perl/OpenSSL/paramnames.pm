@@ -445,6 +445,9 @@ my %params = (
     'PKEY_PARAM_ML_DSA_INPUT_FORMATS' =>    "ml-dsa.input_formats",
     'PKEY_PARAM_ML_DSA_OUTPUT_FORMATS' =>   "ml-dsa.output_formats",
 
+# SLH_DSA Key generation parameters
+    'PKEY_PARAM_SLH_DSA_ENTROPY' =>         "entropy",
+
 # Key Exchange parameters
     'EXCHANGE_PARAM_PAD' =>                   "pad",# uint
     'EXCHANGE_PARAM_EC_ECDH_COFACTOR_MODE' => "ecdh-cofactor-mode",# int
@@ -484,6 +487,7 @@ my %params = (
     'SIGNATURE_PARAM_DETERMINISTIC' =>      "deterministic",
     'SIGNATURE_PARAM_MU' =>                 "mu", # int
     'SIGNATURE_PARAM_TEST_ENTROPY' =>       "test-entropy",
+    'SIGNATURE_PARAM_ADD_RANDOM' =>         "additional-random",
 
 # Asym cipher parameters
     'ASYM_CIPHER_PARAM_DIGEST' =>                   '*PKEY_PARAM_DIGEST',

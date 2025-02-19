@@ -26,6 +26,7 @@
 #include "crypto/ml_kem.h"       /* ML_KEM_KEY, etc... */
 #include "crypto/rsa.h"          /* RSA_PSS_PARAMS_30, etc... */
 #include "crypto/ml_dsa.h"
+#include "crypto/slh_dsa.h"
 #include "prov/bio.h"
 #include "prov/implementations.h"
 #include "internal/encoder.h"
@@ -445,6 +446,13 @@ static int ml_kem_to_text(BIO *out, const void *vkey, int selection)
 
 /* ---------------------------------------------------------------------- */
 
+#ifndef OPENSSL_NO_SLH_DSA
+static int slh_dsa_to_text(BIO *out, const void *key, int selection)
+{
+    return ossl_slh_dsa_key_to_text(out, (SLH_DSA_KEY *)key, selection);
+}
+#endif /* OPENSSL_NO_SLH_DSA */
+
 static int rsa_to_text(BIO *out, const void *key, int selection)
 {
     const RSA *rsa = key;
@@ -711,4 +719,19 @@ MAKE_TEXT_ENCODER(rsapss, rsa);
 MAKE_TEXT_ENCODER(ml_dsa_44, ml_dsa);
 MAKE_TEXT_ENCODER(ml_dsa_65, ml_dsa);
 MAKE_TEXT_ENCODER(ml_dsa_87, ml_dsa);
+#endif
+
+#ifndef OPENSSL_NO_SLH_DSA
+MAKE_TEXT_ENCODER(slh_dsa_sha2_128s, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_sha2_128f, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_sha2_192s, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_sha2_192f, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_sha2_256s, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_sha2_256f, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_shake_128s, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_shake_128f, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_shake_192s, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_shake_192f, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_shake_256s, slh_dsa);
+MAKE_TEXT_ENCODER(slh_dsa_shake_256f, slh_dsa);
 #endif

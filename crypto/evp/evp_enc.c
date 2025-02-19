@@ -580,11 +580,14 @@ static int evp_cipher_init_skey_internal(EVP_CIPHER_CTX *ctx,
     /* We have a data managed via key management, using the new callbacks */
     if (enc) {
         if (ctx->cipher->einit_skey == NULL) {
-            /* Attempt fallback for providers that do not support SKEYs */
-            const unsigned char *keydata;
-            size_t keylen;
+            /*
+             *  When skey is NULL, it's a multiple-step init as the current API does.
+             *  Otherwise we try to fallback for providers that do not support SKEYs.
+             */
+            const unsigned char *keydata = NULL;
+            size_t keylen = 0;
 
-            if (!EVP_SKEY_get_raw_key(skey, &keydata, &keylen)) {
+            if (skey != NULL && !EVP_SKEY_get_raw_key(skey, &keydata, &keylen)) {
                 ERR_raise(ERR_LIB_EVP, EVP_R_INITIALIZATION_ERROR);
                 return 0;
             }
@@ -592,16 +595,20 @@ static int evp_cipher_init_skey_internal(EVP_CIPHER_CTX *ctx,
             ret = ctx->cipher->einit(ctx->algctx, keydata, keylen,
                                      iv, iv_len, params);
         } else {
-            ret = ctx->cipher->einit_skey(ctx->algctx, skey->keydata,
+            ret = ctx->cipher->einit_skey(ctx->algctx,
+                                          skey == NULL ? NULL : skey->keydata,
                                           iv, iv_len, params);
         }
     } else {
         if (ctx->cipher->dinit_skey == NULL) {
-            /* Attempt fallback for providers that do not support SKEYs */
-            const unsigned char *keydata;
-            size_t keylen;
+            /*
+             *  When skey is NULL, it's a multiple-step init as the current API does.
+             *  Otherwise we try to fallback for providers that do not support SKEYs.
+             */
+            const unsigned char *keydata = NULL;
+            size_t keylen = 0;
 
-            if (!EVP_SKEY_get_raw_key(skey, &keydata, &keylen)) {
+            if (skey != NULL && !EVP_SKEY_get_raw_key(skey, &keydata, &keylen)) {
                 ERR_raise(ERR_LIB_EVP, EVP_R_INITIALIZATION_ERROR);
                 return 0;
             }
@@ -609,7 +616,8 @@ static int evp_cipher_init_skey_internal(EVP_CIPHER_CTX *ctx,
             ret = ctx->cipher->dinit(ctx->algctx, keydata, keylen,
                                      iv, iv_len, params);
         } else {
-            ret = ctx->cipher->dinit_skey(ctx->algctx, skey->keydata,
+            ret = ctx->cipher->dinit_skey(ctx->algctx,
+                                          skey == NULL ? NULL : skey->keydata,
                                           iv, iv_len, params);
         }
     }
@@ -1891,16 +1899,14 @@ static void *evp_cipher_from_algorithm(const int name_id,
     if (!evp_names_do_all(prov, name_id, set_legacy_nid, &cipher->nid)
             || cipher->nid == -1) {
         ERR_raise(ERR_LIB_EVP, ERR_R_INTERNAL_ERROR);
-        EVP_CIPHER_free(cipher);
-        return NULL;
+        goto err;
     }
 #endif
 
     cipher->name_id = name_id;
-    if ((cipher->type_name = ossl_algorithm_get1_first_name(algodef)) == NULL) {
-        EVP_CIPHER_free(cipher);
-        return NULL;
-    }
+    if ((cipher->type_name = ossl_algorithm_get1_first_name(algodef)) == NULL)
+        goto err;
+
     cipher->description = algodef->algorithm_description;
 
     for (; fns->function_id != 0; fns++) {
@@ -2033,21 +2039,24 @@ static void *evp_cipher_from_algorithm(const int name_id,
          * functions, or a single "cipher" function. In all cases we need both
          * the "newctx" and "freectx" functions.
          */
-        EVP_CIPHER_free(cipher);
         ERR_raise(ERR_LIB_EVP, EVP_R_INVALID_PROVIDER_FUNCTIONS);
-        return NULL;
+        goto err;
     }
+    if (prov != NULL && !ossl_provider_up_ref(prov))
+        goto err;
+
     cipher->prov = prov;
-    if (prov != NULL)
-        ossl_provider_up_ref(prov);
 
     if (!evp_cipher_cache_constants(cipher)) {
-        EVP_CIPHER_free(cipher);
         ERR_raise(ERR_LIB_EVP, EVP_R_CACHE_CONSTANTS_FAILED);
-        cipher = NULL;
+        goto err;
     }
 
     return cipher;
+
+err:
+    EVP_CIPHER_free(cipher);
+    return NULL;
 }
 
 static int evp_cipher_up_ref(void *cipher)

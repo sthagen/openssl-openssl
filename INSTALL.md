@@ -984,6 +984,11 @@ Do not create shared libraries, only static ones.
 
 See [Notes on shared libraries](#notes-on-shared-libraries) below.
 
+### no-slh-dsa
+
+Disable Stateless Hash Based Digital Signature Standard support.
+(SLH-DSA is based on SPHINCS+. See [FIPS 205])
+
 ### no-sm2-precomp
 
 Disable using the SM2 precomputed table on aarch64 to make the library smaller.
@@ -2058,3 +2063,6 @@ is used, as it is the version of the GNU assembler that will be checked.
 
 [jitterentropy-library]:
     <https://github.com/smuellerDD/jitterentropy-library>
+
+[FIPS 205]:
+    <https://csrc.nist.gov/pubs/fips/205/final>
