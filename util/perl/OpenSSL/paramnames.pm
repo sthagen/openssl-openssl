@@ -423,6 +423,7 @@ my %params = (
     'PKEY_PARAM_ML_KEM_RETAIN_SEED' => "ml-kem.retain_seed",
     'PKEY_PARAM_ML_KEM_INPUT_FORMATS' => "ml-kem.input_formats",
     'PKEY_PARAM_ML_KEM_OUTPUT_FORMATS' => "ml-kem.output_formats",
+    'PKEY_PARAM_ML_KEM_IMPORT_PCT_TYPE' => "ml-kem.import_pct_type",
 
 # Key generation parameters
     'PKEY_PARAM_FFC_TYPE' =>         "type",
@@ -446,7 +447,7 @@ my %params = (
     'PKEY_PARAM_ML_DSA_OUTPUT_FORMATS' =>   "ml-dsa.output_formats",
 
 # SLH_DSA Key generation parameters
-    'PKEY_PARAM_SLH_DSA_ENTROPY' =>         "entropy",
+    'PKEY_PARAM_SLH_DSA_SEED' =>              "seed",
 
 # Key Exchange parameters
     'EXCHANGE_PARAM_PAD' =>                   "pad",# uint
