@@ -232,6 +232,22 @@ OpenSSL 3.5
 
    *Pablo De Lara Guarch, Dan Pittman*
 
+ * Fix EVP_DecodeUpdate(): do not write padding zeros to the decoded output.
+
+   According to the documentation,
+   for every 4 valid base64 bytes processed (ignoring whitespace, carriage returns and line feeds),
+   EVP_DecodeUpdate() produces 3 bytes of binary output data
+   (except at the end of data terminated with one or two padding characters).
+   However, the function behaved like an EVP_DecodeBlock():
+   produces exactly 3 output bytes for every 4 input bytes.
+   Such behaviour could cause writes to a non-allocated output buffer
+   if a user allocates its size based on the documentation and knowing the padding size.
+
+   The fix makes EVP_DecodeUpdate() produce
+   exactly as many output bytes as in the initial non-encoded message.
+
+   *Valerii Krygin*
+
 OpenSSL 3.4
 -----------
 
@@ -402,7 +418,9 @@ OpenSSL 3.4
 
    *Rajeev Ranjan*
 
- * Added support for requesting CRL in CMP.
+ * Added support for retrieving certificate request templates and CRLs in CMP,
+   with the respective CLI options `-template`,
+   `-crlcert`, `-oldcrl`, `-crlout`, `-crlform>`, and `-rsp_crl`.
 
    This work was sponsored by Siemens AG.
 
@@ -607,6 +625,8 @@ OpenSSL 3.3
  * Added several new features of CMPv3 defined in RFC 9480 and RFC 9483:
    - `certProfile` request message header and respective `-profile` CLI option
    - support for delayed delivery of all types of response messages
+
+   This work was sponsored by Siemens AG.
 
    *David von Oheimb*
 
@@ -913,11 +933,6 @@ OpenSSL 3.2
 
    *Fergus Dall*
 
- * Added support for securely getting root CA certificate update in
-   CMP.
-
-   *David von Oheimb*
-
  * Improved contention on global write locks by using more read locks where
    appropriate.
 
@@ -1183,8 +1198,11 @@ OpenSSL 3.2
    *David von Oheimb*
 
  * Various fixes and extensions to the CMP+CRMF implementation and the `cmp` app
-   in particular supporting requests for central key generation, generalized
-   polling, and various types of genm/genp exchanges defined in CMP Updates.
+   in particular supporting various types of genm/genp exchanges such as getting
+   CA certificates and root CA cert updates defined in CMP Updates [RFC 9480],
+   as well as the `-srvcertout` and `-serial` CLI options.
+
+   This work was sponsored by Siemens AG.
 
    *David von Oheimb*
 
