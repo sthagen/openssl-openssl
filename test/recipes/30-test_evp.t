@@ -65,7 +65,9 @@ my @files = qw(
                 evpmd_sha.txt
                 evppbe_pbkdf2.txt
                 evppkey_kdf_hkdf.txt
+                evppkey_rsa.txt
                 evppkey_rsa_common.txt
+                evppkey_rsa_kem.txt
                 evppkey_rsa_sigalg.txt
                 evprand.txt
               );
@@ -160,10 +162,10 @@ my @defltfiles = qw(
                      evppbe_pkcs12.txt
                      evppkey_kdf_scrypt.txt
                      evppkey_kdf_tls1_prf.txt
-                     evppkey_rsa.txt
                     );
 push @defltfiles, qw(evppkey_brainpool.txt) unless $no_ec;
 push @defltfiles, qw(evppkey_ecdsa_rfc6979.txt) unless $no_ec;
+push @defltfiles, qw(evppkey_ecx_kem.txt) unless $no_ecx;
 push @defltfiles, qw(evppkey_dsa_rfc6979.txt) unless $no_dsa;
 push @defltfiles, qw(evppkey_sm2.txt) unless $no_sm2;
 push @defltfiles, qw(evpciph_aes_gcm_siv.txt) unless $no_siv;
