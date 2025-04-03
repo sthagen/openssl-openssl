@@ -37,6 +37,26 @@ OpenSSL 3.6
 
    *Frederik Wedel-Heinen*
 
+ * Enabled x86-64 SM4 optimizations with SM4 ISA Extension available starting
+   Lunar Lake and Arrow Lake S CPUs. The expected performance improvement is
+   ~3.6x for sm4-cbc, ~2.9x for sm4-gcm, ~9.2x for sm4-xts, ~5.3x for sm4-ccm
+   (on average, may vary depending on the data size) on Arrow Lake S.
+
+   *Alina Elizarova*
+
+ * Enabled x86-64 SM3 optimizations with SM3 ISA Extension available starting
+   Lunar Lake and Arrow Lake S CPUs. The expected performance improvement is
+   ~ 2.2-4.7x (depends on the data size) on Arrow Lake S.
+
+   *Alina Elizarova*
+
+ * Enabled x86-64 SHA-512 optimizations with SHA512 ISA Extension.
+   Optimized digests: `sha384`, `sha512`, `sha512-224`, `sha512-256`.
+   `openssl speed` shows speedups ranging from 1.6x to 4.5x on
+   the P-cores of Intel Core Ultra 5 238V.
+
+   *Adrian Stanciu*
+
 OpenSSL 3.5
 -----------
 
