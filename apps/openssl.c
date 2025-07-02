@@ -132,8 +132,10 @@ static size_t internal_trace_cb(const char *buf, size_t cnt,
             BIO_printf(bio_err, "ERROR: writing when tracing not started\n");
             return 0;
         }
+        if (cnt > INT_MAX)
+            cnt = INT_MAX;
 
-        ret = BIO_write(trace_data->bio, buf, cnt);
+        ret = BIO_write(trace_data->bio, buf, (int)cnt);
         break;
     case OSSL_TRACE_CTRL_END:
         if (!trace_data->ingroup) {
@@ -190,6 +192,7 @@ static void setup_trace_category(int category)
 
         OSSL_trace_set_callback(category, NULL, NULL);
         BIO_free_all(channel);
+        OPENSSL_free(trace_data);
     }
 }
 
