@@ -635,7 +635,7 @@ static int bring_ocsp_resp_in_correct_order(SSL *s, tlsextstatusctx *srctx,
     /* reserve enough space so the pushes to the stack would not fail */
     *sk_resp = sk_OCSP_RESPONSE_new_reserve(NULL, num);
 
-    if (sk_resp == NULL)
+    if (*sk_resp == NULL)
         return SSL_TLSEXT_ERR_ALERT_FATAL;
 
     for (i = 0; i < num; i++) {
@@ -755,8 +755,10 @@ static int get_ocsp_resp_from_responder(SSL *s, tlsextstatusctx *srctx,
     STACK_OF(X509) *server_certs = NULL;
     OCSP_RESPONSE *resp = NULL;
 
-    if (*sk_resp != NULL)
+    if (*sk_resp != NULL) {
         sk_OCSP_RESPONSE_pop_free(*sk_resp, OCSP_RESPONSE_free);
+        *sk_resp = NULL;
+    }
 
     SSL_get0_chain_certs(s, &server_certs);
     /*
@@ -784,7 +786,7 @@ static int get_ocsp_resp_from_responder(SSL *s, tlsextstatusctx *srctx,
 
     *sk_resp = sk_OCSP_RESPONSE_new_reserve(NULL, num);
 
-    if (sk_resp == NULL)
+    if (*sk_resp == NULL)
         return SSL_TLSEXT_ERR_ALERT_FATAL;
 
     /* for each certificate in chain (except root) get the OCSP response */
