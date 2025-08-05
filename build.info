@@ -67,11 +67,14 @@ DEPEND[]=include/openssl/asn1.h \
          providers/implementations/keymgmt/mlx_kmgmt.c \
          providers/implementations/signature/eddsa_sig.c \
          providers/implementations/signature/ml_dsa_sig.c \
+         providers/implementations/skeymgmt/generic.c \
          providers/implementations/ciphers/ciphercommon.c \
          providers/implementations/ciphers/ciphercommon_ccm.c \
          providers/implementations/ciphers/ciphercommon_gcm.c \
          providers/implementations/ciphers/cipher_chacha20_poly1305.c \
-         providers/implementations/digests/digestcommon.c
+         providers/implementations/digests/blake2_prov.c \
+         providers/implementations/digests/digestcommon.c \
+         providers/implementations/digests/sha3_prov.c
 
 GENERATE[include/openssl/asn1.h]=include/openssl/asn1.h.in
 GENERATE[include/openssl/asn1t.h]=include/openssl/asn1t.h.in
@@ -125,11 +128,14 @@ DEPEND[providers/implementations/kdfs/argon2.c \
        providers/implementations/keymgmt/mlx_kmgmt.c \
        providers/implementations/signature/eddsa_sig.c \
        providers/implementations/signature/ml_dsa_sig.c \
+       providers/implementations/skeymgmt/generic.c \
        providers/implementations/ciphers/ciphercommon.c \
        providers/implementations/ciphers/ciphercommon_ccm.c \
        providers/implementations/ciphers/ciphercommon_gcm.c \
        providers/implementations/ciphers/cipher_chacha20_poly1305.c \
+       providers/implementations/digests/blake2_prov.c \
        providers/implementations/digests/digestcommon.c \
+       providers/implementations/digests/sha3_prov.c \
        include/openssl/core_names.h]=util/perl|OpenSSL/paramnames.pm
 GENERATE[providers/implementations/kdfs/argon2.c]=\
     providers/implementations/kdfs/argon2.c.in
@@ -169,6 +175,8 @@ GENERATE[providers/implementations/signature/eddsa_sig.c]=\
     providers/implementations/signature/eddsa_sig.c.in
 GENERATE[providers/implementations/signature/ml_dsa_sig.c]=\
     providers/implementations/signature/ml_dsa_sig.c.in
+GENERATE[providers/implementations/skeymgmt/generic.c]=\
+    providers/implementations/skeymgmt/generic.c.in
 GENERATE[providers/implementations/ciphers/ciphercommon.c]=\
     providers/implementations/ciphers/ciphercommon.c.in
 GENERATE[providers/implementations/ciphers/ciphercommon_ccm.c]=\
@@ -177,8 +185,12 @@ GENERATE[providers/implementations/ciphers/ciphercommon_gcm.c]=\
     providers/implementations/ciphers/ciphercommon_gcm.c.in
 GENERATE[providers/implementations/ciphers/cipher_chacha20_poly1305.c]=\
     providers/implementations/ciphers/cipher_chacha20_poly1305.c.in
+GENERATE[providers/implementations/digests/blake2_prov.c]=\
+    providers/implementations/digests/blake2_prov.c.in
 GENERATE[providers/implementations/digests/digestcommon.c]=\
     providers/implementations/digests/digestcommon.c.in
+GENERATE[providers/implementations/digests/sha3_prov.c]=\
+    providers/implementations/digests/sha3_prov.c.in
 GENERATE[include/openssl/core_names.h]=include/openssl/core_names.h.in
 
 IF[{- defined $target{shared_defflag} -}]
