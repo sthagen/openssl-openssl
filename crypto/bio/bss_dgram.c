@@ -932,8 +932,8 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
                 ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
                                "calling setsockopt()");
 
-#  elif defined(OPENSSL_SYS_LINUX) && defined(IPV6_MTUDISCOVER)
-            sockopt_val = num ? IP_PMTUDISC_PROBE : IP_PMTUDISC_DONT;
+#  elif defined(OPENSSL_SYS_LINUX) && defined(IPV6_MTU_DISCOVER)
+            sockopt_val = num ? IPV6_PMTUDISC_PROBE : IPV6_PMTUDISC_DONT;
             if ((ret = setsockopt(b->num, IPPROTO_IPV6, IPV6_MTU_DISCOVER,
                                   &sockopt_val, sizeof(sockopt_val))) < 0)
                 ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
@@ -1602,7 +1602,7 @@ static int dgram_recvmmsg(BIO *b, BIO_MSG *msg,
                  * address, as for OS X and Windows in some circumstances
                  * (see below).
                  */
-                BIO_ADDR_clear(msg->local);
+                BIO_ADDR_clear(BIO_MSG_N(msg, stride, i).local);
     }
 
     *num_processed = (size_t)ret;
