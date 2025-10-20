@@ -638,7 +638,7 @@ static int tls_accept_ksgroup(SSL_CONNECTION *s, uint16_t ksgroup, PACKET *encod
     if (tls13_set_encoded_pub_key(s->s3.peer_tmp,
                                   PACKET_data(encoded_pubkey),
                                   PACKET_remaining(encoded_pubkey)) <= 0) {
-        SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_ECPOINT);
+        SSLfatal(s, SSL_AD_ILLEGAL_PARAMETER, SSL_R_BAD_KEY_SHARE);
         return 0;
     }
     return 1;
@@ -2011,11 +2011,12 @@ EXT_RETURN tls_construct_stoc_key_share(SSL_CONNECTION *s, WPACKET *pkt,
         /*
          * This causes the crypto state to be updated based on the derived keys
          */
-        s->s3.tmp.pkey = skey;
         if (ssl_derive(s, skey, ckey, 1) == 0) {
             /* SSLfatal() already called */
+            EVP_PKEY_free(skey);
             return EXT_RETURN_FAIL;
         }
+        s->s3.tmp.pkey = skey;
     } else {
         /* KEM mode */
         unsigned char *ct = NULL;
