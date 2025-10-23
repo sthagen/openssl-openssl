@@ -192,6 +192,9 @@ static void clean_master_key(void *data)
     MASTER_KEY_ENTRY *mkey = data;
     int i;
 
+    if (data == NULL)
+        return;
+
     for (i = 0; i < CRYPTO_THREAD_LOCAL_KEY_MAX; i++) {
         if (mkey[i].ctx_table != NULL)
             clean_master_key_id(&mkey[i]);
@@ -392,8 +395,7 @@ int CRYPTO_THREAD_set_local_ex(CRYPTO_THREAD_LOCAL_KEY_ID id,
                                        (uintptr_t)ctx, data);
 }
 
-#ifdef FIPS_MODULE
-void CRYPTO_THREAD_clean_local_for_fips(void)
+void CRYPTO_THREAD_clean_local(void)
 {
     MASTER_KEY_ENTRY *mkey;
 
@@ -405,8 +407,8 @@ void CRYPTO_THREAD_clean_local_for_fips(void)
         return;
 
     mkey = CRYPTO_THREAD_get_local(&master_key);
-    if (mkey != NULL)
+    if (mkey != NULL) {
         clean_master_key(mkey);
-    CRYPTO_THREAD_cleanup_local(&master_key);
+        CRYPTO_THREAD_set_local(&master_key, NULL);
+    }
 }
-#endif
