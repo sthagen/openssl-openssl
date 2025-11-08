@@ -36,7 +36,9 @@ jobs:
     steps:
     - name: install packages
       run: apk --no-cache add build-base perl linux-headers ${{ matrix.cc }}
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       run: |
         ./config --strict-warnings --banner=Configured no-shared enable-fips \
@@ -86,7 +88,9 @@ jobs:
     runs-on: ubuntu-latest
     container: ${{ matrix.zoo.image }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: install packages
       run: ${{ matrix.zoo.install }}
     - name: config
@@ -110,7 +114,9 @@ jobs:
         os: [macos-14, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: config
@@ -138,7 +144,9 @@ jobs:
             vcvars: C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat
     runs-on: ${{ matrix.platform.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: install nasm
@@ -180,7 +188,9 @@ jobs:
   linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       run: ./config --strict-warnings enable-fips enable-ec_nistp_64_gcc_128 enable-md2 enable-rc5 enable-ssl3 enable-ssl3-method enable-trace
     - name: config dump
@@ -196,7 +206,9 @@ jobs:
     runs-on: linux-ppc64le
     if: github.repository == 'openssl/openssl'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       run: ./config --strict-warnings enable-fips enable-ec_nistp_64_gcc_128 enable-md2 enable-rc5 enable-ssl3 enable-ssl3-method enable-trace
     - name: config dump
@@ -214,7 +226,9 @@ jobs:
     runs-on: linux-s390x
     if: github.repository == 'openssl/openssl'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       run: ./config --strict-warnings enable-fips enable-md2 enable-rc5 enable-ssl3 enable-ssl3-method enable-trace
     - name: config dump
@@ -232,7 +246,9 @@ jobs:
     runs-on: linux-riscv64
     if: github.repository == 'openssl/openssl'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       run: ./config enable-fips enable-ec_nistp_64_gcc_128 enable-md2 enable-rc5 enable-ssl3 enable-ssl3-method enable-trace
     - name: config dump
@@ -250,7 +266,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'openssl/openssl'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       uses: cross-platform-actions/action@fe0167d8082ac584754ef3ffb567fded22642c7d #v0.27.0
       with:

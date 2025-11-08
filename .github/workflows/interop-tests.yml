@@ -9,6 +9,8 @@ on:
     - cron: '55 02 * * *'
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   test:
     if: github.repository == 'openssl/openssl'
@@ -24,7 +26,9 @@ jobs:
     env:
       COMPONENT: ${{ matrix.COMPONENT }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - name: Display environment
         run: export
       - name : Install needed tools
@@ -75,7 +79,7 @@ jobs:
       TEST_SSH_UNSAFE_PERMISSIONS: 1
       TEST_SSH_HOSTBASED_AUTH: yes
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         persist-credentials: false
         ref: ${{ matrix.branch.openssl }}

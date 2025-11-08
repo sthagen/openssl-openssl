@@ -89,7 +89,7 @@ jobs:
                                                  -providers
         working-directory: ${{ matrix.release.dir }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.release.tgz }}
           path: ${{ matrix.release.tgz }}
@@ -142,11 +142,12 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: ${{ matrix.branch.dir }}
           repository: openssl/openssl
           ref: ${{ matrix.branch.name }}
+          persist-credentials: false
       - name: localegen
         run: sudo locale-gen tr_TR.UTF-8
 
@@ -182,7 +183,7 @@ jobs:
           ./util/opensslwrap.sh version -c
         working-directory: ${{ matrix.branch.dir }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.branch.tgz }}
           path: ${{ matrix.branch.tgz }}
@@ -228,7 +229,7 @@ jobs:
           fi
         continue-on-error: true
 
-      - uses: actions/download-artifact@v4.1.8
+      - uses: actions/download-artifact@v6.0.0
         if: steps.early_exit.outcome == 'success'
         with:
           name: ${{ matrix.tree_a }}.tar.gz
@@ -236,7 +237,7 @@ jobs:
         if: steps.early_exit.outcome == 'success'
         run: tar xzf "${{ matrix.tree_a }}.tar.gz"
 
-      - uses: actions/download-artifact@v4.1.8
+      - uses: actions/download-artifact@v6.0.0
         if: steps.early_exit.outcome == 'success'
         with:
           name: ${{ matrix.tree_b }}.tar.gz

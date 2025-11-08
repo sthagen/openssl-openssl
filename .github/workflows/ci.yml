@@ -32,9 +32,10 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get -yq --no-install-suggests --no-install-recommends --allow-unauthenticated --allow-downgrades --allow-remove-essential --allow-change-held-packages install unifdef
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
+        persist-credentials: false
     - name: config
       run: ./config --strict-warnings --banner=Configured enable-fips && perl configdata.pm --dump
     - name: make build_generated
@@ -47,7 +48,9 @@ jobs:
   check_docs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       run: ./config --strict-warnings --banner=Configured enable-fips && perl configdata.pm --dump
     - name: make build_generated
@@ -67,7 +70,9 @@ jobs:
   check-c99:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       run: CPPFLAGS='-std=c99 -D_XOPEN_SOURCE=1 -D_POSIX_C_SOURCE=200809L' ./config --strict-warnings --banner=Configured enable-sslkeylog no-asm no-secure-memory no-makedepend enable-buildtest-c++ enable-fips enable-lms && perl configdata.pm --dump
     - name: make
@@ -76,7 +81,9 @@ jobs:
   basic_gcc:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: localegen
@@ -100,7 +107,7 @@ jobs:
         util/wrap.pl -fips apps/openssl list -providers | grep 'name: CI FIPS Provider for OpenSSL$'
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@basic-gcc"
         path: artifacts.tar.gz
@@ -108,7 +115,9 @@ jobs:
   basic_clang:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: config
@@ -123,7 +132,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@basic-clang"
         path: artifacts.tar.gz
@@ -131,7 +140,9 @@ jobs:
   linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       run: ./config --strict-warnings enable-demos enable-fips enable-lms enable-ec_nistp_64_gcc_128 enable-md2 enable-rc5 enable-ssl3 enable-ssl3-method enable-trace
     - name: config dump
@@ -146,7 +157,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@linux-arm64"
         path: artifacts.tar.gz
@@ -154,7 +165,9 @@ jobs:
   freebsd-x86_64:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: config
       uses: cross-platform-actions/action@fe0167d8082ac584754ef3ffb567fded22642c7d #v0.27.0
       with:
@@ -188,7 +201,7 @@ jobs:
           .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@BSD-x86_64"
         path: artifacts.tar.gz
@@ -196,7 +209,9 @@ jobs:
   minimal:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: config
@@ -211,7 +226,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@minimal"
         path: artifacts.tar.gz
@@ -219,7 +234,9 @@ jobs:
   no-deprecated:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: config
@@ -234,7 +251,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@no-deprecated"
         path: artifacts.tar.gz
@@ -242,7 +259,9 @@ jobs:
   no-shared-ubuntu:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: config
@@ -257,7 +276,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@no-shared-ubuntu"
         path: artifacts.tar.gz
@@ -265,7 +284,9 @@ jobs:
   no-shared-macos:
     runs-on: macos-14
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: config
@@ -280,7 +301,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@no-shared-macos-14"
         path: artifacts.tar.gz
@@ -288,7 +309,9 @@ jobs:
   non-caching:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: Adjust ASLR for sanitizer
@@ -307,7 +330,7 @@ jobs:
       run: .github/workflows/make-test OPENSSL_TEST_RAND_ORDER=0 TESTS="-test_fuzz* -test_ssl_* -test_sslapi -test_evp -test_cmp_http -test_verify -test_cms -test_store -test_enc -[01][0-9]"
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@non-caching"
         path: artifacts.tar.gz
@@ -315,7 +338,9 @@ jobs:
   address_ub_sanitizer:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: Adjust ASLR for sanitizer
@@ -334,7 +359,7 @@ jobs:
       run: .github/workflows/make-test OPENSSL_TEST_RAND_ORDER=0
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@address_ub_sanitizer"
         path: artifacts.tar.gz
@@ -342,7 +367,9 @@ jobs:
   fuzz_tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: Adjust ASLR for sanitizer
@@ -361,7 +388,7 @@ jobs:
       run: .github/workflows/make-test OPENSSL_TEST_RAND_ORDER=0 TESTS="test_fuzz*"
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@fuzz_tests"
         path: artifacts.tar.gz
@@ -370,7 +397,9 @@ jobs:
   memory_sanitizer:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: Adjust ASLR for sanitizer
@@ -390,7 +419,7 @@ jobs:
       run: .github/workflows/make-test OPENSSL_TEST_RAND_ORDER=0
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@memory_sanitizer"
         path: artifacts.tar.gz
@@ -398,7 +427,9 @@ jobs:
   threads_sanitizer:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: Adjust ASLR for sanitizer
@@ -417,7 +448,7 @@ jobs:
       run: .github/workflows/make-test V=1 TESTS="test_lhash test_threads test_internal_provider test_provfetch test_provider test_pbe test_evp_kdf test_pkcs12 test_store test_evp test_quic*"
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@threads_sanitizer"
         path: artifacts.tar.gz
@@ -425,7 +456,9 @@ jobs:
   enable_non-default_options:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: modprobe tls
@@ -442,7 +475,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@enable_non-default_options"
         path: artifacts.tar.gz
@@ -450,7 +483,9 @@ jobs:
   full_featured:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: modprobe tls
@@ -473,7 +508,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@full_featured"
         path: artifacts.tar.gz
@@ -481,7 +516,9 @@ jobs:
   no-legacy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: config
@@ -496,7 +533,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@no-legacy"
         path: artifacts.tar.gz
@@ -504,7 +541,9 @@ jobs:
   legacy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
     - name: config
@@ -519,7 +558,7 @@ jobs:
       run: .github/workflows/make-test
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@legacy"
         path: artifacts.tar.gz
@@ -532,9 +571,10 @@ jobs:
   out-of-readonly-source-and-install-ubuntu:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         path: ./source
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
       working-directory: ./source
@@ -562,7 +602,7 @@ jobs:
       working-directory: ./build
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@out-of-readonly-source-and-install-ubuntu"
         path: build/artifacts.tar.gz
@@ -573,9 +613,10 @@ jobs:
   out-of-readonly-source-and-install-macos:
     runs-on: macos-15
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         path: ./source
+        persist-credentials: false
     - name: checkout fuzz/corpora submodule
       run: git submodule update --init --depth 1 fuzz/corpora
       working-directory: ./source
@@ -603,7 +644,7 @@ jobs:
       working-directory: ./build
     - name: save artifacts
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: "ci@out-of-readonly-source-and-install-macos-15"
         path: build/artifacts.tar.gz
@@ -614,9 +655,10 @@ jobs:
   external-tests-misc:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
+        persist-credentials: false
     - name: package installs
       run: |
         sudo apt-get update
@@ -631,7 +673,9 @@ jobs:
       run: ./config --strict-warnings --banner=Configured --debug no-afalgeng enable-rc5 enable-md2 enable-ssl3 enable-ssl3-method enable-weak-ssl-ciphers enable-zlib enable-ec_nistp_64_gcc_128 enable-external-tests no-fips && perl configdata.pm --dump
     - name: make
       run: make -s -j4
-    - uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
+    - uses: dtolnay/rust-toolchain@6d653acede28d24f02e3cd41383119e8b1b35921
+      with:
+        toolchain: stable
     - name: get cpu info
       run: |
         cat /proc/cpuinfo
@@ -655,9 +699,10 @@ jobs:
   external-tests-oqs-provider:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
+        persist-credentials: false
     - name: config
       run: ./config --strict-warnings --banner=Configured --debug enable-external-tests && perl configdata.pm --dump
     - name: make
@@ -676,7 +721,9 @@ jobs:
     - name: package installs
       run: |
         dnf install -y perl-FindBin perl-IPC-Cmd perl-File-Compare perl-File-Copy perl-Test-Simple perl-Test-Harness python3 make g++ perl git meson opensc expect kryoptic
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
     - name: checkout fuzz/corpora and pkcs11-provider submodule
       run: |
         git config --global --add safe.directory /__w/openssl/openssl
@@ -705,9 +752,10 @@ jobs:
         PYTHON:
           - 3.9
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
+        persist-credentials: false
     - name: package installs
       run: |
         sudo apt-get update
@@ -720,7 +768,7 @@ jobs:
       uses: actions/setup-python@v5.3.0
       with:
         python-version: ${{ matrix.PYTHON }}
-    - uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
+    - uses: dtolnay/rust-toolchain@6d653acede28d24f02e3cd41383119e8b1b35921
       with:
         toolchain: stable
     - name: get cpu info
