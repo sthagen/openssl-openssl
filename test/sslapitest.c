@@ -13811,6 +13811,68 @@ static int test_ssl_trace(void)
 }
 #endif
 
+/*
+ * Test that SSL_CTX_set1_groups() when called with a list where the first
+ * entry is unsupported, will send a key_share that uses the next usable entry.
+ */
+static int test_ssl_set_groups_unsupported_keyshare(int idx)
+{
+#if !defined(OPENSSL_NO_EC) || !defined(OPENSSL_NO_DH)
+    int testresult = 0;
+    SSL_CTX *sctx = NULL, *cctx = NULL;
+    SSL *serverssl = NULL, *clientssl = NULL;
+    int client_groups[] = {
+        NID_brainpoolP256r1tls13,
+        NID_sect163k1,
+        NID_secp384r1,
+        NID_ffdhe2048,
+    };
+
+    switch (idx) {
+    case 1:
+        client_groups[0] = NID_id_tc26_gost_3410_2012_512_paramSetC;
+        if (sizeof(unsigned long) == 4) {
+            return TEST_skip("SSL_CTX_set1_groups() is broken on 32-bit systems with TLS"
+                             " group IDs > 0x20, see https://github.com/openssl/openssl/issues/29196");
+        }
+        break;
+    }
+
+    if (!TEST_true(create_ssl_ctx_pair(libctx,
+                                       TLS_server_method(),
+                                       TLS_client_method(),
+                                       0, 0,
+                                       &sctx,
+                                       &cctx,
+                                       cert,
+                                       privkey)))
+        goto end;
+
+    if (!TEST_true(SSL_CTX_set1_groups(cctx,
+                                       client_groups,
+                                       OSSL_NELEM(client_groups))))
+        goto end;
+
+    if (!TEST_true(create_ssl_objects(sctx, cctx, &serverssl, &clientssl, NULL,
+                                      NULL)))
+        goto end;
+
+    if (!TEST_true(create_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE)))
+        goto end;
+
+    testresult = 1;
+ end:
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+
+    return testresult;
+#else /* !defined(OPENSSL_NO_EC) || !defined(OPENSSL_NO_DH) */
+    return TEST_skip("No EC and DH support.");
+#endif /* !defined(OPENSSL_NO_EC) || !defined(OPENSSL_NO_DH) */
+}
+
 OPT_TEST_DECLARE_USAGE("certfile privkeyfile srpvfile tmpfile provider config dhfile\n")
 
 int setup_tests(void)
@@ -14152,6 +14214,7 @@ int setup_tests(void)
     if (datadir != NULL)
         ADD_TEST(test_ssl_trace);
 #endif
+    ADD_ALL_TESTS(test_ssl_set_groups_unsupported_keyshare, 2);
     return 1;
 
  err:
