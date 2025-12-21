@@ -44,7 +44,6 @@ SSL_CTX_set_info_callback               ?	4_0_0	EXIST::FUNCTION:
 SSL_CTX_get_info_callback               ?	4_0_0	EXIST::FUNCTION:
 SSL_CTX_set_client_cert_cb              ?	4_0_0	EXIST::FUNCTION:
 SSL_CTX_get_client_cert_cb              ?	4_0_0	EXIST::FUNCTION:
-SSL_CTX_set_client_cert_engine          ?	4_0_0	EXIST::FUNCTION:ENGINE
 SSL_CTX_set_cookie_generate_cb          ?	4_0_0	EXIST::FUNCTION:
 SSL_CTX_set_cookie_verify_cb            ?	4_0_0	EXIST::FUNCTION:
 SSL_CTX_set_stateless_cookie_generate_cb ?	4_0_0	EXIST::FUNCTION:
@@ -607,3 +606,5 @@ SSL_set_quic_tls_cbs                    ?	4_0_0	EXIST::FUNCTION:
 SSL_set_quic_tls_transport_params       ?	4_0_0	EXIST::FUNCTION:
 SSL_set_quic_tls_early_data_enabled     ?	4_0_0	EXIST::FUNCTION:
 SSL_CTX_is_quic                         ?	4_0_0	EXIST::FUNCTION:
+OSSL_QUIC_method                        ?	4_0_0	EXIST::FUNCTION:QUIC
+SSL_listen_ex                           ?	4_0_0	EXIST::FUNCTION:

@@ -28,7 +28,7 @@ jobs:
             vcvars: C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat
           - arch: x86
             os: windows-2022
-            config: --strict-warnings no-fips enable-lms
+            config: no-fips enable-lms
             vcvars: C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars32.bat
     runs-on: ${{ matrix.platform.os }}
     steps:
@@ -72,7 +72,6 @@ jobs:
       run: |
         echo ${Env:OSSL_VERSION}
         reg.exe add HKLM\SOFTWARE\OpenSSL-${Env:OSSL_VERSION}-openssl /v OPENSSLDIR /t REG_EXPAND_SZ /d TESTOPENSSLDIR /reg:32
-        reg.exe add HKLM\SOFTWARE\OpenSSL-${Env:OSSL_VERSION}-openssl /v ENGINESDIR /t REG_EXPAND_SZ /d TESTOPENSSLDIR /reg:32
         reg.exe add HKLM\SOFTWARE\OpenSSL-${Env:OSSL_VERSION}-openssl /v MODULESDIR /t REG_EXPAND_SZ /d TESTOPENSSLDIR /reg:32
         reg.exe query HKLM\SOFTWARE\OpenSSL-${Env:OSSL_VERSION}-openssl /v OPENSSLDIR /reg:32
     - name: get cpu info

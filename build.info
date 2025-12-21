@@ -1,15 +1,12 @@
 # Note that some of these directories are filtered in Configure.  Look for
 # %skipdir there for further explanations.
 
-SUBDIRS=crypto ssl apps util tools fuzz providers doc
+SUBDIRS=crypto ssl apps util fuzz providers doc
 IF[{- !$disabled{tests} -}]
   SUBDIRS=test
 ENDIF
 IF[{- !$disabled{demos} -}]
   SUBDIRS=demos
-ENDIF
-IF[{- !$disabled{'deprecated-3.0'} -}]
-  SUBDIRS=engines
 ENDIF
 SUBDIRS=exporters
 
@@ -70,6 +67,7 @@ DEPEND[]=include/openssl/asn1.h \
          providers/implementations/kdfs/pkcs12kdf.inc \
          providers/implementations/kdfs/pvkkdf.inc \
          providers/implementations/kdfs/scrypt.inc \
+         providers/implementations/kdfs/snmpkdf.inc \
          providers/implementations/kdfs/sshkdf.inc \
          providers/implementations/kdfs/sskdf.inc \
          providers/implementations/kdfs/tls1_prf.inc \
@@ -117,6 +115,7 @@ DEPEND[]=include/openssl/asn1.h \
          providers/implementations/digests/blake2_prov.inc \
          providers/implementations/digests/digestcommon.inc \
          providers/implementations/digests/mdc2_prov.inc \
+         providers/implementations/digests/sha2_prov.inc \
          providers/implementations/digests/sha3_prov.inc \
          providers/implementations/include/prov/blake2_params.inc \
          providers/implementations/macs/cmac_prov.inc \
@@ -187,6 +186,7 @@ DEPEND[providers/implementations/asymciphers/rsa_enc.inc \
        providers/implementations/kdfs/pkcs12kdf.inc \
        providers/implementations/kdfs/pvkkdf.inc \
        providers/implementations/kdfs/scrypt.inc \
+       providers/implementations/kdfs/snmpkdf.inc \
        providers/implementations/kdfs/sshkdf.inc \
        providers/implementations/kdfs/sskdf.inc \
        providers/implementations/kdfs/tls1_prf.inc \
@@ -234,6 +234,7 @@ DEPEND[providers/implementations/asymciphers/rsa_enc.inc \
        providers/implementations/digests/blake2_prov.inc \
        providers/implementations/digests/digestcommon.inc \
        providers/implementations/digests/mdc2_prov.inc \
+       providers/implementations/digests/sha2_prov.inc \
        providers/implementations/digests/sha3_prov.inc \
        providers/implementations/include/prov/blake2_params.inc \
        providers/implementations/macs/cmac_prov.inc \
@@ -294,6 +295,8 @@ GENERATE[providers/implementations/kdfs/pvkkdf.inc]=\
     providers/implementations/kdfs/pvkkdf.inc.in
 GENERATE[providers/implementations/kdfs/scrypt.inc]=\
     providers/implementations/kdfs/scrypt.inc.in
+GENERATE[providers/implementations/kdfs/snmpkdf.inc]=\
+    providers/implementations/kdfs/snmpkdf.inc.in
 GENERATE[providers/implementations/kdfs/sshkdf.inc]=\
     providers/implementations/kdfs/sshkdf.inc.in
 GENERATE[providers/implementations/kdfs/sskdf.inc]=\
@@ -388,6 +391,8 @@ GENERATE[providers/implementations/digests/digestcommon.inc]=\
     providers/implementations/digests/digestcommon.inc.in
 GENERATE[providers/implementations/digests/mdc2_prov.inc]=\
     providers/implementations/digests/mdc2_prov.inc.in
+GENERATE[providers/implementations/digests/sha2_prov.inc]=\
+    providers/implementations/digests/sha2_prov.inc.in
 GENERATE[providers/implementations/digests/sha3_prov.inc]=\
     providers/implementations/digests/sha3_prov.inc.in
 GENERATE[providers/implementations/include/prov/blake2_params.inc]=\
@@ -463,7 +468,7 @@ DEPEND[openssl.pc]=libcrypto.pc libssl.pc
 GENERATE[builddata.pm]=util/mkinstallvars.pl \
     PREFIX=. BINDIR=apps APPLINKDIR=ms \
     LIBDIR= INCLUDEDIR=include "INCLUDEDIR=$(SRCDIR)/include" \
-    ENGINESDIR=engines MODULESDIR=providers \
+    MODULESDIR=providers \
     libdir= CMAKECONFIGDIR= PKGCONFIGDIR= \
     "VERSION=$(VERSION)" "LDLIBS=$(LIB_EX_LIBS)"
 

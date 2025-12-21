@@ -32,12 +32,34 @@ OpenSSL 4.0
 
 ### Changes between 3.6 and 4.0 [xx XXX xxxx]
 
+ * The script tool `c_rehash` was removed. Use `openssl rehash` instead.
+
+   *Norbert Pocs*
+
+ * libcrypto no longer cleans up globally allocated data on process exit. This data
+   is cleaned up automatically by the OS instead. Some memory leak detectors
+   may report spurious allocated and reachable memory at application exit. To
+   avoid such spurious leak detection reports the application may call
+   OPENSSL_cleanup() before the process exits.
+
+   *Alexandr Nedvedicky*
+
+ * The crypto-mdebug-backtrace configuration option has been entirely removed.
+   The option has been a no-op since 1.0.2.
+
+   *Neil Horman*
+
  * Removed extra leading '00:' when printing key data such as an RSA modulus
    in hexadecimal format where the first (most significant) byte is >= 0x80.
    This had been added artificially to resemble ASN.1 DER encoding internals.
    Fixing this also makes sure that key output always has the expected length.
 
    *David von Oheimb*
+
+ * Standardized the width of hexadecimal dumps to 24 bytes for signatures (to
+   stay within the 80 characters limit) and 16 bytes for everything else.
+
+   *Beat Bolli*
 
  * The deprecated function ASN1_STRING_data has been removed.
 
@@ -65,16 +87,31 @@ OpenSSL 4.0
 
    *Daniel Kubec*
 
- * Added `OSSL_[EN|DE]CODER_CTX_[set|get]_finalized()` functions.
-   `OSSL_[EN|DE]CODER_CTX_set_*()` and `OSSL_[EN|DE]CODER_CTX_add_*()`
-   functions return 0 if the context is already finalised.
-
-   *Igor Ustinov*
-
  * Reject CRLs with a Certificate Issuer extension in a certificate revocation
    entry unless the Indirect flag is set to TRUE in the IDP extension of the CRL.
 
    *Daniel Kubec*
+
+ * ENGINE support was removed. The `no-engine` build option and the
+   `OPENSSL_NO_ENGINE` macro is always present.
+   Applications using `ENGINE_` functions unguarded with `OPENSSL_NO_ENGINE`
+   can be built by defining a macro `OPENSSL_ENGINE_STUBS`, however all these
+   functions will return error when called. Provider API should be used to
+   replace ENGINEs functionality.
+
+   *Milan Broz*, *Neil Horman*, *Norbert Pocs*
+
+ * Added SNMP KDF (EVP_KDF_SNMPKDF) to EVP_KDF
+
+   *Barry Fussell and Helen Zhang*
+
+ * Added `EVP_MD_CTX_serialize()`/`EVP_MD_CTX_deserialize()` functions. These
+   functions allow to export the internal state of a Digest and re-import it
+   later to continue a computation from a specific checkpoint.  Only SHA-2 and
+   the SHA-3 family (Keccak, SHAKE, SHA-3) of functions currently support this
+   functionality
+
+   *Simo Sorce*
 
 OpenSSL 3.6
 -----------
