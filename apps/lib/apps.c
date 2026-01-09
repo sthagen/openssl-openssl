@@ -648,16 +648,19 @@ void *app_malloc_array(size_t n, size_t sz, const char *what)
     return vp;
 }
 
-char *next_item(char *opt) /* in list separated by comma and/or space */
+char *next_item(char *opt) /* in list separated by comma and/or spaces */
 {
     /* advance to separator (comma or whitespace), if any */
-    while (*opt != ',' && !isspace(_UC(*opt)) && *opt != '\0')
+    while (*opt != '\0' && *opt != ',' && !isspace(_UC(*opt)))
         opt++;
     if (*opt != '\0') {
+        int found_comma = *opt == ',';
+
         /* terminate current item */
         *opt++ = '\0';
-        /* skip over any whitespace after separator */
-        while (isspace(_UC(*opt)))
+        /* skip over any further separators, but only one comma */
+        while ((!found_comma && (found_comma = (*opt == ',')))
+            || isspace(_UC(*opt)))
             opt++;
     }
     return *opt == '\0' ? NULL : opt; /* NULL indicates end of input */
@@ -726,9 +729,10 @@ int load_cert_certs(const char *uri,
     return ret;
 }
 
-STACK_OF(X509) *load_certs_multifile(char *files, const char *pass,
+STACK_OF(X509) *load_certs_multifile(char *files, const char *source,
     const char *desc, X509_VERIFY_PARAM *vpm)
 {
+    char *pass = get_passwd(source, desc);
     STACK_OF(X509) *certs = NULL;
     STACK_OF(X509) *result = sk_X509_new_null();
 
@@ -749,11 +753,13 @@ STACK_OF(X509) *load_certs_multifile(char *files, const char *pass,
         certs = NULL;
         files = next;
     }
+    clear_free(pass);
     return result;
 
 oom:
     BIO_printf(bio_err, "out of memory\n");
 err:
+    clear_free(pass);
     OSSL_STACK_OF_X509_free(certs);
     OSSL_STACK_OF_X509_free(result);
     return NULL;
@@ -781,9 +787,10 @@ static X509_STORE *sk_X509_to_store(X509_STORE *store /* may be NULL */,
  * Create cert store structure with certificates read from given file(s).
  * Returns pointer to created X509_STORE on success, NULL on error.
  */
-X509_STORE *load_certstore(char *input, const char *pass, const char *desc,
+X509_STORE *load_certstore(char *input, const char *source, const char *desc,
     X509_VERIFY_PARAM *vpm)
 {
+    char *pass = get_passwd(source, desc);
     X509_STORE *store = NULL;
     STACK_OF(X509) *certs = NULL;
 
@@ -793,15 +800,19 @@ X509_STORE *load_certstore(char *input, const char *pass, const char *desc,
 
         if (!load_cert_certs(input, NULL, &certs, 1, pass, desc, vpm)) {
             X509_STORE_free(store);
-            return NULL;
+            store = NULL;
+            goto end;
         }
         ok = (store = sk_X509_to_store(store, certs)) != NULL;
         OSSL_STACK_OF_X509_free(certs);
         certs = NULL;
         if (!ok)
-            return NULL;
+            goto end;
         input = next;
     }
+
+end:
+    clear_free(pass);
     return store;
 }
 
@@ -887,7 +898,7 @@ int load_key_certs_crls(const char *uri, int format, int maybe_stdin,
     X509_CRL **pcrl, STACK_OF(X509_CRL) **pcrls,
     EVP_SKEY **pskey)
 {
-    PW_CB_DATA uidata;
+    PW_CB_DATA uidata = { pass, uri };
     OSSL_STORE_CTX *ctx = NULL;
     OSSL_LIB_CTX *libctx = app_get0_libctx();
     const char *propq = app_get0_propq();
@@ -946,9 +957,6 @@ int load_key_certs_crls(const char *uri, int format, int maybe_stdin,
          */
         SET_EXPECT(OSSL_STORE_INFO_CRL);
     }
-
-    uidata.password = pass;
-    uidata.prompt_info = uri;
 
     if ((input_type = format2string(format)) != NULL) {
         itp[0] = OSSL_PARAM_construct_utf8_string(OSSL_STORE_PARAM_INPUT_TYPE,
@@ -1097,7 +1105,7 @@ end:
             pskey = NULL;
         failed = FAIL_NAME;
         if (failed != NULL && !quiet)
-            BIO_printf(bio_err, "Could not find");
+            BIO_printf(bio_err, "Could not find or decode");
     }
 
     if (failed != NULL && !quiet) {
