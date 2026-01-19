@@ -112,6 +112,7 @@ providers/implementations/kdfs/sshkdf.inc
 providers/implementations/kdfs/sskdf.inc
 providers/implementations/kdfs/tls1_prf.inc
 providers/implementations/kdfs/x942kdf.inc
+providers/implementations/kdfs/x963kdf.inc
 providers/implementations/kem/ec_kem.inc
 providers/implementations/kem/ecx_kem.inc
 providers/implementations/kem/ml_kem_kem.inc
@@ -213,7 +214,6 @@ providers/implementations/rands/test_rng.inc
 /test/evp_pkey_ctx_new_from_name
 /test/threadstest_fips
 /test/timing_load_creds
-/test/test_base64_simdutf
 
 # Demo applications
 /demos/bio/client-arg
