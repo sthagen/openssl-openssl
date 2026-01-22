@@ -171,18 +171,18 @@ my @gcc_devteam_warn = qw(
     -Wextra
     -Wno-unused-parameter
     -Wno-missing-field-initializers
-    -Wno-unterminated-string-initialization
     -Wswitch
     -Wsign-compare
     -Wshadow
     -Wformat
-    -Wno-type-limits
+    -Wtype-limits
     -Wundef
     -Werror
     -Wmissing-prototypes
     -Wstrict-prototypes
     -Wdisabled-optimization
     -Wpointer-arith
+    -Wfloat-conversion
 );
 
 # These are used in addition to $gcc_devteam_warn when the compiler is clang.
@@ -628,6 +628,7 @@ our %disabled = ( # "what"         => "comment"
                   "sctp"                => "default",
                   "sslkeylog"           => "default",
                   "tfo"                 => "default",
+                  "tls-deprecated-ec"   => "default",
                   "trace"               => "default",
                   "ubsan"               => "default",
                   "unit-test"           => "default",

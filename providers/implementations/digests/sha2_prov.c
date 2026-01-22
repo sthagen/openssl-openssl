@@ -30,6 +30,10 @@
 
 #define SHA2_FLAGS PROV_DIGEST_FLAG_ALGID_ABSENT
 
+extern int SHA1_Update_thunk(void *ctx, const unsigned char *data, size_t sz);
+extern int SHA256_Update_thunk(void *ctx, const unsigned char *data, size_t sz);
+extern int SHA512_Update_thunk(void *ctx, const unsigned char *data, size_t sz);
+
 /* Special set_params method for SSL3 */
 static int sha1_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
@@ -279,52 +283,52 @@ static int SHA512_Deserialize(SHA512_CTX *c, const unsigned char *in,
 /* ossl_sha1_functions */
 IMPLEMENT_digest_functions_with_settable_ctx(
     sha1, SHA_CTX, SHA_CBLOCK, SHA_DIGEST_LENGTH, SHA2_FLAGS,
-    SHA1_Init, SHA1_Update, SHA1_Final,
+    SHA1_Init, SHA1_Update_thunk, SHA1_Final,
     sha1_settable_ctx_params, sha1_set_ctx_params)
 
 /* ossl_sha224_functions */
 IMPLEMENT_digest_functions_with_serialize(sha224, SHA256_CTX,
     SHA256_CBLOCK, SHA224_DIGEST_LENGTH,
     SHA2_FLAGS, SHA224_Init,
-    SHA224_Update, SHA224_Final,
+    SHA256_Update_thunk, SHA224_Final,
     SHA256_Serialize, SHA256_Deserialize)
 
 /* ossl_sha256_functions */
 IMPLEMENT_digest_functions_with_serialize(sha256, SHA256_CTX,
     SHA256_CBLOCK, SHA256_DIGEST_LENGTH,
     SHA2_FLAGS, SHA256_Init,
-    SHA256_Update, SHA256_Final,
+    SHA256_Update_thunk, SHA256_Final,
     SHA256_Serialize, SHA256_Deserialize)
 /* ossl_sha256_192_internal_functions */
 IMPLEMENT_digest_functions_with_serialize(sha256_192_internal, SHA256_CTX,
     SHA256_CBLOCK, SHA256_192_DIGEST_LENGTH,
     SHA2_FLAGS, ossl_sha256_192_init,
-    SHA256_Update, SHA256_Final,
+    SHA256_Update_thunk, SHA256_Final,
     SHA256_Serialize, SHA256_Deserialize)
 /* ossl_sha384_functions */
 IMPLEMENT_digest_functions_with_serialize(sha384, SHA512_CTX,
     SHA512_CBLOCK, SHA384_DIGEST_LENGTH,
     SHA2_FLAGS, SHA384_Init,
-    SHA384_Update, SHA384_Final,
+    SHA512_Update_thunk, SHA384_Final,
     SHA512_Serialize, SHA512_Deserialize)
 
 /* ossl_sha512_functions */
 IMPLEMENT_digest_functions_with_serialize(sha512, SHA512_CTX,
     SHA512_CBLOCK, SHA512_DIGEST_LENGTH,
     SHA2_FLAGS, SHA512_Init,
-    SHA512_Update, SHA512_Final,
+    SHA512_Update_thunk, SHA512_Final,
     SHA512_Serialize, SHA512_Deserialize)
 
 /* ossl_sha512_224_functions */
 IMPLEMENT_digest_functions_with_serialize(sha512_224, SHA512_CTX,
     SHA512_CBLOCK, SHA224_DIGEST_LENGTH,
     SHA2_FLAGS, sha512_224_init,
-    SHA512_Update, SHA512_Final,
+    SHA512_Update_thunk, SHA512_Final,
     SHA512_Serialize, SHA512_Deserialize)
 
 /* ossl_sha512_256_functions */
 IMPLEMENT_digest_functions_with_serialize(sha512_256, SHA512_CTX,
     SHA512_CBLOCK, SHA256_DIGEST_LENGTH,
     SHA2_FLAGS, sha512_256_init,
-    SHA512_Update, SHA512_Final,
+    SHA512_Update_thunk, SHA512_Final,
     SHA512_Serialize, SHA512_Deserialize)

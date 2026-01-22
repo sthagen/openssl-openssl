@@ -37,6 +37,12 @@ OpenSSL 4.0
 
    *Shane Lontis*
 
+ * Support of deprecated elliptic curves in TLS according to RFC 8422 was
+   disabled at compile-time by default. To enable it, use the
+   `enable-tls-deprecated-ec` compilation option.
+
+   *Dmitry Belyavskiy*
+
  * Remove support for an SSLv2 Client Hello. When a client wanted to support
    both SSLv2 and higher versions like SSLv3 or even TLSv1, it needed to
    send an SSLv2 Client Hello. SSLv2 support itself was removed in version
@@ -109,9 +115,9 @@ OpenSSL 4.0
 
    *David von Oheimb*
 
- * Drop darwin-i386(-cc) targets from Configurations.
+ * Drop darwin-i386{,-cc} and darwin-ppc{,64}{,-cc} targets from Configurations.
 
-   *Daniel Kubec*
+   *Daniel Kubec and Eugene Syromiatnikov*
 
  * Added `-hmac-env` and `-hmac-stdin` options to openssl-dgst.
 
