@@ -124,14 +124,17 @@ static const OSSL_ALGORITHM deflt_digests[] = {
      * KECCAK-KMAC-128 and KECCAK-KMAC-256 as hashes are mostly useful for
      * the KMAC-128 and KMAC-256.
      */
-    { PROV_NAMES_KECCAK_KMAC_128, "provider=default",
-        ossl_keccak_kmac_128_functions },
-    { PROV_NAMES_KECCAK_KMAC_256, "provider=default",
-        ossl_keccak_kmac_256_functions },
+    { PROV_NAMES_CSHAKE_KECCAK_128, "provider=default",
+        ossl_cshake_keccak_128_functions },
+    { PROV_NAMES_CSHAKE_KECCAK_256, "provider=default",
+        ossl_cshake_keccak_256_functions },
 
     /* Our primary name:NIST name */
     { PROV_NAMES_SHAKE_128, "provider=default", ossl_shake_128_functions },
     { PROV_NAMES_SHAKE_256, "provider=default", ossl_shake_256_functions },
+
+    { PROV_NAMES_CSHAKE_128, "provider=default", ossl_cshake_128_functions },
+    { PROV_NAMES_CSHAKE_256, "provider=default", ossl_cshake_256_functions },
 
 #ifndef OPENSSL_NO_BLAKE2
     /*
@@ -374,6 +377,9 @@ static const OSSL_ALGORITHM deflt_kdfs[] = {
 #endif
 #ifndef OPENSSL_NO_SNMPKDF
     { PROV_NAMES_SNMPKDF, "provider=default", ossl_kdf_snmpkdf_functions },
+#endif
+#ifndef OPENSSL_NO_SRTPKDF
+    { PROV_NAMES_SRTPKDF, "provider=default", ossl_kdf_srtpkdf_functions },
 #endif
 #ifndef OPENSSL_NO_SSHKDF
     { PROV_NAMES_SSHKDF, "provider=default", ossl_kdf_sshkdf_functions },
