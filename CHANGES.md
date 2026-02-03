@@ -114,7 +114,11 @@ OpenSSL 4.0
 
    *Bob Beck*
 
- * various function parameters have been constified,
+ * Remove needless 'const' from scalar types in the public API, mostly for AES and Camellia
+
+   *David von Oheimb*
+
+ * Various function parameters have been constified,
    in particular for X509-related functions.
 
    *David von Oheimb*
@@ -3595,7 +3599,7 @@ breaking changes, and mappings for the large list of deprecated functions.
 
    *Richard Levitte*
 
- * Fixed an overflow bug in the x64_64 Montgomery squaring procedure
+ * Fixed an overflow bug in the x86_64 Montgomery squaring procedure
    used in exponentiation with 512-bit moduli. No EC algorithms are
    affected. Analysis suggests that attacks against 2-prime RSA1024,
    3-prime RSA1536, and DSA1024 as a result of this defect would be very
