@@ -625,7 +625,8 @@ CMS_SignerInfo *CMS_add1_signer(CMS_ContentInfo *cms,
     if (ossl_cms_adjust_md(pk, &md, flags) != 1)
         goto err;
 
-    X509_ALGOR_set_md(si->digestAlgorithm, md);
+    if (!X509_ALGOR_set_md(si->digestAlgorithm, md))
+        goto err;
 
     /* See if digest is present in digestAlgorithms */
     for (i = 0; i < sk_X509_ALGOR_num(sd->digestAlgorithms); i++) {
@@ -639,12 +640,9 @@ CMS_SignerInfo *CMS_add1_signer(CMS_ContentInfo *cms,
             break;
     }
     if (i == sk_X509_ALGOR_num(sd->digestAlgorithms)) {
-        if ((alg = X509_ALGOR_new()) == NULL) {
-            ERR_raise(ERR_LIB_CMS, ERR_R_ASN1_LIB);
-            goto err;
-        }
-        X509_ALGOR_set_md(alg, md);
-        if (!sk_X509_ALGOR_push(sd->digestAlgorithms, alg)) {
+        if ((alg = X509_ALGOR_new()) == NULL
+            || !X509_ALGOR_set_md(alg, md)
+            || !sk_X509_ALGOR_push(sd->digestAlgorithms, alg)) {
             X509_ALGOR_free(alg);
             ERR_raise(ERR_LIB_CMS, ERR_R_CRYPTO_LIB);
             goto err;
@@ -873,7 +871,7 @@ int CMS_SignerInfo_cert_cmp(CMS_SignerInfo *si, X509 *cert)
     return ossl_cms_SignerIdentifier_cert_cmp(si->sid, cert);
 }
 
-int CMS_set1_signers_certs(CMS_ContentInfo *cms, STACK_OF(X509) *scerts,
+int CMS_set1_signers_certs(CMS_ContentInfo *cms, const STACK_OF(X509) *scerts,
     unsigned int flags)
 {
     CMS_SignedData *sd;
@@ -1491,8 +1489,9 @@ err:
 }
 
 BIO *CMS_SignedData_verify(CMS_SignedData *sd, BIO *detached_data,
-    STACK_OF(X509) *scerts, X509_STORE *store,
-    STACK_OF(X509) *extra, STACK_OF(X509_CRL) *crls,
+    const STACK_OF(X509) *scerts, X509_STORE *store,
+    const STACK_OF(X509) *extra,
+    const STACK_OF(X509_CRL) *crls,
     unsigned int flags,
     OSSL_LIB_CTX *libctx, const char *propq)
 {
