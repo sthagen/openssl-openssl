@@ -32,6 +32,16 @@ OpenSSL 4.0
 
 ### Changes between 3.6 and 4.0 [xx XXX xxxx]
 
+ * OPENSSL_cleanup() now runs in a global destructor, or not at all by default.
+
+   OpenSSL_cleanup() will no longer by default free global objects when run from
+   an application. Instead it sets a flag for a global destructor to do this after
+   the process exits, and after subordinate libraries using OpenSSL have run their
+   destructors. If destructor support is not available, OpenSSL_cleanup() will do
+   nothing, leaving the global objects to be cleaned up by the Operating System.
+
+   *Bob Beck*
+
  * Added CSHAKE as per [SP 800-185]
 
    *Shane Lontis*
@@ -85,7 +95,7 @@ OpenSSL 4.0
    is cleaned up automatically by the OS instead. Some memory leak detectors
    may report spurious allocated and reachable memory at application exit. To
    avoid such spurious leak detection reports the application may call
-   OPENSSL_cleanup() before the process exits.
+   `OPENSSL_cleanup()` before the process exits.
 
    *Alexandr Nedvedicky*
 
@@ -106,7 +116,7 @@ OpenSSL 4.0
 
    *Beat Bolli*
 
- * The deprecated function ASN1_STRING_data has been removed.
+ * The deprecated function `ASN1_STRING_data` has been removed.
 
    *Bob Beck*
 
@@ -186,6 +196,11 @@ OpenSSL 4.0
  * Added SRTP KDF (EVP_KDF_SRTPKDF) to EVP_KDF
 
    *Barry Fussell and Helen Zhang*
+
+ * Implemented RFC7919, adding support for negotiated FFDHE key exchange
+   in TLS 1.2.
+
+   *Joachim Vandersmissen* (with additional support from *Viktor Dukhovni*)
 
 OpenSSL 3.6
 -----------
