@@ -56,6 +56,10 @@ OpenSSL 4.0
 
    *Shane Lontis*
 
+ * OPENSSL_atexit() was removed.
+
+   *Bob Beck*
+
  * Support of deprecated elliptic curves in TLS according to RFC 8422 was
    disabled at compile-time by default. To enable it, use the
    `enable-tls-deprecated-ec` compilation option.
@@ -125,7 +129,7 @@ OpenSSL 4.0
 
    *Bob Beck*
 
-* The ASN1_STRING_FLAG_X509_TIME define has been removed.
+ * The ASN1_STRING_FLAG_X509_TIME define has been removed.
 
    *Bob Beck*
 
@@ -138,7 +142,7 @@ OpenSSL 4.0
 
    *David von Oheimb*
 
-* `X509_ALGOR_set_md()` now returns a value indicating success or failure.
+ * `X509_ALGOR_set_md()` now returns a value indicating success or failure.
 
    *David von Oheimb*
 
