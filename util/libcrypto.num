@@ -3724,9 +3724,6 @@ ERR_add_error_mem_bio                   ?	4_0_0	EXIST::FUNCTION:
 ERR_load_strings                        ?	4_0_0	EXIST::FUNCTION:
 ERR_load_strings_const                  ?	4_0_0	EXIST::FUNCTION:
 ERR_unload_strings                      ?	4_0_0	EXIST::FUNCTION:
-ERR_remove_thread_state                 ?	4_0_0	EXIST::FUNCTION:DEPRECATEDIN_1_1_0
-ERR_remove_state                        ?	4_0_0	EXIST::FUNCTION:DEPRECATEDIN_1_0_0
-ERR_get_state                           ?	4_0_0	EXIST::FUNCTION:DEPRECATEDIN_3_0
 ERR_get_next_error_library              ?	4_0_0	EXIST::FUNCTION:
 ERR_set_mark                            ?	4_0_0	EXIST::FUNCTION:
 ERR_pop_to_mark                         ?	4_0_0	EXIST::FUNCTION:
@@ -5703,3 +5700,4 @@ EVP_MD_CTX_serialize                    ?	4_0_0	EXIST::FUNCTION:
 EVP_MD_CTX_deserialize                  ?	4_0_0	EXIST::FUNCTION:
 OSSL_ENCODER_CTX_ctrl_string            ?	4_0_0	EXIST::FUNCTION:
 OPENSSL_sk_set_cmp_thunks               ?	4_0_0	EXIST::FUNCTION:
+ASN1_BIT_STRING_set1                    ?	4_0_0	EXIST::FUNCTION:
