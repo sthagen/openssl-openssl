@@ -172,7 +172,7 @@ static int is_power_of_two(uint32_t x, uint32_t *n)
 
 static int kdf_srtpkdf_check_key(KDF_SRTPKDF *ctx)
 {
-    const EVP_CIPHER *cipher = cipher = ossl_prov_cipher_cipher(&ctx->cipher);
+    const EVP_CIPHER *cipher = ossl_prov_cipher_cipher(&ctx->cipher);
 
     if (cipher != NULL) {
         if (ctx->key == NULL) {
@@ -192,10 +192,12 @@ static int kdf_srtpkdf_derive(void *vctx, unsigned char *key, size_t keylen,
 {
     KDF_SRTPKDF *ctx = (KDF_SRTPKDF *)vctx;
     const EVP_CIPHER *cipher;
-    OSSL_LIB_CTX *libctx = PROV_LIBCTX_OF(ctx->provctx);
+    OSSL_LIB_CTX *libctx;
 
     if (!ossl_prov_is_running() || !kdf_srtpkdf_set_ctx_params(ctx, params))
         return 0;
+
+    libctx = PROV_LIBCTX_OF(ctx->provctx);
 
     cipher = ossl_prov_cipher_cipher(&ctx->cipher);
     if (cipher == NULL) {

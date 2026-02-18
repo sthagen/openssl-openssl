@@ -32,6 +32,14 @@ OpenSSL 4.0
 
 ### Changes between 3.6 and 4.0 [xx XXX xxxx]
 
+ * The `OSSL_ESS_check_signing_certs_ex()` call has been added.
+
+   This api call is an extention to `OSSL_ESS_check_signing_certs()` to add
+   the ability to specify a library context and property query when fetching
+   algorithms to validate a given certificate.
+
+   *Neil Horman*
+
  * FIPS self tests can now be deferred and run as needed when installing
    the fips module with the -defer_tests option.
 
@@ -73,6 +81,12 @@ OpenSSL 4.0
 
    *Neil Horman*
 
+ * SSL_get_error() no longer depends on the state of the error stack,
+   so it is no longer necessary to empty the error queue before the
+   TLS/SSL I/O operations.
+
+   *Igor Ustinov*
+
  * Added configure options to disable KDF algorithms for
    hmac-drbg-kdf, kbkdf, krb5kdf, pvkkdf, snmpkdf, sskdf, sshkdf, x942kdf and x963kdf.
 
@@ -81,6 +95,14 @@ OpenSSL 4.0
  * OPENSSL_atexit() was removed.
 
    *Bob Beck*
+
+ * Added AKID verification checks when X509_V_FLAG_X509_STRICT is set.
+   Raise X509_V_ERR_MISSING_AUTHORITY_KEY_IDENTIFIER when AKID is not present.
+   Raise X509_V_ERR_EMPTY_AUTHORITY_KEY_IDENTIFIER when AKID has no attributes.
+   Raise X509_V_ERR_AKID_ISSUER_SERIAL_NOT_PAIRED when authorityCertIssuer and
+   authorityCertSerialNumber fields are not paired.
+
+   *Daniel Kubec*
 
  * Support of deprecated elliptic curves in TLS according to RFC 8422 was
    disabled at compile-time by default. To enable it, use the
@@ -129,6 +151,10 @@ OpenSSL 4.0
    `OPENSSL_cleanup()` before the process exits.
 
    *Alexandr Nedvedicky*
+
+ * The X509_verify function now takes a const X509 * argument
+
+   * Bob Beck *
 
  * The crypto-mdebug-backtrace configuration option has been entirely removed.
    The option has been a no-op since 1.0.2.
@@ -202,6 +228,12 @@ OpenSSL 4.0
    entry unless the Indirect flag is set to TRUE in the IDP extension of the CRL.
 
    *Daniel Kubec*
+
+ * Rather than being documented as "should be considered deprecated",
+   X509_NAME_get_text_by_NID, and X509_NAME_get_text_by_OBJ are now
+   actually deprecated, and documented as such.
+
+   * Bob Beck *
 
  * ENGINE support was removed. The `no-engine` build option and the
    `OPENSSL_NO_ENGINE` macro is always present.
