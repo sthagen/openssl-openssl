@@ -32,6 +32,11 @@ OpenSSL 4.0
 
 ### Changes between 3.6 and 4.0 [xx XXX xxxx]
 
+ * Added support for TLS 1.3 SM cipher suites `TLS_SM4_GCM_SM3` and `TLS_SM4_CCM_SM3`
+   from [RFC8998].
+
+   *Milan Broz*
+
  * The `OSSL_ESS_check_signing_certs_ex()` call has been added.
 
    This api call is an extention to `OSSL_ESS_check_signing_certs()` to add
@@ -269,6 +274,10 @@ OpenSSL 4.0
  * Added SRTP KDF (EVP_KDF_SRTPKDF) to EVP_KDF
 
    *Barry Fussell and Helen Zhang*
+
+ * The deprecated "msie-hack" option was removed from the "openssl ca" command.
+
+   *Bob Beck*
 
  * Implemented RFC7919, adding support for negotiated FFDHE key exchange
    in TLS 1.2.

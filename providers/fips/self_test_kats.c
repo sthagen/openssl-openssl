@@ -1131,10 +1131,11 @@ static int SELF_TEST_kats_single(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx,
         ret = 0;
         break;
     }
-    if (ret)
-        st_all_tests[id].state = SELF_TEST_STATE_PASSED;
-    else {
-        st_all_tests[id].state = SELF_TEST_STATE_FAILED;
+    if (ret) {
+        if (!ossl_set_self_test_state(id, SELF_TEST_STATE_PASSED))
+            return 0;
+    } else {
+        ossl_set_self_test_state(id, SELF_TEST_STATE_FAILED);
         ERR_raise(ERR_LIB_PROV, PROV_R_SELF_TEST_KAT_FAILURE);
     }
 
@@ -1172,6 +1173,10 @@ int SELF_TEST_kats_execute(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx,
     /*
      * Dependency chains may cause a test to be referenced multiple times,
      * immediately return if not in initial state.
+     * NOTE: In this function state can be read w/o atomics because this
+     * function is always executed under lock. However we need to use
+     * atomics to set the state so that other threads reading state always
+     * read a correct value.
      */
     switch (st_all_tests[id].state) {
     case SELF_TEST_STATE_INIT:
@@ -1201,7 +1206,8 @@ int SELF_TEST_kats_execute(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx,
     }
 
     /* Mark test as in progress */
-    st_all_tests[id].state = SELF_TEST_STATE_IN_PROGRESS;
+    if (!ossl_set_self_test_state(id, SELF_TEST_STATE_IN_PROGRESS))
+        return 0;
 
     /* check if there are dependent tests to run */
     if (st_all_tests[id].depends_on) {
@@ -1221,7 +1227,7 @@ int SELF_TEST_kats_execute(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx,
         break;
     default:
         /* ensure all states are set to failed if we get here */
-        st_all_tests[id].state = SELF_TEST_STATE_FAILED;
+        ossl_set_self_test_state(id, SELF_TEST_STATE_FAILED);
         ret = 0;
     }
 
@@ -1231,20 +1237,22 @@ int SELF_TEST_kats_execute(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx,
      * mark it as passed.
      */
     if (st_all_tests[id].state == SELF_TEST_STATE_PASSED)
-        for (int i = 0; i < ST_ID_MAX; i++)
+        for (int i = 0; i < ST_ID_MAX; i++) {
             if (st_all_tests[i].state == SELF_TEST_STATE_IMPLICIT
                 && st_all_tests[i].depends_on != NULL)
                 if (!(ret = SELF_TEST_kat_deps(st, libctx, &st_all_tests[i])))
                     break;
+        }
 
 done:
     /*
      * now mark (pass or fail) all the algorithm tests that have been marked
      * by this test implicitly tested.
      */
-    for (int i = 0; i < ST_ID_MAX; i++)
+    for (int i = 0; i < ST_ID_MAX; i++) {
         if (st_all_tests[i].state == SELF_TEST_STATE_IMPLICIT)
-            st_all_tests[i].state = st_all_tests[id].state;
+            ossl_set_self_test_state(i, st_all_tests[id].state);
+    }
 
     if (switch_rand) {
         RAND_set0_private(libctx, saved_rand);
@@ -1277,10 +1285,11 @@ int SELF_TEST_kats(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
         return 0;
     }
 
-    for (i = 0; i < ST_ID_MAX; i++)
+    for (i = 0; i < ST_ID_MAX; i++) {
         if (st_all_tests[i].state == SELF_TEST_STATE_INIT)
             if (!SELF_TEST_kats_execute(st, libctx, i, 0))
                 ret = 0;
+    }
 
     RAND_set0_private(libctx, saved_rand);
     /* The above call will cause main_rand to be freed */
@@ -1290,10 +1299,15 @@ int SELF_TEST_kats(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 
 int ossl_self_test_in_progress(self_test_id_t id)
 {
+    enum st_test_state state;
+
     if (id >= ST_ID_MAX)
         return 0;
 
-    if (st_all_tests[id].state == SELF_TEST_STATE_IN_PROGRESS)
+    if (!ossl_get_self_test_state(id, &state))
+        return 0;
+
+    if (state == SELF_TEST_STATE_IN_PROGRESS)
         return 1;
     return 0;
 }
