@@ -99,7 +99,7 @@ static int null_callback(int ok, X509_STORE_CTX *e)
  * to match issuer and subject names (i.e., the cert being self-issued) and any
  * present authority key identifier to match the subject key identifier, etc.
  */
-int X509_self_signed(X509 *cert, int verify_signature)
+int X509_self_signed(const X509 *cert, int verify_signature)
 {
     EVP_PKEY *pkey;
 
@@ -107,7 +107,7 @@ int X509_self_signed(X509 *cert, int verify_signature)
         ERR_raise(ERR_LIB_X509, X509_R_UNABLE_TO_GET_CERTS_PUBLIC_KEY);
         return -1;
     }
-    if (!ossl_x509v3_cache_extensions(cert))
+    if (!ossl_x509v3_cache_extensions((X509 *)cert))
         return -1;
     if ((cert->ex_flags & EXFLAG_SS) == 0)
         return 0;
@@ -2376,7 +2376,7 @@ int X509_cmp_current_time(const ASN1_TIME *ctm)
 }
 
 /* returns 0 on error, otherwise 1 if ctm > cmp_time, else -1 */
-int X509_cmp_time(const ASN1_TIME *ctm, time_t *cmp_time)
+int X509_cmp_time(const ASN1_TIME *ctm, const time_t *cmp_time)
 {
     int64_t cert_time, posix_time = cmp_time == NULL ? (int64_t)time(NULL) : (int64_t)*cmp_time;
 
@@ -2446,13 +2446,13 @@ ASN1_TIME *X509_gmtime_adj(ASN1_TIME *s, long adj)
     return X509_time_adj(s, adj, NULL);
 }
 
-ASN1_TIME *X509_time_adj(ASN1_TIME *s, long offset_sec, time_t *in_tm)
+ASN1_TIME *X509_time_adj(ASN1_TIME *s, long offset_sec, const time_t *in_tm)
 {
     return X509_time_adj_ex(s, 0, offset_sec, in_tm);
 }
 
 ASN1_TIME *X509_time_adj_ex(ASN1_TIME *s,
-    int offset_day, long offset_sec, time_t *in_tm)
+    int offset_day, long offset_sec, const time_t *in_tm)
 {
     time_t t;
 
