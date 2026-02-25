@@ -32,6 +32,44 @@ OpenSSL 4.0
 
 ### Changes between 3.6 and 4.0 [xx XXX xxxx]
 
+ * New `SSL_get0_sigalg()` and `SSL_get0_shared_sigalg()` functions report the
+   TLS signature algorithm name and codepoint for the peer advertised and shared
+   algorithms respectively.  These supersede the existing `SSL_get_sigalgs()` and
+   `SSL_get_shared_sigalgs()` functions which are only a good fit for TLS 1.2.
+   The names reported are the IANA names, and are expected to consistently match
+   the names expected in `SignatureAlgorithms` configuration settings, see
+   `SSL_CONF_cmd(3)` for details.  Previously reported names were not always directly
+   usable or configurations, and were mostly OpenSSL-specific aliases that
+   rarely matched the official IANA codepoint names.
+
+   There is an associated change in how signature algorithms are reported by the
+   `openssl-s_client(1)` and `openssl-s_server(1)` command-line tools.  They
+   now use the new functions and report the IANA registered names of each
+   signature scheme.  Example new output:
+
+    ```
+    Signature Algorithms: mldsa65:mldsa87:mldsa44:ecdsa_secp256r1_sha256:ecdsa_secp384r1_sha384:ecdsa_secp521r1_sha512:ed25519:ed448:ecdsa_brainpoolP256r1tls13_sha256:ecdsa_brainpoolP384r1tls13_sha384:ecdsa_brainpoolP512r1tls13_sha512:rsa_pss_pss_sha256:rsa_pss_pss_sha384:rsa_pss_pss_sha512:rsa_pss_rsae_sha256:rsa_pss_rsae_sha384:rsa_pss_rsae_sha512:rsa_pkcs1_sha256:rsa_pkcs1_sha384:rsa_pkcs1_sha512:ecdsa_sha224:rsa_pkcs1_sha224:dsa_sha224:dsa_sha256:dsa_sha384:dsa_sha512
+    ```
+
+   *Viktor Dukhovni*
+
+ * Updated the default group list to append `SecP256r1MKEM768` and
+   `curveSM2MLKEM768` to the first tuple in that order after `*X25519MLKEM768`.
+   Also inserted a penultimate tuple with `curveSM2` (just before the `FFDHE`
+   groups).
+
+   *Viktor Dukhovni*
+
+ * Implemented client-side predicted keyshare floating.  When a tuple loses
+   the last element that was tagged for transmission of a predicted client
+   keyshare (by default `*X25519MLKEM768` and `*X25519` in their respective
+   tuples), either because the group is not enabled at compile-time, or
+   because it is removed by configuration (e.g. `DEFAULT:-<groupname>`), if
+   the tuple remains non-empty, the keyshare is inherited by the first (i.e.
+   most preferred) remaining element of the tuple.
+
+   *Viktor Dukhovni*
+
  * Added support for [RFC8998], signature algorithm `sm2sig_sm3`, key exchange
    group `curveSM2`, and [tls-hybrid-sm2-mlkem] post-quantum group
    `curveSM2MLKEM768`.
@@ -66,6 +104,12 @@ OpenSSL 4.0
    algorithms to validate a given certificate.
 
    *Neil Horman*
+
+ * ASN1_OBJECT_new() has been deprecated.
+
+   Refer to ossl-migration-guide(7) for more info.
+
+   *Frederik Wedel-Heinen*
 
  * FIPS self tests can now be deferred and run as needed when installing
    the fips module with the `-defer_tests` option.
@@ -103,6 +147,14 @@ OpenSSL 4.0
    return `const ASN1_TYPE *`.
 
    *kovan*
+
+ * ASN1_STRING has been made opaque.
+
+   Access to values from ASN1_STRING and related types should be done with the
+   appropriate accessor functions. The various ASN1_STRING_FLAG values have
+   been made private.
+
+   *Bob Beck*
 
  * Added CSHAKE as per [SP 800-185]
 
@@ -172,6 +224,12 @@ OpenSSL 4.0
 
    *Kurt Roeckx*
 
+ * Various function return values have been constified, particularly in X509
+   and related areas, and when functions were returning non-const objects
+   owned by a const parameter.
+
+   *Bob Beck*
+
  * The script tool `c_rehash` was removed. Use `openssl rehash` instead.
 
    *Norbert Pocs*
@@ -206,7 +264,9 @@ OpenSSL 4.0
    *Beat Bolli*
 
  * Added `ASN1_BIT_STRING_set1()` to set a bit string to a value including
-   the length in bytes and the number of unused bits.
+   the length in bytes and the number of unused bits. Internally,
+   'ASN1_BIT_STRING_set_bit()' has also been modified to keep the number of
+   unused bits correct when changing an ASN1_BIT_STRING.
 
    * Bob Beck *
 
@@ -239,6 +299,10 @@ OpenSSL 4.0
 
    *Daniel Kubec and Eugene Syromiatnikov*
 
+ * X509_get0_distinguishing_id now takes and returns const objects.
+
+   * Bob Beck *
+
  * Added `-hmac-env` and `-hmac-stdin` options to openssl-dgst.
 
    *Igor Ustinov*
@@ -251,6 +315,14 @@ OpenSSL 4.0
    `-verify_return_error` option is enabled.
 
    *Ryan Hooper*
+
+ * Constify Various X509 functions:
+   X509_get_pathlen X509_check_ca X509_check_purpose X509_get_proxy_pathlen
+   X509_get_extension_flags X509_get_key_usage X509_get_extended_key_usage
+   X509_get0_subject_key_id X509_get0_authority_key_id X509_get0_authority_issuer
+   X509_get0_authority_serial.
+
+   * Bob Beck *
 
  * Fixed CRLs with invalid `ASN1_TIME` in invalidityDate extensions,
    where verification incorrectly succeeded. Enforced proper
@@ -319,6 +391,21 @@ OpenSSL 4.0
    See doc/design/ech-api.md for details.
 
    *Stephen Farrell* (with much support from *Matt Caswell* and *Tomáš Mráz*)
+
+ * X509_cmp_time, X509_cmp_current_time, and X509_cmp_timeframe have
+   had documentation added, and have then been deprecated.  A new
+   function, X509_check_certificate_times has been added, as well as
+   the <openssl/posix_time.h> interface from BoringSSL/LibreSSL. For
+   details of these functions and non-deprecated replacement
+   strategies, see X509_check_certificate_times(3).
+
+   * Bob Beck *
+
+ * Added BIO_set_send_flags() function that allows setting flags passed to
+   send(), sendto(), and sendmsg(). The main intention is to allow setting
+   the MSG_NOSIGNAL flag to avoid a crash on receiving the SIGPIPE signal.
+
+   *Igor Ustinov*
 
 OpenSSL 3.6
 -----------
@@ -495,6 +582,13 @@ OpenSSL 3.6
    stores between FIPS and non-FIPS implementations.
 
    *Dimitri John Ledkov*
+
+ * `SSL_add1_host()` and `SSL_set1_host()` were deprecated. The new replacement functions
+   `SSL_add1_dnsname()`, `SSL_set1_dnsname()`, `SSL_add1_ipaddr()`, and `SSL_set1_ipaddr()` were added.
+   API was added to support checking multiple names against a certificate with
+   `X509_VERIFY_PARAM`.  See `X509_VERIFY_PARAM_set_flags(3)` for full details.
+
+   *Bob Beck*
 
  * Added `X509_CRL_get0_tbs_sigalg()` accessor for the signature
    `AlgorithmIdentifier` inside CRL's `TBSCertList`.

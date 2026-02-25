@@ -711,7 +711,7 @@ static int get_ocsp_resp_from_responder_single(SSL *s, X509 *x,
     int use_ssl;
     STACK_OF(OPENSSL_STRING) *aia = NULL;
     X509 *cert;
-    X509_NAME *iname;
+    const X509_NAME *iname;
     STACK_OF(X509) *chain = NULL;
     SSL_CTX *ssl_ctx;
     X509_STORE_CTX *inctx = NULL;
@@ -1574,6 +1574,7 @@ static int ech_load_dir(SSL_CTX *lctx, const char *thedir,
     OSSL_ECHSTORE *es = NULL;
     BIO *in = NULL;
     int loaded = 0;
+    int ret = 0;
 
     /*
      * If you change the output to bio_s_out here you may
@@ -1622,15 +1623,22 @@ static int ech_load_dir(SSL_CTX *lctx, const char *thedir,
             BIO_printf(bio_s_out, "Added ECH key pair from: %s\n", thisfile);
         loaded++;
     }
+    OPENSSL_DIR_end(&d);
+
     if (SSL_CTX_set1_echstore(lctx, es) != 1) {
         BIO_puts(bio_err, "ECH: Internal error\n");
-        return 0;
+        goto end;
     }
     if (bio_s_out != NULL)
         BIO_printf(bio_s_out, "Added %d ECH key pairs from: %s\n",
             loaded, thedir);
     *nloaded = loaded;
-    return 1;
+    ret = 1;
+
+end:
+    OSSL_ECHSTORE_free(es);
+
+    return ret;
 }
 #endif
 

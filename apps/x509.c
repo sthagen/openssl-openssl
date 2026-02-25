@@ -274,7 +274,7 @@ static X509_REQ *x509_to_req(X509 *cert, int ext_copy, const char *names)
         goto err;
     for (i = 0; i < n; i++) {
         X509_EXTENSION *ex = sk_X509_EXTENSION_value(cert_exts, i);
-        ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
+        const ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
 
         if (OBJ_cmp(obj, skid) != 0 && OBJ_cmp(obj, akid) != 0
             && !sk_X509_EXTENSION_push(exts, ex))
@@ -904,7 +904,7 @@ cert_loop:
     if (clrext && ext_names != NULL)
         BIO_puts(bio_err, "Warning: Ignoring -ext since -clrext is given\n");
     for (i = X509_get_ext_count(x) - 1; i >= 0; i--) {
-        X509_EXTENSION *ex = X509_get_ext(x, i);
+        const X509_EXTENSION *ex = X509_get_ext(x, i);
         const char *sn = OBJ_nid2sn(OBJ_obj2nid(X509_EXTENSION_get_object(ex)));
 
         if (clrext || (ext_names != NULL && strstr(ext_names, sn) == NULL))
@@ -1012,7 +1012,9 @@ cert_loop:
         const ASN1_BIT_STRING *signature;
 
         X509_get0_signature(&signature, NULL, x);
-        corrupt_signature(signature);
+        /* XXX Casts away const, because it mutates the value! */
+        if (!corrupt_signature(((ASN1_STRING *)signature)))
+            goto err;
     }
 
     /* Process print options in the given order, as indicated by index i */
@@ -1047,7 +1049,7 @@ cert_loop:
                 BIO_printf(out, "%s\n", sk_OPENSSL_STRING_value(emlst, j));
             X509_email_free(emlst);
         } else if (i == aliasout) {
-            unsigned char *alstr = X509_alias_get0(x, NULL);
+            const unsigned char *alstr = X509_alias_get0(x, NULL);
 
             if (alstr)
                 BIO_printf(out, "%s\n", alstr);
@@ -1138,7 +1140,7 @@ cert_loop:
         X509_VERIFY_PARAM *vpm;
         time_t tcheck = time(NULL) + checkoffset;
         int expired = 0;
-        int error, valid;
+        int error;
 
         if ((vpm = X509_VERIFY_PARAM_new()) == NULL) {
             BIO_puts(out, "Malloc failed\n");
@@ -1147,16 +1149,11 @@ cert_loop:
         X509_VERIFY_PARAM_set_flags(vpm, X509_V_FLAG_USE_CHECK_TIME);
         X509_VERIFY_PARAM_set_time(vpm, tcheck);
 
-        valid = X509_check_certificate_times(vpm, x, &error);
-        if (!valid) {
-            char msg[128];
-
-            ERR_error_string_n(error, msg, sizeof(msg));
-            BIO_printf(out, "%s\n", msg);
-        }
-        if (error == X509_V_ERR_CERT_HAS_EXPIRED) {
-            BIO_puts(out, "Certificate will expire\n");
-            expired = 1;
+        if (!X509_check_certificate_times(vpm, x, &error)) {
+            if (error == X509_V_ERR_CERT_HAS_EXPIRED) {
+                BIO_puts(out, "Certificate will expire\n");
+                expired = 1;
+            }
         } else {
             BIO_puts(out, "Certificate will not expire\n");
         }
@@ -1274,7 +1271,7 @@ end:
 static int callb(int ok, X509_STORE_CTX *ctx)
 {
     int err;
-    X509 *err_cert;
+    const X509 *err_cert;
 
     /*
      * It is ok to use a self-signed certificate. This case will catch both
@@ -1348,7 +1345,7 @@ static int print_x509v3_exts(BIO *bio, X509 *x, const char *ext_names)
     const STACK_OF(X509_EXTENSION) *exts = NULL;
     STACK_OF(X509_EXTENSION) *exts2 = NULL;
     X509_EXTENSION *ext = NULL;
-    ASN1_OBJECT *obj;
+    const ASN1_OBJECT *obj;
     int i, j, ret = 0, num, nn = 0;
     const char *sn, **names = NULL;
     char *tmp_ext_names = NULL;

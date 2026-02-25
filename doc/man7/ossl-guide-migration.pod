@@ -37,6 +37,15 @@ features available in OpenSSL 4.0.
 Some functions have been removed that were deprecated in previous
 versions of OpenSSL. See L<ossl-removed-api(7)>.
 
+The ASN1_STRING type has been made opaque.  Accessors for the needed
+values from this type have been present since OpenSSL 1.1, Code
+which directly attempts to access internals of ASN1_STRING should be
+converted to use the accessors. The ASN1_FLAGS have also been made
+private, most of which were purely internal. ASN1_STRING_FLAG_BITS_LEFT,
+which used to be exposed to allow manipulating the internal representation
+of a bit string should be replaced by using the appropriate setter for
+an ASN1_BIT_STRING type, instead of direct flag and structure manipulation.
+
 =head2 Upgrading from OpenSSL 3.x
 
 =head3 Removal of atexit() usage
@@ -45,6 +54,22 @@ libcrypto no longer arms OPENSSL_cleanup() function as atexit(3) handler.
 Memory leak detectors may report there is allocated, but still reachable,
 allocated memory at application exit. If clean report is desired, then
 application must call OPENSSL_cleanup() explicitly before main() returns.
+
+=head3 Removal of fixed (D)TLS version method functions
+
+SSLv3_method(), SSLv3_server_method(), SSLv3_client_method(),
+TLSv1_method(), TLSv1_server_method(), TLSv1_client_method(),
+TLSv1_1_method(), TLSv1_1_server_method(), TLSv1_1_client_method(),
+TLSv1_2_method(), TLSv1_2_server_method(), TLSv1_2_client_method(),
+DTLSv1_method(), DTLSv1_server_method(), DTLSv1_client_method(),
+DTLSv1_2_method(), DTLSv1_2_server_method() and DTLSv1_2_client_method()
+were deprecated in the OpenSSL 1.1.0 release.
+
+Migrating applications should use
+TLS_method(), TLS_server_method(), TLS_client_method(),
+TLS_method(), TLS_server_method(), TLS_client_method(),
+instead and set the version with the SSL_CTX_set_min_proto_version() and/or
+SSL_CTX_set_max_proto_version() api's.
 
 =head3 Deprecation of EVP_MD_CTX_get0_md_data()
 
@@ -55,6 +80,13 @@ custom EVP_MD implementations has been removed in OpenSSL 4.0, so this function
 is no longer useful. It always returns NULL, so should simply be removed from
 applications that call it. Applications wishing to use a custom digest
 implementation should instead use the provider API.
+
+=head3 Deprecation of ASN1_OBJECT_new()
+
+The function ASN1_OBJECT_new() has been deprecated in 4.0. The function is only
+useful internally because the type is opaque and there exist no setter functions.
+Hence, there never was a real use case for the function and calls to it can
+simply be removed.
 
 =head1 OPENSSL 3.6
 

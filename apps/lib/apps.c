@@ -258,15 +258,15 @@ static char *app_get_pass(const char *arg, int keepbio)
             }
         } else {
             /* argument syntax error; do not reveal too much about arg */
-            tmp = strchr(arg, ':');
-            if (tmp == NULL || tmp - arg > PASS_SOURCE_SIZE_MAX)
+            const char *arg_ptr = strchr(arg, ':');
+            if (arg_ptr == NULL || arg_ptr - arg > PASS_SOURCE_SIZE_MAX)
                 BIO_printf(bio_err,
                     "Invalid password argument, missing ':' within the first %d chars\n",
                     PASS_SOURCE_SIZE_MAX + 1);
             else
                 BIO_printf(bio_err,
                     "Invalid password argument, starting with \"%.*s\"\n",
-                    (int)(tmp - arg + 1), arg);
+                    (int)(arg_ptr - arg + 1), arg);
             return NULL;
         }
     }
@@ -682,12 +682,8 @@ static void warn_cert(const char *uri, X509 *cert, int warn_EE,
     int error;
     uint32_t ex_flags = X509_get_extension_flags(cert);
 
-    if (!X509_check_certificate_times(vpm, cert, &error)) {
-        char msg[128];
-
-        ERR_error_string_n(error, msg, sizeof(msg));
-        warn_cert_msg(uri, cert, msg);
-    }
+    if (!X509_check_certificate_times(vpm, cert, &error))
+        warn_cert_msg(uri, cert, X509_verify_cert_error_string(error));
 
     if (warn_EE && (ex_flags & EXFLAG_V1) == 0 && (ex_flags & EXFLAG_CA) == 0)
         warn_cert_msg(uri, cert, "is not a CA cert");
@@ -1280,8 +1276,8 @@ int copy_extensions(X509 *x, X509_REQ *req, int copy_type)
     exts = X509_REQ_get_extensions(req);
 
     for (i = 0; i < sk_X509_EXTENSION_num(exts); i++) {
-        X509_EXTENSION *ext = sk_X509_EXTENSION_value(exts, i);
-        ASN1_OBJECT *obj = X509_EXTENSION_get_object(ext);
+        const X509_EXTENSION *ext = sk_X509_EXTENSION_value(exts, i);
+        const ASN1_OBJECT *obj = X509_EXTENSION_get_object(ext);
         int idx = X509_get_ext_by_OBJ(x, obj, -1);
 
         /* Does extension exist in target? */
@@ -2418,13 +2414,12 @@ static int adapt_keyid_ext(X509 *cert, X509V3_CTX *ext_ctx,
 
     idx = X509v3_get_ext_by_OBJ(exts, X509_EXTENSION_get_object(new_ext), -1);
     if (idx >= 0) {
-        X509_EXTENSION *found_ext = X509v3_get_ext(exts, idx);
-        ASN1_OCTET_STRING *encoded = X509_EXTENSION_get_data(found_ext);
+        const X509_EXTENSION *found_ext = X509v3_get_ext(exts, idx);
+        const ASN1_OCTET_STRING *encoded = X509_EXTENSION_get_data(found_ext);
         int disabled = ASN1_STRING_length(encoded) <= 2; /* indicating "none" */
 
         if (disabled) {
-            X509_delete_ext(cert, idx);
-            X509_EXTENSION_free(found_ext);
+            X509_EXTENSION_free(X509_delete_ext(cert, idx));
         } /* else keep existing key identifier, which might be outdated */
         rv = 1;
     } else {
@@ -2588,7 +2583,7 @@ static X509_CRL *load_crl_crldp(STACK_OF(DIST_POINT) *crldp)
 static STACK_OF(X509_CRL) *crls_http_cb(const X509_STORE_CTX *ctx,
     const X509_NAME *nm)
 {
-    X509 *x;
+    const X509 *x;
     STACK_OF(X509_CRL) *crls = NULL;
     X509_CRL *crl;
     STACK_OF(DIST_POINT) *crldp;
@@ -3403,12 +3398,23 @@ int has_stdin_waiting(void)
 }
 #endif
 
-/* Corrupt a signature by modifying final byte */
-void corrupt_signature(const ASN1_STRING *signature)
+/*
+ * Corrupt a signature by modifying final byte
+ * (mutates signature)
+ */
+int corrupt_signature(ASN1_STRING *signature)
 {
-    unsigned char *s = signature->data;
+    const unsigned char *valid = ASN1_STRING_get0_data(signature);
+    int length = ASN1_STRING_length(signature);
+    unsigned char *s = OPENSSL_memdup(valid, length);
 
-    s[signature->length - 1] ^= 0x1;
+    if (s == NULL)
+        return 0;
+
+    s[length - 1] ^= 0x1;
+
+    ASN1_STRING_set0(signature, s, length);
+    return 1;
 }
 
 int check_cert_time_string(const char *time, const char *desc)

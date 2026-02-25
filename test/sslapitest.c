@@ -10583,7 +10583,9 @@ static int test_sigalgs_available(int idx)
     OSSL_LIB_CTX *clientctx = libctx, *serverctx = libctx;
     OSSL_PROVIDER *filterprov = NULL;
     int sig, hash, numshared, numshared_expected, hash_expected, sig_expected;
-    const char *sigalg_name, *signame_expected;
+    unsigned char rsig, rhash;
+    unsigned int sigalg, csigalg_expected;
+    const char *sigalg_name, *signame_expected, *csigname_expected;
 
     if (!TEST_ptr(tmpctx))
         goto end;
@@ -10703,20 +10705,30 @@ static int test_sigalgs_available(int idx)
 
     /* For tests 0 and 3 we expect 2 shared sigalgs, otherwise exactly 1 */
     numshared = SSL_get_shared_sigalgs(serverssl, 0, &sig, &hash,
-        NULL, NULL, NULL);
+        NULL, &rsig, &rhash);
     numshared_expected = 1;
     hash_expected = NID_sha256;
     sig_expected = NID_rsassaPss;
     signame_expected = "rsa_pss_rsae_sha256";
+    csigname_expected = "rsa_pss_rsae_sha256";
+    csigalg_expected = 0x0804;
     switch (idx) {
     case 0:
-        hash_expected = NID_sha384;
         signame_expected = "rsa_pss_rsae_sha384";
+        hash_expected = NID_sha384;
+        numshared_expected = 2;
         /* FALLTHROUGH */
+    case 2:
+        csigname_expected = "rsa_pss_rsae_sha384";
+        csigalg_expected = 0x0805;
+        break;
     case 3:
         numshared_expected = 2;
         break;
     case 4:
+        csigname_expected = "ecdsa_secp256r1_sha256";
+        csigalg_expected = 0x0403;
+        /* FALLTHROUGH */
     case 5:
         sig_expected = EVP_PKEY_EC;
         signame_expected = "ecdsa_secp256r1_sha256";
@@ -10727,7 +10739,13 @@ static int test_sigalgs_available(int idx)
         || !TEST_int_eq(sig, sig_expected)
         || !TEST_true(SSL_get0_peer_signature_name(clientssl, &sigalg_name))
         || !TEST_ptr(sigalg_name)
-        || !TEST_str_eq(sigalg_name, signame_expected))
+        || !TEST_str_eq(sigalg_name, signame_expected)
+        || !TEST_int_gt(SSL_get0_shared_sigalg(serverssl, 0, &sigalg, &sigalg_name), 0)
+        || !TEST_int_eq(sigalg, (((int)rhash) << 8) | rsig)
+        || !TEST_str_eq(sigalg_name, signame_expected)
+        || !TEST_int_gt(SSL_get0_sigalg(serverssl, 0, &sigalg, &sigalg_name), 0)
+        || !TEST_int_eq(sigalg, csigalg_expected)
+        || !TEST_str_eq(sigalg_name, csigname_expected))
         goto end;
 
     testresult = filter_provider_check_clean_finish();
@@ -10825,13 +10843,14 @@ static int create_cert_key(int idx, char *certfilename, char *privkeyfilename)
         || !TEST_true(X509_gmtime_adj(X509_getm_notBefore(x509), 0))
         || !TEST_true(X509_gmtime_adj(X509_getm_notAfter(x509), 31536000L))
         || !TEST_true(X509_set_pubkey(x509, pkey))
-        || !TEST_ptr(name = X509_get_subject_name(x509))
+        || !TEST_ptr(name = X509_NAME_new())
         || !TEST_true(X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC,
             (unsigned char *)"CH", -1, -1, 0))
         || !TEST_true(X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC,
             (unsigned char *)"test.org", -1, -1, 0))
         || !TEST_true(X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
             (unsigned char *)"localhost", -1, -1, 0))
+        || !TEST_true(X509_set_subject_name(x509, name))
         || !TEST_true(X509_set_issuer_name(x509, name))
         || !TEST_true(X509_sign(x509, pkey, EVP_sha1()))
         || !TEST_ptr(keybio = BIO_new_file(privkeyfilename, "wb"))
@@ -10842,6 +10861,7 @@ static int create_cert_key(int idx, char *certfilename, char *privkeyfilename)
 
     EVP_PKEY_free(pkey);
     X509_free(x509);
+    X509_NAME_free(name);
     EVP_PKEY_CTX_free(evpctx);
     BIO_free(keybio);
     BIO_free(certbio);

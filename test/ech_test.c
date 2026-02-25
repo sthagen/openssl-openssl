@@ -857,7 +857,9 @@ static const char *kdf_str_list[] = {
 static const char *aead_str_list[] = {
     "aes-128-gcm",
     "aes-256-gcm",
+#if !defined(OPENSSL_NO_CHACHA) && !defined(OPENSSL_NO_POLY1305)
     "chacha20-poly1305",
+#endif
 };
 
 typedef enum OPTION_choice {
@@ -1082,8 +1084,8 @@ static int ech_api_basic_calls(void)
     SSL_CTX *ctx = NULL;
     SSL *s = NULL;
     OSSL_ECHSTORE *es = NULL, *es1 = NULL;
-    char *rinner, *inner = "inner.example.com";
-    char *router, *outer = "example.com";
+    char *rinner = NULL, *inner = "inner.example.com";
+    char *router = NULL, *outer = "example.com";
     unsigned char alpns[] = { 'h', '2' };
     size_t alpns_len = sizeof(alpns);
     char *gsuite = "X25519,hkdf-sha256,aes-256-gcm";
@@ -1167,6 +1169,8 @@ end:
     BIO_free_all(in);
     OSSL_ECHSTORE_free(es1);
     OSSL_ECHSTORE_free(es);
+    OPENSSL_free(router);
+    OPENSSL_free(rinner);
     SSL_CTX_free(ctx);
     SSL_free(s);
     return rv;
@@ -1816,7 +1820,7 @@ static int ech_grease_test(int idx)
     /* 3rd time, fail to set a bad grease suite, then set a good one */
     if (idx == 2 && !TEST_false(SSL_ech_set1_grease_suite(clientssl, "notanhpkesuite")))
         goto end;
-    if (idx == 2 && !TEST_true(SSL_ech_set1_grease_suite(clientssl, "x25519,2,3")))
+    if (idx == 2 && !TEST_true(SSL_ech_set1_grease_suite(clientssl, "x25519,hkdf-sha384,aes-256-gcm")))
         goto end;
     if (!TEST_true(create_ssl_connection(serverssl, clientssl,
             SSL_ERROR_NONE)))
