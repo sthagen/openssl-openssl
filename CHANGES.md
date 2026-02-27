@@ -32,6 +32,12 @@ OpenSSL 4.0
 
 ### Changes between 3.6 and 4.0 [xx XXX xxxx]
 
+ * Added LMS support for signature verification to `pkeyutl' command.
+   To enable this, LMS 'SubjectPublicKeyInfo' encoder and decoders were
+   added, and the LMS keymanager and signature code were updated.
+
+   *Shane Lontis*
+
  * New `SSL_get0_sigalg()` and `SSL_get0_shared_sigalg()` functions report the
    TLS signature algorithm name and codepoint for the peer advertised and shared
    algorithms respectively.  These supersede the existing `SSL_get_sigalgs()` and
@@ -242,9 +248,17 @@ OpenSSL 4.0
 
    *Alexandr Nedvedicky*
 
- * The `X509_verify()` function now takes a `const X509 *` argument
+ * Many functions accepting X509 \* arguments, or returning values
+   from a const X509 \* have been changed to take / return const
+   arguments. The most visible changes are places where pointer values
+   are returned from a const X509 \* object. In many places where
+   these were non const values being returned from a const object,
+   these pointer values have now been made const. The goal of this
+   change is to enable future improvements in X.509 certificate
+   handling. For full details see the relevant section in
+   ossl-migration-guide(7).
 
-   * Bob Beck *
+   *Bob Beck*
 
  * The crypto-mdebug-backtrace configuration option has been entirely removed.
    The option has been a no-op since 1.0.2.
