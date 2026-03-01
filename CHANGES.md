@@ -31,6 +31,23 @@ OpenSSL Releases
 
 ### Changes between 3.6 and 4.0 [xx XXX xxxx]
 
+ * The `openssl-x509(1)`, `openssl-req(1)` and `openssl-ca(1)` command-line
+   utilities no longer have specialised built-in logic to add the SKID and AKID
+   extensions, they are handled through configuration files and command-line
+   options just like any other extension.  See their documentation and also
+   `x509v3_config(5)` for additional details.
+
+   The x509 "mini-CA" now attempts to find extension settings in the default
+   configuration file even if neither the `-extfile` nor the `-extensions`
+   option is explicitly specified.  Failure to open the default configuration
+   is silently ignored.
+
+   The settings in the stock OpenSSL 4.0 configuration file arrange for
+   addition of the requisite SKID and AKID extensions.  Other configuration
+   files may need to be adjusted if desired.
+
+   *Viktor Dukhovni*
+
  * New `-expected-rpks` option in the `openssl-s_client(1)` and `openssl-s_server(1)`
    command line utilities.  This makes it possible to specify one more public keys
    expected from the remote peer that are then used to authenticate the connection.
@@ -109,6 +126,11 @@ OpenSSL Releases
    rather than its bit size.
 
    *Viktor Dukhovni*
+
+ * The SSL_TXT_FIPS option has been removed.  This was a remnant of
+   the old FIPS canister and wasn't used anymore.
+
+   * Dr Paul Dale *
 
  * Added support for TLS 1.3 SM cipher suites `TLS_SM4_GCM_SM3` and `TLS_SM4_CCM_SM3`
    from [RFC8998].
