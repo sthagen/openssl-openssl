@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2025 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2026 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -150,7 +150,7 @@ int ossl_namemap_name2num(const OSSL_NAMEMAP *namemap, const char *name)
         namemap = ossl_namemap_stored(NULL);
 #endif
 
-    if (namemap == NULL)
+    if (namemap == NULL || name == NULL)
         return 0;
 
     HT_INIT_RAW_KEY(&key);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2026 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -11,8 +11,6 @@
 #include <openssl/err.h>
 #include <openssl/asn1t.h>
 #include "ts_local.h"
-
-#include <crypto/asn1.h>
 
 ASN1_SEQUENCE(TS_MSG_IMPRINT) = {
     ASN1_SIMPLE(TS_MSG_IMPRINT, hash_algo, X509_ALGOR),
@@ -231,6 +229,6 @@ TS_TST_INFO *PKCS7_to_TS_TST_INFO(PKCS7 *token)
         return NULL;
     }
     tst_info_der = tst_info_wrapper->value.octet_string;
-    p = tst_info_der->data;
-    return d2i_TS_TST_INFO(NULL, &p, tst_info_der->length);
+    p = ASN1_STRING_get0_data(tst_info_der);
+    return d2i_TS_TST_INFO(NULL, &p, ASN1_STRING_length(tst_info_der));
 }

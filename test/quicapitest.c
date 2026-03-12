@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2025 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2026 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -2894,8 +2894,7 @@ static int test_ssl_listen_ex(void)
         goto err;
 
     /* Call SSL_accept() and SSL_connect() until we are connected */
-    if (!TEST_true(create_bare_ssl_connection(serverssl, clientssl,
-            SSL_ERROR_NONE, 0, 0)))
+    if (!TEST_true(create_bare_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE, 0, 0)))
 
         /*
          * Ensure that, now that we have used SSL_listen_ex, SSL_accept_connection
@@ -3012,8 +3011,8 @@ static int test_ssl_set_verify(void)
     serverssl = SSL_accept_connection(qlistener, 0);
 
     /* Call SSL_accept() and SSL_connect() until we are connected */
-    if (!TEST_true(create_bare_ssl_connection(serverssl, clientssl,
-            SSL_ERROR_NONE, 0, 0)))
+    if (!TEST_ptr(serverssl)
+        || !TEST_true(create_bare_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE, 0, 0)))
         goto err;
 
     testresult = 1;
@@ -3225,8 +3224,8 @@ static int test_client_hello_retry(void)
     serverssl = SSL_accept_connection(qlistener, 0);
 
     /* Call SSL_accept() and SSL_connect() until we are connected */
-    if (!TEST_true(create_bare_ssl_connection(serverssl, clientssl,
-            SSL_ERROR_NONE, 0, 0)))
+    if (!TEST_ptr(serverssl)
+        || !TEST_true(create_bare_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE, 0, 0)))
         goto err;
 
     testresult = 1;

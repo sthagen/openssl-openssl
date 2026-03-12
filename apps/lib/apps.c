@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2025 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2026 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -186,8 +186,13 @@ int app_passwd(const char *arg1, const char *arg2, char **pass1, char **pass2)
     }
     if (arg2 != NULL) {
         *pass2 = app_get_pass(arg2, same ? 2 : 0);
-        if (*pass2 == NULL)
+        if (*pass2 == NULL) {
+            if (pass1 != NULL) {
+                clear_free(*pass1);
+                *pass1 = NULL;
+            }
             return 0;
+        }
     } else if (pass2 != NULL) {
         *pass2 = NULL;
     }

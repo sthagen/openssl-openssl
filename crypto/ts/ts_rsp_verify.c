@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2025 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2026 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -15,8 +15,6 @@
 #include "internal/sizes.h"
 #include "crypto/ess.h"
 #include "ts_local.h"
-
-#include <crypto/asn1.h>
 
 static int ts_verify_cert(X509_STORE *store, STACK_OF(X509) *untrusted,
     X509 *signer, STACK_OF(X509) **chain);
@@ -213,8 +211,8 @@ static ESS_SIGNING_CERT *ossl_ess_get_signing_cert(const PKCS7_SIGNER_INFO *si)
     attr = PKCS7_get_signed_attribute(si, NID_id_smime_aa_signingCertificate);
     if (attr == NULL || attr->type != V_ASN1_SEQUENCE)
         return NULL;
-    p = attr->value.sequence->data;
-    return d2i_ESS_SIGNING_CERT(NULL, &p, attr->value.sequence->length);
+    p = ASN1_STRING_get0_data(attr->value.sequence);
+    return d2i_ESS_SIGNING_CERT(NULL, &p, ASN1_STRING_length(attr->value.sequence));
 }
 
 static ESS_SIGNING_CERT_V2 *ossl_ess_get_signing_cert_v2(const PKCS7_SIGNER_INFO *si)
@@ -225,8 +223,8 @@ static ESS_SIGNING_CERT_V2 *ossl_ess_get_signing_cert_v2(const PKCS7_SIGNER_INFO
     attr = PKCS7_get_signed_attribute(si, NID_id_smime_aa_signingCertificateV2);
     if (attr == NULL || attr->type != V_ASN1_SEQUENCE)
         return NULL;
-    p = attr->value.sequence->data;
-    return d2i_ESS_SIGNING_CERT_V2(NULL, &p, attr->value.sequence->length);
+    p = ASN1_STRING_get0_data(attr->value.sequence);
+    return d2i_ESS_SIGNING_CERT_V2(NULL, &p, ASN1_STRING_length(attr->value.sequence));
 }
 
 static int ts_check_signing_certs(const PKCS7_SIGNER_INFO *si,

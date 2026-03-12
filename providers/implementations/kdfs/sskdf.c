@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2025 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2026 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2019, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -446,7 +446,7 @@ static int fips_sskdf_key_check_passed(KDF_SSKDF *ctx)
     if (!key_approved) {
         if (!OSSL_FIPS_IND_ON_UNAPPROVED(ctx, OSSL_FIPS_IND_SETTABLE0,
                 libctx, "SSKDF", "Key size",
-                ossl_fips_config_sskdf_key_check)) {
+                FIPS_CONFIG_SSKDF_KEY_CHECK)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
             return 0;
         }
@@ -541,7 +541,7 @@ static int fips_x963kdf_digest_check_passed(KDF_SSKDF *ctx, const EVP_MD *md)
     if (digest_unapproved) {
         if (!OSSL_FIPS_IND_ON_UNAPPROVED(ctx, OSSL_FIPS_IND_SETTABLE0,
                 libctx, "X963KDF", "Digest",
-                ossl_fips_config_x963kdf_digest_check)) {
+                FIPS_CONFIG_X963KDF_DIGEST_CHECK)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_DIGEST_NOT_ALLOWED);
             return 0;
         }
@@ -557,7 +557,7 @@ static int fips_x963kdf_key_check_passed(KDF_SSKDF *ctx)
     if (!key_approved) {
         if (!OSSL_FIPS_IND_ON_UNAPPROVED(ctx, OSSL_FIPS_IND_SETTABLE1,
                 libctx, "X963KDF", "Key size",
-                ossl_fips_config_x963kdf_key_check)) {
+                FIPS_CONFIG_X963KDF_KEY_CHECK)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
             return 0;
         }
