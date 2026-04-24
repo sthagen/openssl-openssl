@@ -68,6 +68,8 @@ plan skip_all => "could not get malloc counts (one or more count runs failed or 
 #
 plan tests => $total_malloccount;
 
+$ENV{OPENSSL_TEST_MFAIL_DISABLE} = "1";
+
 sub run_memfail_test {
     my $skipcount = $_[0];
     my @mallocseq = (1..$_[1]);
