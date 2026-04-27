@@ -1654,6 +1654,11 @@ static int test_fromdata_ec(void)
     BIGNUM *a = NULL;
     BIGNUM *b = NULL;
     BIGNUM *p = NULL;
+    OSSL_PARAM probe[2] = {
+        OSSL_PARAM_DEFN(OSSL_PKEY_PARAM_PRIV_KEY, OSSL_PARAM_UNSIGNED_INTEGER,
+            NULL, 0),
+        OSSL_PARAM_END
+    };
 
     if (!TEST_ptr(bld = OSSL_PARAM_BLD_new()))
         goto err;
@@ -1740,6 +1745,18 @@ static int test_fromdata_ec(void)
 
         if (!TEST_BN_eq(group_p, p) || !TEST_BN_eq(group_a, a)
             || !TEST_BN_eq(group_b, b))
+            goto err;
+
+        /*
+         * Probe the EC private-key BN length via the explicit-params
+         * path; with NULL data, return_size receives the required
+         * (padded) buffer size, which equals the byte length of the
+         * group order.
+         */
+        probe[0].return_size = OSSL_PARAM_UNMODIFIED;
+        if (!TEST_true(EVP_PKEY_get_params(pk, probe))
+            || !TEST_size_t_eq(probe[0].return_size,
+                BN_num_bytes(EC_GROUP_get0_order(group))))
             goto err;
 
         EC_GROUP_free(group);
