@@ -32,6 +32,8 @@ run(test(["x509-memfail", "count", srctop_file("test", "certs", "servercert.pem"
 
 run(test(["load_key_certs_crls_memfail", "count", srctop_file("test", "certs", "servercert.pem")], stderr => "$resultdir/load_key_certs_crls_countinfo.txt"));
 
+run(test(["property-memfail", "count"], stderr => "$resultdir/propertycountinfo.txt"));
+
 sub get_count_info {
     my ($infile) = @_;
     my ($skipcount, $malloccount) = (0, 0);
@@ -58,7 +60,10 @@ my ($x509skipcount, $x509malloccount) = get_count_info("$resultdir/x509countinfo
 
 my ($load_key_certs_crls_skipcount, $load_key_certs_crls_malloccount) = get_count_info("$resultdir/load_key_certs_crls_countinfo.txt");
 
-my $total_malloccount = $hsmalloccount + $x509malloccount + $load_key_certs_crls_malloccount;
+my (undef, $propertymalloccount) = get_count_info("$resultdir/propertycountinfo.txt");
+
+my $total_malloccount = $hsmalloccount + $x509malloccount
+    + $load_key_certs_crls_malloccount + $propertymalloccount;
 plan skip_all => "could not get malloc counts (one or more count runs failed or output format changed)"
     if $total_malloccount == 0;
 
@@ -95,3 +100,6 @@ run_memfail_test($x509skipcount, $x509malloccount, ["x509-memfail", "run", srcto
 
 run_memfail_test($load_key_certs_crls_skipcount, $load_key_certs_crls_malloccount, ["load_key_certs_crls_memfail", "run", srctop_file("test", "certs", "servercert.pem")]);
 
+for my $idx (1..$propertymalloccount) {
+    ok(run(test(["property-memfail", "run", $idx])));
+}

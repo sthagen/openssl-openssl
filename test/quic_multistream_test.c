@@ -2042,17 +2042,7 @@ static CRYPTO_THREAD_RETVAL run_script_child_thread(void *arg)
 
 /* 1. Simple single-stream test */
 static const struct script_op script_1[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-    OP_C_WRITE(DEFAULT, "apple", 5),
-    OP_C_CONCLUDE(DEFAULT),
-    OP_S_BIND_STREAM_ID(a, C_BIDI_ID(0)),
-    OP_S_READ_EXPECT(a, "apple", 5),
-    OP_S_EXPECT_FIN(a),
-    OP_S_WRITE(a, "orange", 6),
-    OP_S_CONCLUDE(a),
-    OP_C_READ_EXPECT(DEFAULT, "orange", 6),
-    OP_C_EXPECT_FIN(DEFAULT),
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
