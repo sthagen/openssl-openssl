@@ -51,15 +51,6 @@ static void errx(int status, const char *fmt, ...)
     va_end(ap);
     exit(status);
 }
-
-static void warnx(const char *fmt, ...)
-{
-    va_list ap;
-
-    va_start(ap, fmt);
-    vwarnx(fmt, ap);
-    va_end(ap);
-}
 #endif
 
 /*
@@ -285,8 +276,6 @@ int main(int argc, char *argv[])
     int fd;
     unsigned long port;
 #ifdef _WIN32
-    static const char *progname;
-
     progname = argv[0];
 #endif
 

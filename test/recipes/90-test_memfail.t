@@ -26,6 +26,9 @@ plan skip_all => "$test_name requires allocfail-tests to be enabled"
 # and parse that to figure out what our values are
 #
 my $resultdir = result_dir();
+
+$ENV{OPENSSL_TEST_MFAIL_DISABLE} = "1";
+
 run(test(["handshake-memfail", "count", srctop_dir("test", "certs")], stderr => "$resultdir/hscountinfo.txt"));
 
 run(test(["x509-memfail", "count", srctop_file("test", "certs", "servercert.pem")], stderr => "$resultdir/x509countinfo.txt"));
@@ -73,11 +76,9 @@ plan skip_all => "could not get malloc counts (one or more count runs failed or 
 #
 plan tests => $total_malloccount;
 
-$ENV{OPENSSL_TEST_MFAIL_DISABLE} = "1";
-
 sub run_memfail_test {
     my $skipcount = $_[0];
-    my @mallocseq = (1..$_[1]);
+    my @mallocseq = (0..$_[1] - 1);
     my @cmd = $_[2];
 
     for my $idx (@mallocseq) {
@@ -90,7 +91,8 @@ sub run_memfail_test {
         # passing
         #
         $ENV{OPENSSL_MALLOC_FAILURES} = "$skipcount\@0;$idx\@0;1\@100;0\@0";
-        ok(run(test(@cmd)));
+        ok(run(test(@cmd))) || \
+            print STDERR "# OPENSSL_MALLOC_FAILURES=$ENV{OPENSSL_MALLOC_FAILURES}\n";
     }
 }
 
