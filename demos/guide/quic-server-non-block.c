@@ -454,7 +454,7 @@ err:
     return ok;
 }
 
-/* Minimal QUIC HTTP/1.0 server. */
+/* Minimal QUIC HTTP/1.1 server. */
 int main(int argc, char *argv[])
 {
     int res = EXIT_FAILURE;
