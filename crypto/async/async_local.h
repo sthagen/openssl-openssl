@@ -11,6 +11,9 @@
  * Must do this before including any header files, because on MacOS/X <stlib.h>
  * includes <signal.h> which includes <ucontext.h>
  */
+#if !defined(OSSL_LIBCRYPTO_ASYNC_ASYNC_LOCAL_H)
+#define OSSL_LIBCRYPTO_ASYNC_ASYNC_LOCAL_H
+
 #if defined(__APPLE__) && defined(__MACH__) && !defined(_XOPEN_SOURCE)
 #define _XOPEN_SOURCE /* Otherwise incomplete ucontext_t structure */
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -26,9 +29,11 @@
 typedef struct async_ctx_st async_ctx;
 typedef struct async_pool_st async_pool;
 
-#include "arch/async_win.h"
-#include "arch/async_posix.h"
-#include "arch/async_null.h"
+/* clang-format off */
+#include "arch/async_win.inc"
+#include "arch/async_posix.inc"
+#include "arch/async_null.inc"
+/* clang-format on */
 
 struct async_ctx_st {
     async_fibre dispatcher;
@@ -78,3 +83,5 @@ void async_start_func(void);
 async_ctx *async_get_ctx(void);
 
 void async_wait_ctx_reset_counts(ASYNC_WAIT_CTX *ctx);
+
+#endif /* !defined(OSSL_LIBCRYPTO_ASYNC_ASYNC_LOCAL_H) */

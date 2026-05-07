@@ -49,6 +49,15 @@ OpenSSL Releases
 
    *Tong Li*
 
+ *  Header files in OpenSSL are being changed to reflect modern development
+    practices - Include files should all be guarded for inclusion by a define
+    and must be self contained, meaning they include all dependencies they need
+    to compile on their own. Headers have been changed to include guards and
+    to include the dependencies they require.  Doing this will help the
+    future use of more modern tooling.
+
+    *Bob Beck*
+
  * `EVP_CIPHER_CTX_get_num()` and `EVP_CIPHER_CTX_set_num()' have been deprecated.
 
    Refer to ossl-migration-guide(7) for more info.
@@ -90,6 +99,12 @@ OpenSSL Releases
    elliptic curve support.
 
    *Tomáš Mráz*
+
+ * Added `EVP_EC_affine2oct()` that converts the affine coordinates of an
+   EC point to an octet string conforming to Sec. 2.3.4 of the SECG SEC 1
+   ("Elliptic Curve Cryptography") standard.
+
+   *Igor Ustinov*
 
  * Made more QUIC transport parameters configurable via the
    `SSL_get_value_uint`/`SSL_set_value_uint` functions. Now also configurable:
