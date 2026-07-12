@@ -9,6 +9,10 @@ IF[{- !$disabled{hqinterop} -}]
   SUBDIRS=quic-openssl-docker
 ENDIF
 
+IF[{- !$disabled{"unit-tests"} -}]
+  SUBDIRS=unit
+ENDIF
+
 # Auxiliary program source (copied from ../apps/build.info)
 IF[{- $config{target} =~ /^(?:VC-|mingw|BC-)/ -}]
   # It's called 'init', but doesn't have much 'init' in it...
@@ -82,15 +86,12 @@ IF[{- !$disabled{tests} -}]
   ENDIF
 
   IF[{- !$disabled{'allocfail-tests'} -}]
-    PROGRAMS{noinst}=handshake-memfail x509-memfail load_key_certs_crls_memfail property-memfail
+    PROGRAMS{noinst}=handshake-memfail x509-memfail load_key_certs_crls_memfail
   ENDIF
 
   IF[{- !$disabled{quic} -}]
     PROGRAMS{noinst}=priority_queue_test quicfaultstest quicapitest \
-                     quic_newcid_test quic_srt_gen_test
-    IF[{- $config{target} =~ /^(?:VC-|mingw|BC-)/ -}]
-      PROGRAMS{noinst}=rio_notifier_test
-    ENDIF
+                     quic_newcid_test quic_srt_gen_test rio_notifier_test
   ENDIF
 
   IF[{- !$disabled{quic} && !$disabled{qlog} -}]
@@ -392,11 +393,9 @@ IF[{- !$disabled{tests} -}]
   DEPEND[packettest]=../libcrypto libtestutil.a
 
   IF[{- !$disabled{'quic'} -}]
-    IF[{- $config{target} =~ /^(?:VC-|mingw|BC-)/ -}]
       SOURCE[rio_notifier_test]=rio_notifier_test.c
       INCLUDE[rio_notifier_test]=.. ../include ../apps/include
       DEPEND[rio_notifier_test]=../libcrypto.a ../libssl.a libtestutil.a
-    ENDIF
 
       SOURCE[quic_wire_test]=quic_wire_test.c
       INCLUDE[quic_wire_test]=../include ../apps/include
@@ -655,10 +654,6 @@ IF[{- !$disabled{tests} -}]
           ../crypto/asn1/a_time.c ../crypto/ctype.c
   INCLUDE[load_key_certs_crls_memfail]=.. ../include ../apps/include
   DEPEND[load_key_certs_crls_memfail]=libtestutil.a ../libcrypto.a ../libssl.a
-
-  SOURCE[property-memfail]=property_memfail.c
-  INCLUDE[property-memfail]=../include ../apps/include
-  DEPEND[property-memfail]=../libcrypto.a
 
   SOURCE[ssl_handshake_rtt_test]=ssl_handshake_rtt_test.c helpers/ssltestlib.c
   INCLUDE[ssl_handshake_rtt_test]=../include ../apps/include ..
@@ -996,6 +991,13 @@ IF[{- !$disabled{tests} -}]
       DEPEND[tls12psk_test]=../libcrypto.a ../libssl.a libtestutil.a
     ENDIF
 
+    IF[{- !$disabled{psk} && !$disabled{dtls1_2} -}]
+      PROGRAMS{noinst}=dtls12psk_test
+      SOURCE[dtls12psk_test]=dtls12psk.c helpers/ssltestlib.c
+      INCLUDE[dtls12psk_test]=.. ../include ../apps/include
+      DEPEND[dtls12psk_test]=../libcrypto.a ../libssl.a libtestutil.a
+    ENDIF
+
     SOURCE[tls13encryptiontest]=tls13encryptiontest.c
     INCLUDE[tls13encryptiontest]=.. ../include ../apps/include
     DEPEND[tls13encryptiontest]=../libcrypto.a ../libssl.a libtestutil.a
@@ -1171,6 +1173,11 @@ IF[{- !$disabled{tests} -}]
     SOURCE[ext_internal_test]=ext_internal_test.c
     INCLUDE[ext_internal_test]=.. ../include ../apps/include
     DEPEND[ext_internal_test]=../libcrypto.a ../libssl.a libtestutil.a
+
+    PROGRAMS{noinst}=statem_clnt_construct_test
+    SOURCE[statem_clnt_construct_test]=statem_clnt_construct_test.c
+    INCLUDE[statem_clnt_construct_test]=.. ../include ../apps/include
+    DEPEND[statem_clnt_construct_test]=../libcrypto.a ../libssl.a libtestutil.a
 
     PROGRAMS{noinst}=algorithmid_test
     SOURCE[algorithmid_test]=algorithmid_test.c

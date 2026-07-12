@@ -494,7 +494,8 @@ int EVP_MD_CTX_copy_ex(EVP_MD_CTX *out, const EVP_MD_CTX *in)
         return 0;
     }
 
-    if (out->digest == in->digest && in->digest->copyctx != NULL) {
+    if (out->digest == in->digest && in->digest->copyctx != NULL
+        && out->algctx != NULL && in->algctx != NULL) {
 
         in->digest->copyctx(out->algctx, in->algctx);
 
@@ -831,7 +832,7 @@ static int evp_md_cache_constants(EVP_MD *md)
 
 static void *evp_md_from_algorithm(int name_id,
     const OSSL_ALGORITHM *algodef,
-    OSSL_PROVIDER *prov)
+    OSSL_PROVIDER *prov, int no_store)
 {
     const OSSL_DISPATCH *fns = algodef->implementation;
     EVP_MD *md = NULL;
@@ -842,6 +843,9 @@ static void *evp_md_from_algorithm(int name_id,
         ERR_raise(ERR_LIB_EVP, ERR_R_EVP_LIB);
         return NULL;
     }
+
+    if (no_store != 0)
+        md->flags |= EVP_MD_FLAG_NO_STORE;
 
 #ifndef FIPS_MODULE
     md->type = NID_undef;
@@ -1013,6 +1017,8 @@ int EVP_MD_up_ref(EVP_MD *md)
 #ifdef OPENSSL_NO_CACHED_FETCH
     return evp_md_up_ref(md);
 #else
+    if (md->flags & EVP_MD_FLAG_NO_STORE)
+        return evp_md_up_ref(md);
     return 1;
 #endif
 }
@@ -1022,6 +1028,8 @@ void EVP_MD_free(EVP_MD *md)
 #ifdef OPENSSL_NO_CACHED_FETCH
     evp_md_free(md);
 #else
+    if (md != NULL && (md->flags & EVP_MD_FLAG_NO_STORE))
+        evp_md_free(md);
     return;
 #endif
 }

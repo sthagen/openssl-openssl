@@ -173,8 +173,7 @@ of the Configure targets in the first command.
 
 Most likely you will be using the `VC-WIN64A`/`VC-WIN64A-HYBRIDCRT` target for
 64bit Windows binaries (AMD64) or `VC-WIN32`/`VC-WIN32-HYBRIDCRT` for 32bit
-Windows binaries (X86).  `VC-WIN64I` (Intel IA64, Itanium) is also available
-but rather uncommon nowadays.
+Windows binaries (X86).
 
 Installing OpenSSL
 ------------------
@@ -426,6 +425,22 @@ The names of the libraries are:
 * brotlicommon.lib
 * brotlidec.lib
 * brotlienc.lib
+
+### with-cmocka-include
+
+    --with-cmocka-include=DIR
+
+The directory for the location of the cmocka include file. This option is only
+necessary if [enable-unit-tests](#enable-unit-tests) is used and the include
+file is not already on the system include path.
+
+### with-cmocka-lib
+
+    --with-cmocka-lib=DIR
+
+The directory containing the cmocka library. This option is only necessary if
+[enable-unit-tests](#enable-unit-tests) is used and the library is not already
+on the system library path.
 
 ### with-zlib-include
 
@@ -817,6 +832,12 @@ external test suites are currently supported:
 See the file [test/README-external.md](test/README-external.md)
 for further details.
 
+### enable-unit-tests
+
+Enable building and running unit tests.
+
+This works only on platforms supporting ld `--wrap` option like Linux and BSD.
+
 ### no-filenames
 
 Don't compile in filename and line number information (e.g.  for errors and
@@ -1094,9 +1115,11 @@ The User Interface console method enables text based console prompts.
 
 ### enable-unit-test
 
-Enable additional unit test APIs.
+Enable exposing SSL_test_functions for overwriting ssl_init_wbio_buffer.
 
 This should not typically be used in production deployments.
+
+This option is deprecated and will be removed in OpenSSL 5.0.
 
 ### no-uplink
 
@@ -1929,9 +1952,8 @@ on Cygwin, shared libraries are named `cygcrypto-1.1.dll` and `cygssl-1.1.dll`
 with import libraries `libcrypto.dll.a` and `libssl.dll.a`.
 
 On Windows build with MSVC or using MingW, shared libraries are named
-`libcrypto-1_1.dll` and `libssl-1_1.dll` for 32-bit Windows,
-`libcrypto-1_1-x64.dll` and `libssl-1_1-x64.dll` for 64-bit x86_64 Windows,
-and `libcrypto-1_1-ia64.dll` and `libssl-1_1-ia64.dll` for IA64 Windows.
+`libcrypto-1_1.dll` and `libssl-1_1.dll` for 32-bit Windows, and
+`libcrypto-1_1-x64.dll` and `libssl-1_1-x64.dll` for 64-bit x86_64 Windows.
 With MSVC, the import libraries are named `libcrypto.lib` and `libssl.lib`,
 while with MingW, they are named `libcrypto.dll.a` and `libssl.dll.a`.
 

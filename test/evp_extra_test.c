@@ -2411,7 +2411,7 @@ static struct ec_der_pub_keys_st {
  * Tests the range of the decoded EC char2 public point.
  * See ec_GF2m_simple_oct2point().
  */
-static int test_invalide_ec_char2_pub_range_decode(int id)
+static int test_invalid_ec_char2_pub_range_decode(int id)
 {
     int ret = 0;
     EVP_PKEY *pkey;
@@ -5930,6 +5930,131 @@ err:
 }
 
 /*
+ * With AEAD ciphers, a tag is an input for decryption (the value to verify)
+ * and an output of encryption (the generated value). Therefore:
+ *   - supplying a tag value while encrypting must fail
+ *   - reading a tag while decrypting must fail
+ *   - error codes should be consistent across all AEADs
+ */
+static int test_evp_aead_tag_direction(int idx)
+{
+    const EVP_CIPHER_TEST_INFO *info = &cipher_list[idx];
+    EVP_CIPHER_CTX *ctx_enc = NULL; /* set tag while encrypting: must fail */
+    EVP_CIPHER_CTX *ctx_dec = NULL; /* get tag while decrypting: must fail */
+
+    OSSL_PARAM tagparams[2];
+
+    unsigned char key[EVP_MAX_KEY_LENGTH] = { 0 };
+    unsigned char iv[EVP_MAX_IV_LENGTH] = { 0 };
+    unsigned char tag[EVPTEST_TAG_LEN_MAX] = { 0 };
+
+    int i = 0, testresult = 0, expected = 0;
+    char *errmsg = NULL;
+    unsigned long err_code = 0;
+
+    /* filter out various modes */
+    if (info->taglen == 0
+        /* skip TLS stitched MTE cipher */
+        || EVP_CIPHER_is_a(info->ciph, "AES-128-CBC-HMAC-SHA1")
+        /* skip TLS stitched MTE cipher */
+        || EVP_CIPHER_is_a(info->ciph, "AES-256-CBC-HMAC-SHA1")
+        /* skip TLS stitched MTE cipher */
+        || EVP_CIPHER_is_a(info->ciph, "AES-128-CBC-HMAC-SHA256")
+        /* skip TLS stitched MTE cipher */
+        || EVP_CIPHER_is_a(info->ciph, "AES-256-CBC-HMAC-SHA256"))
+        return 1;
+
+    for (i = 0; i < info->keylen && i < (int)sizeof(key); i++)
+        key[i] = (unsigned char)(0xA0 + i);
+    for (i = 0; i < info->ivlen && i < (int)sizeof(iv); i++)
+        iv[i] = (unsigned char)(0xB0 + i);
+
+    /*
+     * a tag value supplied while encrypting must be rejected. data is non-NULL
+     * so this is a value-set, not the data == NULL tag-length query.
+     */
+    if (!TEST_ptr(ctx_enc = EVP_CIPHER_CTX_new())) {
+        errmsg = "ENC_ALLOC";
+        goto err;
+    }
+    if (!TEST_true(EVP_EncryptInit_ex2(ctx_enc, info->ciph, key, iv, NULL))) {
+        errmsg = "ENC_INIT";
+        goto err;
+    }
+    tagparams[0] = OSSL_PARAM_construct_octet_string(OSSL_CIPHER_PARAM_AEAD_TAG,
+        tag, info->taglen);
+    tagparams[1] = OSSL_PARAM_construct_end();
+    ERR_set_mark();
+    if (!TEST_false(EVP_CIPHER_CTX_set_params(ctx_enc, tagparams))) {
+        ERR_clear_last_mark();
+        errmsg = "ENC_SET_TAG_NOT_REJECTED";
+        goto err;
+    }
+    err_code = ERR_peek_last_error();
+    if (!TEST_int_eq(ERR_GET_LIB(err_code), ERR_LIB_PROV)
+        || !TEST_int_eq(ERR_GET_REASON(err_code), PROV_R_TAG_NOT_NEEDED)) {
+        ERR_clear_last_mark();
+        expected = PROV_R_TAG_NOT_NEEDED;
+        errmsg = "ENC_SET_TAG_WRONG_REASON";
+        goto err;
+    }
+    ERR_pop_to_mark();
+
+    /* a tag read while decrypting must be rejected */
+    if (!TEST_ptr(ctx_dec = EVP_CIPHER_CTX_new())) {
+        errmsg = "DEC_ALLOC";
+        goto err;
+    }
+    if (!TEST_true(EVP_DecryptInit_ex2(ctx_dec, info->ciph, key, iv, NULL))) {
+        errmsg = "DEC_INIT";
+        goto err;
+    }
+    tagparams[0] = OSSL_PARAM_construct_octet_string(OSSL_CIPHER_PARAM_AEAD_TAG,
+        tag, info->taglen);
+    tagparams[1] = OSSL_PARAM_construct_end();
+
+    /* set a tag so the get below is exercised with one present */
+    if (!TEST_true(EVP_CIPHER_CTX_set_params(ctx_dec, tagparams))) {
+        errmsg = "DEC_SET_TAG_REJECTED";
+        goto err;
+    }
+
+    /* but a tag must never be readable back while decrypting */
+    ERR_set_mark();
+    if (!TEST_false(EVP_CIPHER_CTX_get_params(ctx_dec, tagparams))) {
+        ERR_clear_last_mark();
+        errmsg = "DEC_GET_TAG_NOT_REJECTED";
+        goto err;
+    }
+    err_code = ERR_peek_last_error();
+    if (!TEST_int_eq(ERR_GET_LIB(err_code), ERR_LIB_PROV)
+        || !TEST_int_eq(ERR_GET_REASON(err_code), PROV_R_TAG_NOT_SET)) {
+        ERR_clear_last_mark();
+        expected = PROV_R_TAG_NOT_SET;
+        errmsg = "DEC_GET_TAG_WRONG_REASON";
+        goto err;
+    }
+    ERR_pop_to_mark();
+
+    testresult = 1;
+
+err:
+    if (errmsg != NULL) {
+        if (expected != 0)
+            TEST_info("test_evp_aead_tag_direction %d, %s: %s"
+                      " (expected reason %d, got %d)",
+                idx, errmsg, info->name,
+                expected, ERR_GET_REASON(err_code));
+        else
+            TEST_info("test_evp_aead_tag_direction %d, %s: %s",
+                idx, errmsg, info->name);
+    }
+    EVP_CIPHER_CTX_free(ctx_enc);
+    EVP_CIPHER_CTX_free(ctx_dec);
+    return testresult;
+}
+
+/*
  * Verify stale key is not being used after providing a new key in multiple steps.
  * This test performs a full round of encryption and then changes the
  * key and then the IV in a multi-step init.
@@ -7776,6 +7901,70 @@ end:
     return ret;
 }
 
+static int test_aes_xts_rejects_missing_iv(void)
+{
+    static const unsigned char key[32] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
+    };
+    static const unsigned char in[32] = {
+        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+        0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88,
+        0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00
+    };
+    static const unsigned char iv[16] = {
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02
+    };
+    EVP_CIPHER_CTX *ctx = NULL;
+    EVP_CIPHER *cipher = NULL;
+    unsigned char out[sizeof(in)];
+    int outl = 0;
+    int ret = 0;
+
+    if ((cipher = EVP_CIPHER_fetch(testctx, "AES-128-XTS", testpropq)) == NULL)
+        return TEST_skip("AES-128-XTS cipher is not available");
+
+    /* Initialize with a valid IV as a positive control */
+    if (!TEST_ptr(ctx = EVP_CIPHER_CTX_new())
+        || !TEST_true(EVP_EncryptInit_ex2(ctx, cipher, key, iv, NULL))
+        || !TEST_true(EVP_EncryptUpdate(ctx, out, &outl, in, sizeof(in)))
+        || !TEST_int_eq(outl, (int)sizeof(in)))
+        goto err;
+
+    EVP_CIPHER_CTX_free(ctx);
+    ctx = NULL;
+    outl = 0;
+
+    if (!TEST_ptr(ctx = EVP_CIPHER_CTX_new()))
+        goto err;
+
+    /* Initialize with a NULL IV, which may fail immediately */
+    ERR_set_mark();
+    if (!EVP_EncryptInit_ex2(ctx, cipher, key, NULL, NULL)) {
+        ERR_pop_to_mark();
+        ret = 1;
+        goto err;
+    }
+
+    /* Test EVP_EncryptUpdate after NULL IV initialization, which should fail */
+    if (!TEST_false(EVP_EncryptUpdate(ctx, out, &outl, in, sizeof(in)))) {
+        ERR_clear_last_mark();
+        goto err;
+    }
+    ERR_pop_to_mark();
+
+    ret = 1;
+
+err:
+    EVP_CIPHER_free(cipher);
+    EVP_CIPHER_CTX_free(ctx);
+    return ret;
+}
+
 /*
  * Cross-driver round-trip test for AEAD one-shot vs streaming paths.
  *
@@ -8877,7 +9066,7 @@ int setup_tests(void)
 #ifndef OPENSSL_NO_EC
     ADD_TEST(test_X509_PUBKEY_inplace);
     ADD_TEST(test_X509_PUBKEY_dup);
-    ADD_ALL_TESTS(test_invalide_ec_char2_pub_range_decode,
+    ADD_ALL_TESTS(test_invalid_ec_char2_pub_range_decode,
         OSSL_NELEM(ec_der_pub_keys));
 #endif
 #ifndef OPENSSL_NO_DSA
@@ -8937,6 +9126,7 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_evp_stale_key_reinit, cipher_list_n);
     ADD_ALL_TESTS(test_evp_decrypt_roundtrip_multistep, cipher_list_n);
     ADD_ALL_TESTS(test_evp_oneshot_aead_zerolen, cipher_list_n);
+    ADD_ALL_TESTS(test_evp_aead_tag_direction, cipher_list_n);
 
     ADD_ALL_TESTS(test_evp_init_seq, OSSL_NELEM(evp_init_tests));
     ADD_ALL_TESTS(test_evp_reset, OSSL_NELEM(evp_reset_tests));
@@ -8972,6 +9162,7 @@ int setup_tests(void)
     ADD_TEST(test_invalid_ctx_for_digest);
 
     ADD_TEST(test_evp_cipher_negative_length);
+    ADD_TEST(test_aes_xts_rejects_missing_iv);
 
     ADD_TEST(test_evp_cipher_pipeline);
 

@@ -31,6 +31,44 @@ OpenSSL Releases
 
 ### Changes between 4.0 and 4.1 [xx XXX xxxx]
 
+ * EC key point format simplification.
+
+   The point conversion form (compressed, uncompressed, or hybrid)
+   is now a single value on the `EC_GROUP` and round-trips
+   unchanged through import and export of `EC_KEY` objects.
+
+   Freshly generated keys have their public point encoded in
+   uncompressed form.  A `point-format` supplied at key generation
+   time via `OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT` is
+   validated (an invalid value is rejected) but otherwise ignored
+   on the generated key.  EC parameter generation continues to
+   honour the requested form on the group's generator; imported
+   keys keep their form.
+
+   The `ec_point_formats` extension no longer affects TLS 1.2
+   X.509 certificate selection or acceptance.  OpenSSL now
+   accepts an EC certificate in any point form it can decode,
+   and sends any EC certificate it has regardless of point form.
+   TLS 1.3 disregards the extension entirely.
+
+   The RFC 4492/8422 section 5.1.2 requirement that the peer's
+   point-format list contain "uncompressed" is now enforced on
+   both sides (previously client-only), and only when an ECC
+   TLS 1.2 ciphersuite is negotiated -- a missing "uncompressed"
+   is ignored under TLS 1.3 or with a non-ECC cipher.
+
+   *Viktor Dukhovni*
+
+ * Added unit tests setup activated via `enable-unit-tests` option. This works
+   only on platforms with ld `--wrap` support (Linux, BSD).
+
+   *Jakub Zelenka*
+
+ * Deprecated the `enable-unit-test` configure option and the
+   `SSL_test_functions()` function. Both will be removed in OpenSSL 5.0.
+
+   *Jakub Zelenka*
+
  * Added -testmode option for `s_time` app.
 
    *Jakub Zelenka*
@@ -41,7 +79,7 @@ OpenSSL Releases
    *Adriano Sela Aviles*
 
  * SubjectPublicKeyInfo blobs whose AlgorithmIdentifier uses id-RSAES-OAEP
-   (NID_rsaesOaep, 1.2.840.113549.1.1.7) with a plain RSAPublicKey body
+   (`NID_rsaesOaep`, 1.2.840.113549.1.1.7) with a plain RSAPublicKey body
    are now decoded as RSA keys.  This is required for interoperability
    with TPM 1.2 Endorsement Key certificates per TCG Credential Profiles
    V1.2 section 3.2.7.  The OAEP AlgorithmIdentifier parameters are not
@@ -63,6 +101,12 @@ OpenSSL Releases
  * Added test framework for testing function memory allocation failures.
 
    *Jakub Zelenka*
+
+ * Windows-on-Itanium (VC-WIN64I) support was dropped - the Itanium
+   architecture has been discontinued and the platform is no longer
+   supported or tested.
+
+   *Bob Beck*
 
  * Windows CE support was dropped - Windows CE has been unsupported since
    2018 and does not have a modern C99 toolchain.
@@ -198,6 +242,11 @@ OpenSSL Releases
    (or other architectures with 128 bit vector registers).
 
    *Timo Keller*
+
+ * Added `EVP_KDF_CTX_get0_kdf()` and `EVP_KDF_CTX_get1_kdf()` functions
+   as a replacement for the now deprecated `EVP_KDF_CTX_kdf()`.
+
+   *Leon Timmermans*
 
  * Add `FIPS_mode()` as a convenience define to
    `EVP_default_properties_is_fips_enabled(NULL)`, which is
@@ -4098,7 +4147,7 @@ breaking changes, and mappings for the large list of deprecated functions.
 
  * Fixed a bug in the function `OCSP_basic_verify` that verifies the signer
    certificate on an OCSP response. The bug caused the function in the case
-   where the (non-default) flag OCSP_NOCHECKS is used to return a postivie
+   where the (non-default) flag OCSP_NOCHECKS is used to return a positive
    response (meaning a successful verification) even in the case where the
    response signing certificate fails to verify.
 
@@ -19896,7 +19945,7 @@ s-cbc           3624.96k     5258.21k     5530.91k     5624.30k     5628.26k
    The new configuration file reading functions are:
 
            NCONF_new, NCONF_free, NCONF_load, NCONF_load_fp, NCONF_load_bio,
-           NCONF_get_section, NCONF_get_string, NCONF_get_numbre
+           NCONF_get_section, NCONF_get_string, NCONF_get_number
 
            NCONF_default, NCONF_WIN32
 
