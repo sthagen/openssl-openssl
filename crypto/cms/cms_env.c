@@ -278,11 +278,16 @@ BIO *CMS_EnvelopedData_decrypt(CMS_EnvelopedData *env, BIO *detached_data,
     CMS_ContentInfo *ci;
     BIO *bio = NULL;
     int res = 0;
+    size_t secret_len = 0;
 
     if (env == NULL) {
         ERR_raise(ERR_LIB_CMS, ERR_R_PASSED_NULL_PARAMETER);
         return NULL;
     }
+
+    if (secret != NULL
+        && (secret_len = ASN1_STRING_length_ex(secret)) > INT_MAX)
+        return NULL;
 
     if ((ci = CMS_ContentInfo_new_ex(libctx, propq)) == NULL
         || (bio = BIO_new(BIO_s_mem())) == NULL)
@@ -291,7 +296,7 @@ BIO *CMS_EnvelopedData_decrypt(CMS_EnvelopedData *env, BIO *detached_data,
     ci->d.envelopedData = env;
     if (secret != NULL
         && CMS_decrypt_set1_password(ci, (unsigned char *)ASN1_STRING_get0_data(secret),
-               ASN1_STRING_length(secret))
+               (int)secret_len)
             != 1)
         goto end;
     res = CMS_decrypt(ci, secret == NULL ? pkey : NULL,
@@ -1236,6 +1241,35 @@ BIO *ossl_cms_EnvelopedData_init_bio(CMS_ContentInfo *cms)
     return cms_EnvelopedData_Decryption_init_bio(cms);
 }
 
+/* The DER encoding of authAttrs, with the universal SET OF tag, is the AAD */
+static int cms_AuthEnvelopedData_set_aad(BIO *b,
+    STACK_OF(X509_ATTRIBUTE) *authAttrs)
+{
+    EVP_CIPHER_CTX *ctx;
+    unsigned char *aad = NULL;
+    int aadlen, outl, ok = 0;
+    const ASN1_ITEM *item;
+
+    if (!BIO_get_cipher_ctx(b, &ctx))
+        return 0;
+    item = EVP_CIPHER_CTX_is_encrypting(ctx)
+        ? ASN1_ITEM_rptr(CMS_Attributes_AadEncrypt)
+        : ASN1_ITEM_rptr(CMS_Attributes_AadDecrypt);
+    aadlen = ASN1_item_i2d((ASN1_VALUE *)authAttrs, &aad, item);
+    if (aadlen <= 0 || aad == NULL) {
+        ERR_raise(ERR_LIB_CMS, ERR_R_ASN1_LIB);
+        goto err;
+    }
+    if (EVP_CipherUpdate(ctx, NULL, &outl, aad, aadlen) <= 0) {
+        ERR_raise(ERR_LIB_CMS, CMS_R_CTRL_FAILURE);
+        goto err;
+    }
+    ok = 1;
+err:
+    OPENSSL_free(aad);
+    return ok;
+}
+
 BIO *ossl_cms_AuthEnvelopedData_init_bio(CMS_ContentInfo *cms)
 {
     CMS_EncryptedContentInfo *ec;
@@ -1252,9 +1286,16 @@ BIO *ossl_cms_AuthEnvelopedData_init_bio(CMS_ContentInfo *cms)
         ec->taglen = aenv->mac->length;
     }
     ret = ossl_cms_EncryptedContent_init_bio(ec, ossl_cms_get0_cmsctx(cms), 1);
+    if (ret == NULL)
+        return NULL;
 
-    /* If error or no cipher end of processing */
-    if (ret == NULL || ec->cipher == NULL)
+    /* authAttrs, if present, are the AEAD associated data */
+    if (aenv->authAttrs != NULL
+        && !cms_AuthEnvelopedData_set_aad(ret, aenv->authAttrs))
+        goto err;
+
+    /* If no cipher end of processing */
+    if (ec->cipher == NULL)
         return ret;
 
     /* Now encrypt content key according to each RecipientInfo type */

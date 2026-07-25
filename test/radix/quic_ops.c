@@ -27,6 +27,24 @@ err:
     return ok;
 }
 
+DEF_FUNC(hf_bind)
+{
+    const char *name;
+    RADIX_OBJ *empty_obj;
+
+    F_POP(name);
+
+    empty_obj = RADIX_OBJ_new_empty(name);
+    if (empty_obj == NULL)
+        return 0;
+
+    RADIX_PROCESS_set_obj(RP(), name, empty_obj);
+
+    return 1;
+err:
+    return 0;
+}
+
 static int ssl_ctx_select_alpn(SSL *ssl,
     const unsigned char **out, unsigned char *out_len,
     const unsigned char *in, unsigned int in_len,
@@ -186,6 +204,11 @@ DEF_FUNC(hf_new_ssl)
     if (!is_domain && !TEST_true(ssl_attach_bio_dgram(ssl, 0, NULL)))
         goto err;
 
+    if (!TEST_true(ossl_quic_set_override_now_cb(ssl, get_time, NULL))) {
+        SSL_free(ssl);
+        goto err;
+    }
+
     if (!TEST_true(RADIX_PROCESS_set_ssl(RP(), name, ssl))) {
         SSL_free(ssl);
         goto err;
@@ -248,27 +271,37 @@ err:
     return ok;
 }
 
+#define OP_F_REPLACE_STREAM 0x8000000000000000
+#define OP_F_MASK 0x7fffffffffffffff
+
 DEF_FUNC(hf_new_stream)
 {
     int ok = 0;
+    int replace;
+    RADIX_OBJ *stream_obj;
     const char *stream_name;
-    SSL *conn, *stream;
+    SSL *conn, *stream, *old;
     uint64_t flags, do_accept;
 
     F_POP2(flags, do_accept);
     F_POP(stream_name);
     REQUIRE_SSL(conn);
+    replace = ((OP_F_REPLACE_STREAM & flags) != 0);
 
-    if (!TEST_ptr_null(RADIX_PROCESS_get_obj(RP(), stream_name)))
+    stream_obj = RADIX_PROCESS_get_obj(RP(), stream_name);
+    if (replace == 0) {
+        if (!TEST_ptr_null(stream_obj))
+            goto err;
+    } else if (TEST_ptr_null(stream_obj))
         goto err;
 
     if (do_accept) {
-        stream = SSL_accept_stream(conn, flags);
+        stream = SSL_accept_stream(conn, flags & OP_F_MASK);
 
         if (stream == NULL)
             F_SPIN_AGAIN();
     } else {
-        stream = SSL_new_stream(conn, flags);
+        stream = SSL_new_stream(conn, flags & OP_F_MASK);
     }
 
     if (!TEST_ptr(stream))
@@ -276,8 +309,14 @@ DEF_FUNC(hf_new_stream)
 
     /* TODO(QUIC RADIX): Implement wait behaviour */
 
-    if (stream != NULL
-        && !TEST_true(RADIX_PROCESS_set_ssl(RP(), stream_name, stream))) {
+    if (stream_obj != NULL) {
+        ossl_crypto_mutex_lock(stream_obj->mx);
+        old = stream_obj->ssl;
+        stream_obj->ssl = stream;
+        stream = NULL;
+        ossl_crypto_mutex_unlock(stream_obj->mx);
+        SSL_free(old);
+    } else if (!TEST_true(RADIX_PROCESS_set_ssl(RP(), stream_name, stream))) {
         SSL_free(stream);
         goto err;
     }
@@ -308,6 +347,7 @@ DEF_FUNC(hf_accept_conn)
         SSL_free(conn);
         goto err;
     }
+    radix_activate_obj(RADIX_PROCESS_get_obj(RP(), conn_name));
 
     ok = 1;
 err:
@@ -924,9 +964,98 @@ err:
     return ok;
 }
 
+DEF_FUNC(hf_override_key_update)
+{
+    int ok = 0;
+    SSL *ssl;
+    uint64_t threshold;
+    QUIC_CHANNEL *ch;
+
+    F_POP(threshold);
+    REQUIRE_SSL(ssl);
+    ch = ossl_quic_conn_get_channel(ssl);
+    ossl_quic_channel_set_txku_threshold_override(ch, threshold);
+    ok = 1;
+err:
+    return ok;
+}
+
+DEF_FUNC(hf_check_key_update_ge)
+{
+    int ok = 0;
+    SSL *ssl;
+    uint64_t min_rxke, txke, rxke;
+    int64_t diff;
+    QUIC_CHANNEL *ch;
+
+    F_POP(min_rxke);
+    REQUIRE_SSL(ssl);
+    ch = ossl_quic_conn_get_channel(ssl);
+    txke = ossl_quic_channel_get_tx_key_epoch(ch);
+    rxke = ossl_quic_channel_get_rx_key_epoch(ch);
+    diff = (int64_t)txke - (int64_t)rxke;
+
+    /*
+     * TXKE must always be equal to or ahead of RXKE.
+     * It can be ahead of RXKE by at most 1.
+     */
+    if (!TEST_int64_t_ge(diff, 0) || !TEST_int64_t_le(diff, 1))
+        goto err;
+
+    /* Caller specifies a minimum number of RXKEs which must have happened. */
+    if (!TEST_uint64_t_ge(rxke, min_rxke))
+        goto err;
+
+    ok = 1;
+err:
+    return ok;
+}
+
+DEF_FUNC(hf_check_key_update_lt)
+{
+    int ok = 0;
+    SSL *ssl;
+    uint64_t max_txke, txke;
+    QUIC_CHANNEL *ch;
+
+    F_POP(max_txke);
+    REQUIRE_SSL(ssl);
+    ch = ossl_quic_conn_get_channel(ssl);
+    txke = ossl_quic_channel_get_tx_key_epoch(ch);
+
+    /* Caller specifies a maximum number of TXKEs which must not be exceeded. */
+    if (!TEST_uint64_t_lt(txke, max_txke))
+        goto err;
+
+    ok = 1;
+err:
+    return ok;
+}
+
+DEF_FUNC(hf_trigger_key_update)
+{
+    int ok = 0;
+    SSL *ssl;
+    uint64_t update_type;
+
+    F_POP(update_type);
+    REQUIRE_SSL(ssl);
+
+    if (!TEST_true(SSL_key_update(ssl, (int)update_type)))
+        goto err;
+
+    ok = 1;
+err:
+    return ok;
+}
+
 #define OP_UNBIND(name) \
     (OP_PUSH_PZ(#name), \
         OP_FUNC(hf_unbind))
+
+#define OP_BIND(name)   \
+    (OP_PUSH_PZ(#name), \
+        OP_FUNC(hf_bind))
 
 #define OP_SELECT_SSL(slot, name) \
     (OP_PUSH_U64(slot),           \
@@ -1146,3 +1275,23 @@ err:
 #define OP_SLEEP(ms)  \
     (OP_PUSH_U64(ms), \
         OP_FUNC(hf_sleep))
+
+#define OP_OVERRIDE_KEY_UPDATE(name, threshold) \
+    (OP_SELECT_SSL(0, name),                    \
+        OP_PUSH_U64(threshold),                 \
+        OP_FUNC(hf_override_key_update))
+
+#define OP_CHECK_KEY_UPDATE_GE(name, min_rxke) \
+    (OP_SELECT_SSL(0, name),                   \
+        OP_PUSH_U64(min_rxke),                 \
+        OP_FUNC(hf_check_key_update_ge))
+
+#define OP_CHECK_KEY_UPDATE_LT(name, max_txke) \
+    (OP_SELECT_SSL(0, name),                   \
+        OP_PUSH_U64(max_txke),                 \
+        OP_FUNC(hf_check_key_update_lt))
+
+#define OP_TRIGGER_KEY_UPDATE(name, update_type) \
+    (OP_SELECT_SSL(0, name),                     \
+        OP_PUSH_U64(update_type),                \
+        OP_FUNC(hf_trigger_key_update))

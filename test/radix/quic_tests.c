@@ -900,44 +900,553 @@ DEF_SCRIPT(script_9, "Unidirectional default stream mode (server sends bidi firs
     OP_READ_EXPECT(Sa, "orange", 6);
 }
 
-DEF_SCRIPT(script_10, "place holder for multistrem script_10")
+/* 10. Shutdown */
+DEF_SCRIPT(script_10, "Shutdown test")
 {
+    OP_SIMPLE_PAIR_CONN();
+
+    OP_WRITE(C, "apple", 5);
+    OP_ACCEPT_CONN_WAIT(L, S, 0);
+    OP_READ_EXPECT(S, "apple", 5);
+
+    OP_SHUTDOWN_WAIT(C, 0, 0, NULL);
+    OP_EXPECT_CONN_CLOSE_INFO(C, 0, 1, 0);
+    OP_EXPECT_CONN_CLOSE_INFO(S, 0, 1, 1);
 }
 
-DEF_SCRIPT(script_11, "place holder for multistrem script_11")
+/* 11. Many threads accepted on the same client connection */
+DEF_SCRIPT(script_11_child_0,
+    "child: accept stream from C, read, sleep, expect FIN")
 {
+    OP_ACCEPT_STREAM_WAIT(C, C0, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_READ_EXPECT_B(C0, "foo");
+    OP_SLEEP(10);
+    OP_EXPECT_FIN(C0);
 }
 
-DEF_SCRIPT(script_12, "place holder for multistrem script_12")
+DEF_SCRIPT(script_11_child_1,
+    "child: accept stream from C, read, sleep, expect FIN")
 {
+    OP_ACCEPT_STREAM_WAIT(C, C1, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_READ_EXPECT_B(C1, "foo");
+    OP_SLEEP(10);
+    OP_EXPECT_FIN(C1);
 }
 
-DEF_SCRIPT(script_13, "place holder for multistrem script_13")
+DEF_SCRIPT(script_11_child_2,
+    "child: accept stream from C, read, sleep, expect FIN")
 {
+    OP_ACCEPT_STREAM_WAIT(C, C2, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_READ_EXPECT_B(C2, "foo");
+    OP_SLEEP(10);
+    OP_EXPECT_FIN(C2);
 }
 
-DEF_SCRIPT(script_14, "place holder for multistrem script_14")
+DEF_SCRIPT(script_11_child_3,
+    "child: accept stream from C, read, sleep, expect FIN")
 {
+    OP_ACCEPT_STREAM_WAIT(C, C3, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_READ_EXPECT_B(C3, "foo");
+    OP_SLEEP(10);
+    OP_EXPECT_FIN(C3);
 }
 
-DEF_SCRIPT(script_15, "place holder for multistrem script_15")
+DEF_SCRIPT(script_11_child_4,
+    "child: accept stream from C, read, sleep, expect FIN")
 {
+    OP_ACCEPT_STREAM_WAIT(C, C4, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_READ_EXPECT_B(C4, "foo");
+    OP_SLEEP(10);
+    OP_EXPECT_FIN(C4);
 }
 
-DEF_SCRIPT(script_16, "place holder for multistrem script_16")
+DEF_SCRIPT(script_11, "Many threads accepted on the same client connection")
 {
+    OP_SIMPLE_PAIR_CONN_ND();
+    OP_ACCEPT_CONN_WAIT(L, S, 0);
+
+    OP_BIND(C0);
+    OP_BIND(C1);
+    OP_BIND(C2);
+    OP_BIND(C3);
+    OP_BIND(C4);
+    OP_BIND(Sa);
+    OP_BIND(Sb);
+    OP_BIND(Sc);
+    OP_BIND(Sd);
+    OP_BIND(Se);
+
+    OP_SPAWN_THREAD(script_11_child_0);
+    OP_SPAWN_THREAD(script_11_child_1);
+    OP_SPAWN_THREAD(script_11_child_2);
+    OP_SPAWN_THREAD(script_11_child_3);
+    OP_SPAWN_THREAD(script_11_child_4);
+
+    OP_NEW_STREAM(S, Sa, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(Sa, "foo");
+    OP_CONCLUDE(Sa);
+
+    OP_NEW_STREAM(S, Sb, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(Sb, "foo");
+    OP_CONCLUDE(Sb);
+
+    OP_NEW_STREAM(S, Sc, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(Sc, "foo");
+    OP_CONCLUDE(Sc);
+
+    OP_NEW_STREAM(S, Sd, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(Sd, "foo");
+    OP_CONCLUDE(Sd);
+
+    OP_NEW_STREAM(S, Se, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(Se, "foo");
+    OP_CONCLUDE(Se);
+    OP_SLEEP(10);
 }
 
-DEF_SCRIPT(script_17, "place holder for multistrem script_17")
+/* 12. Many threads initiated on the same client connection */
+DEF_SCRIPT(script_12_child_0,
+    "child: create stream on C, write, conclude")
 {
+    OP_NEW_STREAM(C, C0, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(C0, "foo");
+    OP_CONCLUDE(C0);
 }
 
-DEF_SCRIPT(script_18, "place holder for multistrem script_18")
+DEF_SCRIPT(script_12_child_1,
+    "child: create stream on C, write, conclude")
 {
+    OP_NEW_STREAM(C, C1, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(C1, "foo");
+    OP_CONCLUDE(C1);
 }
 
-DEF_SCRIPT(script_19, "place holder for multistrem script_19")
+DEF_SCRIPT(script_12_child_2,
+    "child: create stream on C, write, conclude")
 {
+    OP_NEW_STREAM(C, C2, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(C2, "foo");
+    OP_CONCLUDE(C2);
+}
+
+DEF_SCRIPT(script_12_child_3,
+    "child: create stream on C, write, conclude")
+{
+    OP_NEW_STREAM(C, C3, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(C3, "foo");
+    OP_CONCLUDE(C3);
+}
+
+DEF_SCRIPT(script_12_child_4,
+    "child: create stream on C, write, conclude")
+{
+    OP_NEW_STREAM(C, C4, OP_F_REPLACE_STREAM /* bidirectional */);
+    OP_WRITE_B(C4, "foo");
+    OP_CONCLUDE(C4);
+}
+
+DEF_SCRIPT(script_12, "Many threads initiated on the same client connection")
+{
+    OP_SIMPLE_PAIR_CONN_ND();
+    OP_ACCEPT_CONN_WAIT_ND(L, S, 0);
+
+    OP_BIND(C0);
+    OP_BIND(C1);
+    OP_BIND(C2);
+    OP_BIND(C3);
+    OP_BIND(C4);
+    OP_BIND(Sa);
+    OP_BIND(Sb);
+    OP_BIND(Sc);
+    OP_BIND(Sd);
+    OP_BIND(Se);
+
+    OP_SPAWN_THREAD(script_12_child_0);
+    OP_SPAWN_THREAD(script_12_child_1);
+    OP_SPAWN_THREAD(script_12_child_2);
+    OP_SPAWN_THREAD(script_12_child_3);
+    OP_SPAWN_THREAD(script_12_child_4);
+
+    OP_ACCEPT_STREAM_WAIT(S, Sa, OP_F_REPLACE_STREAM);
+    OP_READ_EXPECT_B(Sa, "foo");
+    OP_EXPECT_FIN(Sa);
+    OP_ACCEPT_STREAM_WAIT(S, Sb, OP_F_REPLACE_STREAM);
+    OP_READ_EXPECT_B(Sb, "foo");
+    OP_EXPECT_FIN(Sb);
+    OP_ACCEPT_STREAM_WAIT(S, Sc, OP_F_REPLACE_STREAM);
+    OP_READ_EXPECT_B(Sc, "foo");
+    OP_EXPECT_FIN(Sc);
+    OP_ACCEPT_STREAM_WAIT(S, Sd, OP_F_REPLACE_STREAM);
+    OP_READ_EXPECT_B(Sd, "foo");
+    OP_EXPECT_FIN(Sd);
+    OP_ACCEPT_STREAM_WAIT(S, Se, OP_F_REPLACE_STREAM);
+    OP_READ_EXPECT_B(Se, "foo");
+    OP_EXPECT_FIN(Se);
+    OP_SLEEP(10);
+}
+
+/* 13. Many threads accepted on the same client connection (stress test) */
+DEF_SCRIPT(script_13_child_1,
+    "child: 10x accept stream from C, read, expect FIN, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_ACCEPT_STREAM_WAIT(C, C1, OP_F_REPLACE_STREAM);
+        OP_READ_EXPECT_B(C1, "foo");
+        OP_EXPECT_FIN(C1);
+    }
+}
+
+DEF_SCRIPT(script_13_child_2,
+    "child: 10x accept stream from C, read, expect FIN, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_ACCEPT_STREAM_WAIT(C, C2, OP_F_REPLACE_STREAM);
+        OP_READ_EXPECT_B(C2, "foo");
+        OP_EXPECT_FIN(C2);
+    }
+}
+
+DEF_SCRIPT(script_13_child_3,
+    "child: 10x accept stream from C, read, expect FIN, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_ACCEPT_STREAM_WAIT(C, C3, OP_F_REPLACE_STREAM);
+        OP_READ_EXPECT_B(C3, "foo");
+        OP_EXPECT_FIN(C3);
+    }
+}
+
+DEF_SCRIPT(script_13_child_4,
+    "child: 10x accept stream from C, read, expect FIN, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_ACCEPT_STREAM_WAIT(C, C4, OP_F_REPLACE_STREAM);
+        OP_READ_EXPECT_B(C4, "foo");
+        OP_EXPECT_FIN(C4);
+    }
+}
+
+DEF_SCRIPT(script_13_child_5,
+    "child: 10x accept stream from C, read, expect FIN, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_ACCEPT_STREAM_WAIT(C, C5, OP_F_REPLACE_STREAM);
+        OP_READ_EXPECT_B(C5, "foo");
+        OP_EXPECT_FIN(C5);
+    }
+}
+
+DEF_SCRIPT(script_13,
+    "Many threads accepted on same client connection (stress test)")
+{
+    size_t i;
+
+    OP_SIMPLE_PAIR_CONN_ND();
+    OP_ACCEPT_CONN_WAIT_ND(L, S, 0);
+
+    /*
+     * put empty objects to radix process cache.
+     * objects C1 - C5 are going to be used for
+     * SSL streams in _child_1 - _child_5 threads.
+     */
+    OP_BIND(C1);
+    OP_BIND(C2);
+    OP_BIND(C3);
+    OP_BIND(C4);
+    OP_BIND(C5);
+    OP_BIND(Sa);
+
+    OP_SPAWN_THREAD(script_13_child_1);
+    OP_SPAWN_THREAD(script_13_child_2);
+    OP_SPAWN_THREAD(script_13_child_3);
+    OP_SPAWN_THREAD(script_13_child_4);
+    OP_SPAWN_THREAD(script_13_child_5);
+
+    for (i = 0; i < 50; ++i) {
+        OP_NEW_STREAM(S, Sa, OP_F_REPLACE_STREAM);
+        OP_WRITE_B(Sa, "foo");
+        OP_CONCLUDE(Sa);
+    }
+}
+
+/* 14. Many threads initiating on the same client connection (stress test) */
+DEF_SCRIPT(script_14_child_1,
+    "child: 10x create stream on C, write, conclude, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_NEW_STREAM(C, C1, OP_F_REPLACE_STREAM);
+        OP_WRITE_B(C1, "foo");
+        OP_CONCLUDE(C1);
+    }
+}
+
+DEF_SCRIPT(script_14_child_2,
+    "child: 10x create stream on C, write, conclude, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_NEW_STREAM(C, C2, OP_F_REPLACE_STREAM);
+        OP_WRITE_B(C2, "foo");
+        OP_CONCLUDE(C2);
+    }
+}
+
+DEF_SCRIPT(script_14_child_3,
+    "child: 10x create stream on C, write, conclude, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_NEW_STREAM(C, C3, OP_F_REPLACE_STREAM);
+        OP_WRITE_B(C3, "foo");
+        OP_CONCLUDE(C3);
+    }
+}
+
+DEF_SCRIPT(script_14_child_4,
+    "child: 10x create stream on C, write, conclude, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_NEW_STREAM(C, C4, OP_F_REPLACE_STREAM);
+        OP_WRITE_B(C4, "foo");
+        OP_CONCLUDE(C4);
+    }
+}
+
+DEF_SCRIPT(script_14_child_5,
+    "child: 10x create stream on C, write, conclude, free")
+{
+    size_t i;
+
+    for (i = 0; i < 10; i++) {
+        OP_NEW_STREAM(C, C5, OP_F_REPLACE_STREAM);
+        OP_WRITE_B(C5, "foo");
+        OP_CONCLUDE(C5);
+    }
+}
+
+DEF_SCRIPT(script_14,
+    "Many threads initiating on same client connection (stress test)")
+{
+    size_t i;
+
+    OP_SIMPLE_PAIR_CONN_ND();
+    OP_ACCEPT_CONN_WAIT_ND(L, S, 0);
+
+    OP_BIND(C1);
+    OP_BIND(C2);
+    OP_BIND(C3);
+    OP_BIND(C4);
+    OP_BIND(C5);
+    OP_BIND(Sa);
+
+    OP_SPAWN_THREAD(script_14_child_1);
+    OP_SPAWN_THREAD(script_14_child_2);
+    OP_SPAWN_THREAD(script_14_child_3);
+    OP_SPAWN_THREAD(script_14_child_4);
+    OP_SPAWN_THREAD(script_14_child_5);
+
+    for (i = 0; i < 50; ++i) {
+        OP_ACCEPT_STREAM_WAIT(S, Sa, OP_F_REPLACE_STREAM);
+        OP_READ_EXPECT_B(Sa, "foo");
+        OP_EXPECT_FIN(Sa);
+    }
+}
+
+/* 15. Client sending large number of streams, MAX_STREAMS test */
+DEF_SCRIPT(script_15, "Client sending large number of streams, MAX_STREAMS test")
+{
+    size_t i;
+
+    OP_SIMPLE_PAIR_CONN_ND();
+    OP_ACCEPT_CONN_WAIT_ND(L, S, 0);
+
+    /*
+     * This will cause a protocol violation to be raised by the server if we are
+     * not handling the stream limit correctly on the TX side.
+     */
+    for (i = 0; i < 200; ++i) {
+        OP_NEW_STREAM(C, Ca, SSL_STREAM_FLAG_ADVANCE);
+        OP_WRITE(Ca, "foo", 3);
+        OP_CONCLUDE(Ca);
+        OP_UNBIND(Ca);
+    }
+
+    /* Prove the connection is still good. */
+    OP_NEW_STREAM(S, Sa, 0);
+    OP_WRITE(Sa, "bar", 3);
+    OP_CONCLUDE(Sa);
+
+    OP_ACCEPT_STREAM_WAIT(C, Ca, 0);
+    OP_READ_EXPECT(Ca, "bar", 3);
+    OP_EXPECT_FIN(Ca);
+
+    /*
+     * Drain the queue of incoming streams. We should be able to get all 200
+     * even though only 100 can be initiated at a time.
+     */
+    for (i = 0; i < 200; ++i) {
+        OP_ACCEPT_STREAM_WAIT(S, Sb, 0);
+        OP_READ_EXPECT(Sb, "foo", 3);
+        OP_EXPECT_FIN(Sb);
+        OP_UNBIND(Sb);
+    }
+}
+
+/* 16. Server sending large number of streams, MAX_STREAMS test */
+DEF_SCRIPT(script_16, "Server sending large number of streams, MAX_STREAMS test")
+{
+    size_t i;
+
+    OP_SIMPLE_PAIR_CONN_ND();
+    OP_ACCEPT_CONN_WAIT_ND(L, S, 0);
+
+    /*
+     * This will cause a protocol violation to be raised by the client if we are
+     * not handling the stream limit correctly on the TX side.
+     */
+    for (i = 0; i < 200; ++i) {
+        OP_NEW_STREAM(S, Sa, SSL_STREAM_FLAG_ADVANCE);
+        OP_WRITE(Sa, "foo", 3);
+        OP_CONCLUDE(Sa);
+        OP_UNBIND(Sa);
+    }
+
+    /* Prove that the connection is still good. */
+    OP_NEW_STREAM(C, Ca, 0);
+    OP_WRITE(Ca, "bar", 3);
+    OP_CONCLUDE(Ca);
+
+    OP_ACCEPT_STREAM_WAIT(S, Sb, 0);
+    OP_READ_EXPECT(Sb, "bar", 3);
+    OP_EXPECT_FIN(Sb);
+
+    /* Drain the queue of incoming streams. */
+    for (i = 0; i < 200; ++i) {
+        OP_ACCEPT_STREAM_WAIT(C, Cb, 0);
+        OP_READ_EXPECT(Cb, "foo", 3);
+        OP_EXPECT_FIN(Cb);
+        OP_UNBIND(Cb);
+    }
+}
+
+/* 17. Key update test - unlimited */
+DEF_SCRIPT(script_17, "Key update test - unlimited")
+{
+    size_t i;
+
+    OP_SIMPLE_PAIR_CONN();
+    OP_ACCEPT_CONN_WAIT(L, S, 0);
+
+    OP_WRITE(C, "apple", 5);
+    OP_READ_EXPECT(S, "apple", 5);
+
+    OP_OVERRIDE_KEY_UPDATE(C, 1);
+
+    for (i = 0; i < 200; ++i) {
+        OP_WRITE(C, "apple", 5);
+        OP_READ_EXPECT(S, "apple", 5);
+        /*
+         * TXKU frequency is bounded by RTT because a previous TXKU needs to be
+         * acknowledged by the peer first before another one can begin. By
+         * waiting this long, we eliminate any such concern and ensure as many key
+         * updates as possible can occur for the purposes of this test.
+         */
+        OP_SKIP_TIME(100);
+    }
+
+    /* At least 5 RXKUs detected */
+    OP_CHECK_KEY_UPDATE_GE(C, 5);
+
+    /*
+     * Prove the connection is still healthy by sending something in both
+     * directions.
+     */
+    OP_WRITE(C, "xyzzy", 5);
+    OP_READ_EXPECT(S, "xyzzy", 5);
+
+    OP_WRITE(S, "plugh", 5);
+    OP_READ_EXPECT(C, "plugh", 5);
+}
+
+/* 18. Key update test - RTT-bounded */
+DEF_SCRIPT(script_18, "Key update test - RTT-bounded")
+{
+    size_t i;
+
+    OP_SIMPLE_PAIR_CONN();
+    OP_ACCEPT_CONN_WAIT(L, S, 0);
+
+    OP_WRITE(C, "apple", 5);
+    OP_READ_EXPECT(S, "apple", 5);
+
+    OP_OVERRIDE_KEY_UPDATE(C, 1);
+
+    for (i = 0; i < 200; ++i) {
+        OP_WRITE(C, "apple", 5);
+        OP_READ_EXPECT(S, "apple", 5);
+        OP_SKIP_TIME(8);
+    }
+
+    /*
+     * This time we simulate far less time passing between writes, so there are
+     * fewer opportunities to initiate TXKUs. Note that we ask for a TXKU every
+     * 1 packet above, which is absurd; thus this ensures we only actually
+     * generate TXKUs when we are allowed to.
+     */
+    OP_CHECK_KEY_UPDATE_LT(C, 240);
+
+    /*
+     * Prove the connection is still healthy by sending something in both
+     * directions.
+     */
+    OP_WRITE(C, "xyzzy", 5);
+    OP_READ_EXPECT(S, "xyzzy", 5);
+
+    OP_WRITE(S, "plugh", 5);
+    OP_READ_EXPECT(C, "plugh", 5);
+}
+
+/* 19. Key update test - artificially triggered */
+DEF_SCRIPT(script_19, "Key update test - artificially triggered")
+{
+    OP_SIMPLE_PAIR_CONN();
+    OP_ACCEPT_CONN_WAIT(L, S, 0);
+
+    OP_WRITE(C, "apple", 5);
+    OP_READ_EXPECT(S, "apple", 5);
+
+    OP_WRITE(C, "orange", 6);
+    OP_READ_EXPECT(S, "orange", 6);
+
+    OP_WRITE(S, "strawberry", 10);
+    OP_READ_EXPECT(C, "strawberry", 10);
+
+    OP_CHECK_KEY_UPDATE_LT(C, 1);
+
+    OP_TRIGGER_KEY_UPDATE(C, SSL_KEY_UPDATE_REQUESTED);
+
+    OP_WRITE(C, "orange", 6);
+    OP_READ_EXPECT(S, "orange", 6);
+    OP_WRITE(S, "ok", 2);
+
+    OP_READ_EXPECT(C, "ok", 2);
+    OP_CHECK_KEY_UPDATE_GE(C, 1);
 }
 
 DEF_SCRIPT(script_20, "place holder for multistrem script_20")

@@ -505,6 +505,7 @@ BIN_LDFLAGS={- join(' ', $target{bin_lflags} || (),
 BIN_EX_LIBS=$(CNF_EX_LIBS) $(EX_LIBS)
 
 CMOCKA_LIBS={- $config{cmocka_libs} // '' -}
+DETOURS_LIBS={- $config{detours_libs} // '' -}
 
 # CPPFLAGS_Q is used for one thing only: to build up buildinf.h
 CPPFLAGS_Q={- $cppflags1 =~ s|([\\"])|\\$1|g;
@@ -659,8 +660,8 @@ clean: libclean ## Clean the workspace, keep the configuration
 	           -o -path './python-ecdsa' \
 	           -o -path './tlsfuzzer' \
 	           -o -path './tlslite-ng' \
-	           -o -path './wycheproof' \
-	           -prune \) \
+	           -o -path './wycheproof' \) \
+	        -prune \
 	        -o \! -type d \
 	           \( -name '*{- platform->depext() -}' \
 	              -o -name '*{- platform->objext() -}' \
@@ -1582,12 +1583,24 @@ EOF
           my $section = $1;
           my $name = uc basename($args{src}, ".$section");
           my $pod = $gen0;
-          return <<"EOF";
+
+          if ($config{manpage_format} eq "mdoc") {
+              return <<"EOF";
+$args{src}: $pod
+	pod2mdoc -n $name -s $section\$(MANSUFFIX) \\
+		 -d \$(RELEASE_DATE) \\
+		 $pod >\$\@
+EOF
+          } elsif ($config{manpage_format} eq "roff") {
+              return <<"EOF";
 $args{src}: $pod
 	pod2man --name=$name --section=$section\$(MANSUFFIX) --center=OpenSSL \\
 		--date=\$(RELEASE_DATE) --release=\$(VERSION) \\
 		$pod >\$\@
 EOF
+          } else {
+              die "Unhandled manpage format: $config{manpage_format}";
+          }
       } elsif (platform->isdef($args{src})) {
           #
           # Linker script-ish generator
@@ -2024,14 +2037,14 @@ EOF
           }
       }
       my $wrapflags = '';
-      my $cmocka = '';
       if (defined $unified_info{wraps}->{$args{bin}}) {
-          $wrapflags = join(' ',
-                            map { "-Wl,--wrap=$_" }
-                            @{$unified_info{wraps}->{$args{bin}}});
-          $wrapflags = ' ' . $wrapflags;
-          $cmocka = ' $(CMOCKA_LIBS)';
+          $wrapflags = ' ' . join(' ',
+                                  map { "-Wl,--wrap=$_" }
+                                  @{$unified_info{wraps}->{$args{bin}}});
       }
+      my $utlibs = $unified_info{unit_test_libs}->{$args{bin}};
+      $utlibs = $utlibs ne '' ? ' ' . $utlibs : '' if defined $utlibs;
+      $utlibs //= '';
       my $linkflags = join("", map { $_." " } @linkdirs);
       my $linklibs = join("", map { $_." " } @linklibs);
       my $cmd = '$(CC)';
@@ -2052,7 +2065,7 @@ $bin: $deps
 	\$\${LDCMD:-$cmd} $cmdflags $linkflags\$(BIN_LDFLAGS)$wrapflags \\
 		-o $bin \\
 		$objs \\
-		$linklibs\$(BIN_EX_LIBS)$cmocka
+		$linklibs\$(BIN_EX_LIBS)$utlibs
 EOF
   }
   sub in2script {

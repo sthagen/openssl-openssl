@@ -712,17 +712,20 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
          * session tickets or resumption (e.g. new_session_count = 0 or
          * resumption_count = 0), this implementation does not currently
          * interpret or enforce those parameters.
+         *
+         * Also skip issuance when SSL_VERIFY_PEER is set with no sid_ctx
+         * configured: any ticket minted here would be rejected by
+         * ssl_get_prev_session() in that configuration.
          */
-        if (((s->options & SSL_OP_NO_TICKET) != 0
+        if (s->num_tickets <= s->sent_tickets
+            || ((s->options & SSL_OP_NO_TICKET) != 0
                 && (SSL_CONNECTION_GET_CTX(s)->session_cache_mode & SSL_SESS_CACHE_SERVER)
                     == 0)
-            || s->ext.psk_kex_mode == TLSEXT_KEX_MODE_FLAG_NONE) {
+            || s->ext.psk_kex_mode == TLSEXT_KEX_MODE_FLAG_NONE
+            || ((s->verify_mode & SSL_VERIFY_PEER) != 0 && s->sid_ctx_length == 0))
             st->hand_state = TLS_ST_OK;
-        } else if (s->num_tickets > s->sent_tickets) {
+        else
             st->hand_state = TLS_ST_SW_SESSION_TICKET;
-        } else {
-            st->hand_state = TLS_ST_OK;
-        }
         return WRITE_TRAN_CONTINUE;
 
     case TLS_ST_SR_KEY_UPDATE:
@@ -3562,7 +3565,8 @@ static int tls_process_cke_gost(SSL_CONNECTION *s, PACKET *pkt)
     EVP_PKEY *client_pub_pkey = NULL, *pk = NULL;
     unsigned char premaster_secret[32];
     const unsigned char *start;
-    size_t outlen = sizeof(premaster_secret), inlen;
+    size_t outlen = sizeof(premaster_secret);
+    size_t inlen;
     unsigned long alg_a;
     GOST_KX_MESSAGE *pKX = NULL;
     const unsigned char *ptr;
@@ -3628,7 +3632,10 @@ static int tls_process_cke_gost(SSL_CONNECTION *s, PACKET *pkt)
         goto err;
     }
 
-    inlen = ASN1_STRING_length(pKX->kxBlob->value.sequence);
+    inlen = ASN1_STRING_length_ex(pKX->kxBlob->value.sequence);
+    if (inlen > INT_MAX)
+        goto err;
+
     start = ASN1_STRING_get0_data(pKX->kxBlob->value.sequence);
 
     if (EVP_PKEY_decrypt(pkey_ctx, premaster_secret, &outlen, start,

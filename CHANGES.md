@@ -31,6 +31,20 @@ OpenSSL Releases
 
 ### Changes between 4.0 and 4.1 [xx XXX xxxx]
 
+ * Fixed TLS 1.3 external PSK connections being wrongly rejected when
+   the client sets a non-empty session ID context.
+
+   *Viktor Dukhovni*
+
+ * Fixed a TLS 1.3 server with no session ID context to accept external PSK
+   connections and to stop issuing unusable session tickets.
+
+   *Viktor Dukhovni*
+
+ * Added AVX512 optimized SHAKE x4 operations for ML-DSA on `x86_64`.
+
+   *Marcel Cornu and Tomasz Kantecki*
+
  * EC key point format simplification.
 
    The point conversion form (compressed, uncompressed, or hybrid)
@@ -127,6 +141,14 @@ OpenSSL Releases
 
    *Bob Beck*
 
+ *  `ASN1_STRING_set()` and `ASN1_STRING_length()` have been
+    deprecated. The replacement functions `ASN1_STRING_set_data()` or
+    `ASN1_STRING_set_string()`, and `ASN1_STRING_length_ex()` should be
+    used in their place. This prepares the ASN1_STRING type to support
+    modern size_t length values in the future.
+
+    *Bob Beck*
+
  * `EVP_CIPHER_CTX_get_num()` and `EVP_CIPHER_CTX_set_num()' have been deprecated.
 
    Refer to ossl-migration-guide(7) for more info.
@@ -167,6 +189,12 @@ OpenSSL Releases
    for which ownership is not taken by the created ASN1_STRING object.
 
    *Bob Beck*
+
+ * Fixed X.509 verification of certificate chains that use DSA signatures
+   with SHA-384 or SHA-512 by registering `dsa_with_SHA384` and
+   `dsa_with_SHA512` in the signature-algorithm cross-reference table.
+
+   *John Claus*
 
  * Added AVX2 optimized ML-DSA NTT operations on `x86_64`.
 

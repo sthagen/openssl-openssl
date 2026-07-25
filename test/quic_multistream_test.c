@@ -356,71 +356,11 @@ static OSSL_TIME get_time(void *arg)
     return t;
 }
 
-static int skip_time_ms(struct helper *h, struct helper_local *hl)
-{
-    if (!TEST_true(CRYPTO_THREAD_write_lock(h->time_lock)))
-        return 0;
-
-    h->time_slip = ossl_time_add(h->time_slip, ossl_ms2time(hl->check_op->arg2));
-
-    CRYPTO_THREAD_unlock(h->time_lock);
-    return 1;
-}
-
 static QUIC_TSERVER *s_lock(struct helper *h, struct helper_local *hl);
 static void s_unlock(struct helper *h, struct helper_local *hl);
 
 #define ACQUIRE_S() s_lock(h, hl)
 #define ACQUIRE_S_NOHL() s_lock(h, NULL)
-
-static int override_key_update(struct helper *h, struct helper_local *hl)
-{
-    QUIC_CHANNEL *ch = ossl_quic_conn_get_channel(h->c_conn);
-
-    ossl_quic_channel_set_txku_threshold_override(ch, hl->check_op->arg2);
-    return 1;
-}
-
-static int trigger_key_update(struct helper *h, struct helper_local *hl)
-{
-    if (!TEST_true(SSL_key_update(h->c_conn, SSL_KEY_UPDATE_REQUESTED)))
-        return 0;
-
-    return 1;
-}
-
-static int check_key_update_ge(struct helper *h, struct helper_local *hl)
-{
-    QUIC_CHANNEL *ch = ossl_quic_conn_get_channel(h->c_conn);
-    int64_t txke = (int64_t)ossl_quic_channel_get_tx_key_epoch(ch);
-    int64_t rxke = (int64_t)ossl_quic_channel_get_rx_key_epoch(ch);
-    int64_t diff = txke - rxke;
-
-    /*
-     * TXKE must always be equal to or ahead of RXKE.
-     * It can be ahead of RXKE by at most 1.
-     */
-    if (!TEST_int64_t_ge(diff, 0) || !TEST_int64_t_le(diff, 1))
-        return 0;
-
-    /* Caller specifies a minimum number of RXKEs which must have happened. */
-    if (!TEST_uint64_t_ge((uint64_t)rxke, hl->check_op->arg2))
-        return 0;
-
-    return 1;
-}
-
-static int check_key_update_lt(struct helper *h, struct helper_local *hl)
-{
-    QUIC_CHANNEL *ch = ossl_quic_conn_get_channel(h->c_conn);
-    uint64_t txke = ossl_quic_channel_get_tx_key_epoch(ch);
-
-    /* Caller specifies a maximum number of TXKEs which must have happened. */
-    if (!TEST_uint64_t_lt(txke, hl->check_op->arg2))
-        return 0;
-
-    return 1;
-}
 
 static unsigned long stream_info_hash(const STREAM_INFO *info)
 {
@@ -2069,357 +2009,61 @@ static const struct script_op script_9[] = {
 
 /* 10. Shutdown */
 static const struct script_op script_10[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-
-    OP_C_WRITE(DEFAULT, "apple", 5),
-    OP_S_BIND_STREAM_ID(a, C_BIDI_ID(0)),
-    OP_S_READ_EXPECT(a, "apple", 5),
-
-    OP_C_SHUTDOWN_WAIT(NULL, 0),
-    OP_C_EXPECT_CONN_CLOSE_INFO(0, 1, 0),
-    OP_S_EXPECT_CONN_CLOSE_INFO(0, 1, 1),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
 /* 11. Many threads accepted on the same client connection */
-static const struct script_op script_11_child[] = {
-    OP_C_ACCEPT_STREAM_WAIT(a),
-    OP_C_READ_EXPECT(a, "foo", 3),
-    OP_SLEEP(10),
-    OP_C_EXPECT_FIN(a),
-
-    OP_END
-};
-
 static const struct script_op script_11[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE),
-
-    OP_NEW_THREAD(5, script_11_child),
-
-    OP_S_NEW_STREAM_BIDI(a, ANY_ID),
-    OP_S_WRITE(a, "foo", 3),
-    OP_S_CONCLUDE(a),
-
-    OP_S_NEW_STREAM_BIDI(b, ANY_ID),
-    OP_S_WRITE(b, "foo", 3),
-    OP_S_CONCLUDE(b),
-
-    OP_S_NEW_STREAM_BIDI(c, ANY_ID),
-    OP_S_WRITE(c, "foo", 3),
-    OP_S_CONCLUDE(c),
-
-    OP_S_NEW_STREAM_BIDI(d, ANY_ID),
-    OP_S_WRITE(d, "foo", 3),
-    OP_S_CONCLUDE(d),
-
-    OP_S_NEW_STREAM_BIDI(e, ANY_ID),
-    OP_S_WRITE(e, "foo", 3),
-    OP_S_CONCLUDE(e),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
 /* 12. Many threads initiated on the same client connection */
-static const struct script_op script_12_child[] = {
-    OP_C_NEW_STREAM_BIDI(a, ANY_ID),
-    OP_C_WRITE(a, "foo", 3),
-    OP_C_CONCLUDE(a),
-    OP_C_FREE_STREAM(a),
-
-    OP_END
-};
-
 static const struct script_op script_12[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE),
-
-    OP_NEW_THREAD(5, script_12_child),
-
-    OP_S_BIND_STREAM_ID(a, C_BIDI_ID(0)),
-    OP_S_READ_EXPECT(a, "foo", 3),
-    OP_S_EXPECT_FIN(a),
-    OP_S_BIND_STREAM_ID(b, C_BIDI_ID(1)),
-    OP_S_READ_EXPECT(b, "foo", 3),
-    OP_S_EXPECT_FIN(b),
-    OP_S_BIND_STREAM_ID(c, C_BIDI_ID(2)),
-    OP_S_READ_EXPECT(c, "foo", 3),
-    OP_S_EXPECT_FIN(c),
-    OP_S_BIND_STREAM_ID(d, C_BIDI_ID(3)),
-    OP_S_READ_EXPECT(d, "foo", 3),
-    OP_S_EXPECT_FIN(d),
-    OP_S_BIND_STREAM_ID(e, C_BIDI_ID(4)),
-    OP_S_READ_EXPECT(e, "foo", 3),
-    OP_S_EXPECT_FIN(e),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
 /* 13. Many threads accepted on the same client connection (stress test) */
-static const struct script_op script_13_child[] = {
-    OP_BEGIN_REPEAT(10),
-
-    OP_C_ACCEPT_STREAM_WAIT(a),
-    OP_C_READ_EXPECT(a, "foo", 3),
-    OP_C_EXPECT_FIN(a),
-    OP_C_FREE_STREAM(a),
-
-    OP_END_REPEAT(),
-
-    OP_END
-};
-
 static const struct script_op script_13[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE),
-
-    OP_NEW_THREAD(5, script_13_child),
-
-    OP_BEGIN_REPEAT(50),
-
-    OP_S_NEW_STREAM_BIDI(a, ANY_ID),
-    OP_S_WRITE(a, "foo", 3),
-    OP_S_CONCLUDE(a),
-    OP_S_UNBIND_STREAM_ID(a),
-
-    OP_END_REPEAT(),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
 /* 14. Many threads initiating on the same client connection (stress test) */
-static const struct script_op script_14_child[] = {
-    OP_BEGIN_REPEAT(10),
-
-    OP_C_NEW_STREAM_BIDI(a, ANY_ID),
-    OP_C_WRITE(a, "foo", 3),
-    OP_C_CONCLUDE(a),
-    OP_C_FREE_STREAM(a),
-
-    OP_END_REPEAT(),
-
-    OP_END
-};
-
 static const struct script_op script_14[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE),
-
-    OP_NEW_THREAD(5, script_14_child),
-
-    OP_BEGIN_REPEAT(50),
-
-    OP_S_ACCEPT_STREAM_WAIT(a),
-    OP_S_READ_EXPECT(a, "foo", 3),
-    OP_S_EXPECT_FIN(a),
-    OP_S_UNBIND_STREAM_ID(a),
-
-    OP_END_REPEAT(),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
 /* 15. Client sending large number of streams, MAX_STREAMS test */
 static const struct script_op script_15[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE),
-
-    /*
-     * This will cause a protocol violation to be raised by the server if we are
-     * not handling the stream limit correctly on the TX side.
-     */
-    OP_BEGIN_REPEAT(200),
-
-    OP_C_NEW_STREAM_BIDI_EX(a, ANY_ID, SSL_STREAM_FLAG_ADVANCE),
-    OP_C_WRITE(a, "foo", 3),
-    OP_C_CONCLUDE(a),
-    OP_C_FREE_STREAM(a),
-
-    OP_END_REPEAT(),
-
-    /* Prove the connection is still good. */
-    OP_S_NEW_STREAM_BIDI(a, S_BIDI_ID(0)),
-    OP_S_WRITE(a, "bar", 3),
-    OP_S_CONCLUDE(a),
-
-    OP_C_ACCEPT_STREAM_WAIT(a),
-    OP_C_READ_EXPECT(a, "bar", 3),
-    OP_C_EXPECT_FIN(a),
-
-    /*
-     * Drain the queue of incoming streams. We should be able to get all 200
-     * even though only 100 can be initiated at a time.
-     */
-    OP_BEGIN_REPEAT(200),
-
-    OP_S_ACCEPT_STREAM_WAIT(b),
-    OP_S_READ_EXPECT(b, "foo", 3),
-    OP_S_EXPECT_FIN(b),
-    OP_S_UNBIND_STREAM_ID(b),
-
-    OP_END_REPEAT(),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
 /* 16. Server sending large number of streams, MAX_STREAMS test */
 static const struct script_op script_16[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-    OP_C_SET_DEFAULT_STREAM_MODE(SSL_DEFAULT_STREAM_MODE_NONE),
-
-    /*
-     * This will cause a protocol violation to be raised by the client if we are
-     * not handling the stream limit correctly on the TX side.
-     */
-    OP_BEGIN_REPEAT(200),
-
-    OP_S_NEW_STREAM_BIDI(a, ANY_ID),
-    OP_S_WRITE(a, "foo", 3),
-    OP_S_CONCLUDE(a),
-    OP_S_UNBIND_STREAM_ID(a),
-
-    OP_END_REPEAT(),
-
-    /* Prove that the connection is still good. */
-    OP_C_NEW_STREAM_BIDI(a, ANY_ID),
-    OP_C_WRITE(a, "bar", 3),
-    OP_C_CONCLUDE(a),
-
-    OP_S_ACCEPT_STREAM_WAIT(b),
-    OP_S_READ_EXPECT(b, "bar", 3),
-    OP_S_EXPECT_FIN(b),
-
-    /* Drain the queue of incoming streams. */
-    OP_BEGIN_REPEAT(200),
-
-    OP_C_ACCEPT_STREAM_WAIT(b),
-    OP_C_READ_EXPECT(b, "foo", 3),
-    OP_C_EXPECT_FIN(b),
-    OP_C_FREE_STREAM(b),
-
-    OP_END_REPEAT(),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
 /* 17. Key update test - unlimited */
 static const struct script_op script_17[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-
-    OP_C_WRITE(DEFAULT, "apple", 5),
-
-    OP_S_BIND_STREAM_ID(a, C_BIDI_ID(0)),
-    OP_S_READ_EXPECT(a, "apple", 5),
-
-    OP_CHECK(override_key_update, 1),
-
-    OP_BEGIN_REPEAT(200),
-
-    OP_C_WRITE(DEFAULT, "apple", 5),
-    OP_S_READ_EXPECT(a, "apple", 5),
-
-    /*
-     * TXKU frequency is bounded by RTT because a previous TXKU needs to be
-     * acknowledged by the peer first before another one can be begin. By
-     * waiting this long, we eliminate any such concern and ensure as many key
-     * updates as possible can occur for the purposes of this test.
-     */
-    OP_CHECK(skip_time_ms, 100),
-
-    OP_END_REPEAT(),
-
-    /* At least 5 RXKUs detected */
-    OP_CHECK(check_key_update_ge, 5),
-
-    /*
-     * Prove the connection is still healthy by sending something in both
-     * directions.
-     */
-    OP_C_WRITE(DEFAULT, "xyzzy", 5),
-    OP_S_READ_EXPECT(a, "xyzzy", 5),
-
-    OP_S_WRITE(a, "plugh", 5),
-    OP_C_READ_EXPECT(DEFAULT, "plugh", 5),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
 /* 18. Key update test - RTT-bounded */
 static const struct script_op script_18[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-
-    OP_C_WRITE(DEFAULT, "apple", 5),
-
-    OP_S_BIND_STREAM_ID(a, C_BIDI_ID(0)),
-    OP_S_READ_EXPECT(a, "apple", 5),
-
-    OP_CHECK(override_key_update, 1),
-
-    OP_BEGIN_REPEAT(200),
-
-    OP_C_WRITE(DEFAULT, "apple", 5),
-    OP_S_READ_EXPECT(a, "apple", 5),
-    OP_CHECK(skip_time_ms, 8),
-
-    OP_END_REPEAT(),
-
-    /*
-     * This time we simulate far less time passing between writes, so there are
-     * fewer opportunities to initiate TXKUs. Note that we ask for a TXKU every
-     * 1 packet above, which is absurd; thus this ensures we only actually
-     * generate TXKUs when we are allowed to.
-     */
-    OP_CHECK(check_key_update_lt, 240),
-
-    /*
-     * Prove the connection is still healthy by sending something in both
-     * directions.
-     */
-    OP_C_WRITE(DEFAULT, "xyzzy", 5),
-    OP_S_READ_EXPECT(a, "xyzzy", 5),
-
-    OP_S_WRITE(a, "plugh", 5),
-    OP_C_READ_EXPECT(DEFAULT, "plugh", 5),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 
 /* 19. Key update test - artificially triggered */
 static const struct script_op script_19[] = {
-    OP_C_SET_ALPN("ossltest"),
-    OP_C_CONNECT_WAIT(),
-
-    OP_C_WRITE(DEFAULT, "apple", 5),
-
-    OP_S_BIND_STREAM_ID(a, C_BIDI_ID(0)),
-    OP_S_READ_EXPECT(a, "apple", 5),
-
-    OP_C_WRITE(DEFAULT, "orange", 6),
-    OP_S_READ_EXPECT(a, "orange", 6),
-
-    OP_S_WRITE(a, "strawberry", 10),
-    OP_C_READ_EXPECT(DEFAULT, "strawberry", 10),
-
-    OP_CHECK(check_key_update_lt, 1),
-    OP_CHECK(trigger_key_update, 0),
-
-    OP_C_WRITE(DEFAULT, "orange", 6),
-    OP_S_READ_EXPECT(a, "orange", 6),
-    OP_S_WRITE(a, "ok", 2),
-
-    OP_C_READ_EXPECT(DEFAULT, "ok", 2),
-    OP_CHECK(check_key_update_ge, 1),
-
+    /* test moved to test/radix/quic_tests.c */
     OP_END
 };
 

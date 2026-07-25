@@ -2323,20 +2323,83 @@ out:
 }
 
 #ifndef OPENSSL_NO_POLY1305
-/* Test that EVP_MAC_final fails for Poly1305 when no key was set */
+/* Test Poly1305 no-key failures and staged key initialization */
 static int test_evp_mac_poly1305_no_key(void)
 {
     int ret = 0;
     EVP_MAC *mac = NULL;
     EVP_MAC_CTX *ctx = NULL;
+    /* RFC 7539 Poly1305 test vector. */
+    static const unsigned char staged_data[] = "Cryptographic Forum Research Group";
+    static const unsigned char expected[16] = {
+        0xa8, 0x06, 0x1d, 0xc1, 0x30, 0x51, 0x36, 0xc6,
+        0xc2, 0x2b, 0x8b, 0xaf, 0x0c, 0x01, 0x27, 0xa9
+    };
+    unsigned char no_key_data[16] = { 0 };
+    unsigned char key[32] = {
+        0x85, 0xd6, 0xbe, 0x78, 0x57, 0x55, 0x6d, 0x33,
+        0x7f, 0x44, 0x52, 0xfe, 0x42, 0xd5, 0x06, 0xa8,
+        0x01, 0x03, 0x80, 0x8a, 0xfb, 0x0d, 0xb2, 0xfd,
+        0x4a, 0xbf, 0xf6, 0xaf, 0x41, 0x49, 0xf5, 0x1b
+    };
     unsigned char out[16];
+    OSSL_PARAM key_params[2];
+    OSSL_PARAM null_key_params[2];
     size_t outl = 0;
+
+    key_params[0] = OSSL_PARAM_construct_octet_string(OSSL_MAC_PARAM_KEY,
+        key, sizeof(key));
+    key_params[1] = OSSL_PARAM_construct_end();
+    null_key_params[0] = OSSL_PARAM_construct_octet_string(OSSL_MAC_PARAM_KEY,
+        NULL, sizeof(key));
+    null_key_params[1] = OSSL_PARAM_construct_end();
 
     if (!TEST_ptr(mac = EVP_MAC_fetch(testctx, "Poly1305", testpropq))
         || !TEST_ptr(ctx = EVP_MAC_CTX_new(mac))
-        || !TEST_int_eq(EVP_MAC_init(ctx, NULL, 0, NULL), 1)
-        || !TEST_int_eq(EVP_MAC_final(ctx, out, &outl, sizeof(out)), 0))
+        || !TEST_int_eq(EVP_MAC_init(ctx, NULL, 0, NULL), 1))
         goto err;
+
+    ERR_clear_error();
+    if (!TEST_int_eq(EVP_MAC_update(ctx, no_key_data, sizeof(no_key_data)), 0)
+        || !TEST_int_eq(ERR_GET_REASON(ERR_get_error()), PROV_R_NO_KEY_SET))
+        goto err;
+
+    /* The failed update must not block staged key initialization. */
+    if (!TEST_int_eq(EVP_MAC_CTX_set_params(ctx, key_params), 1)
+        || !TEST_int_eq(EVP_MAC_update(ctx, staged_data,
+                            sizeof(staged_data) - 1),
+            1)
+        || !TEST_int_eq(EVP_MAC_final(ctx, out, &outl, sizeof(out)), 1)
+        || !TEST_size_t_eq(outl, sizeof(expected))
+        || !TEST_mem_eq(out, outl, expected, sizeof(expected)))
+        goto err;
+
+    EVP_MAC_CTX_free(ctx);
+    ctx = NULL;
+
+    if (!TEST_ptr(ctx = EVP_MAC_CTX_new(mac))
+        || !TEST_int_eq(EVP_MAC_init(ctx, NULL, 0, NULL), 1))
+        goto err;
+
+    ERR_clear_error();
+    if (!TEST_int_eq(EVP_MAC_final(ctx, out, &outl, sizeof(out)), 0)
+        || !TEST_int_eq(ERR_GET_REASON(ERR_get_error()), PROV_R_NO_KEY_SET))
+        goto err;
+
+    ERR_clear_error();
+    if (!TEST_int_eq(EVP_MAC_init(ctx, NULL, 0, null_key_params), 0)
+        || !TEST_int_eq(ERR_GET_REASON(ERR_get_error()),
+            PROV_R_INVALID_KEY_LENGTH))
+        goto err;
+
+    ERR_clear_error();
+    if (!TEST_int_eq(EVP_MAC_CTX_set_params(ctx, null_key_params), 0)
+        || !TEST_int_eq(ERR_GET_REASON(ERR_get_error()),
+            PROV_R_INVALID_KEY_LENGTH))
+        goto err;
+
+    EVP_MAC_CTX_free(ctx);
+    ctx = NULL;
     ret = 1;
 err:
     EVP_MAC_CTX_free(ctx);
@@ -4169,6 +4232,76 @@ static int test_RSA_verify_recover_rejects_short_buffer(void)
         || !TEST_int_eq(ERR_GET_REASON(err), PROV_R_OUTPUT_BUFFER_TOO_SMALL)
         || !TEST_mem_eq(shortbuf, sizeof(shortbuf), shortbuf_expected,
             sizeof(shortbuf_expected)))
+        goto done;
+
+    ret = 1;
+done:
+    EVP_PKEY_CTX_free(sign_ctx);
+    EVP_PKEY_CTX_free(verify_ctx);
+    EVP_PKEY_free(pkey);
+    OPENSSL_free(sig);
+    OPENSSL_free(recovered);
+    return ret;
+}
+
+/*
+ * A raw RSA PKCS#1 v1.5 signature whose recovered data is empty must be
+ * recovered successfully with a length of zero, not rejected as an error.
+ */
+static int test_RSA_verify_recover_empty_payload(void)
+{
+    int ret = 0;
+    int recovered_cap = 0;
+    EVP_PKEY *pkey = NULL;
+    EVP_PKEY_CTX *sign_ctx = NULL, *verify_ctx = NULL;
+    unsigned char *sig = NULL, *recovered = NULL;
+    size_t sig_len = 0, recovered_len = 0;
+    /*
+     * The signed input has zero length, but a valid non-null address is still
+     * passed so the result does not depend on how lower layers treat NULL for
+     * zero-length data.
+     */
+    const unsigned char empty[] = { 0 };
+
+    if (OSSL_PROVIDER_available(testctx, "fips"))
+        return TEST_skip("Test skipped for FIPS provider");
+
+    if (!TEST_ptr(pkey = load_example_rsa_key())
+        || !TEST_ptr(sign_ctx = EVP_PKEY_CTX_new_from_pkey(testctx, pkey, NULL))
+        || !TEST_int_gt(EVP_PKEY_sign_init(sign_ctx), 0)
+        || !TEST_int_gt(EVP_PKEY_CTX_set_rsa_padding(sign_ctx, RSA_PKCS1_PADDING), 0)
+        /*
+         * Deliberately do not configure a signature digest so that the raw
+         * PKCS#1 v1.5 sign and verify-recover paths are exercised.
+         */
+        || !TEST_int_gt(EVP_PKEY_sign(sign_ctx, NULL, &sig_len, empty, 0), 0)
+        || !TEST_ptr(sig = OPENSSL_malloc(sig_len))
+        || !TEST_int_gt(EVP_PKEY_sign(sign_ctx, sig, &sig_len, empty, 0), 0)
+        || !TEST_int_gt(recovered_cap = EVP_PKEY_get_size(pkey), 0)
+        || !TEST_ptr(recovered = OPENSSL_malloc(recovered_cap))
+        || !TEST_ptr(verify_ctx = EVP_PKEY_CTX_new_from_pkey(testctx, pkey, NULL))
+        || !TEST_int_gt(EVP_PKEY_verify_recover_init(verify_ctx), 0)
+        || !TEST_int_gt(EVP_PKEY_CTX_set_rsa_padding(verify_ctx, RSA_PKCS1_PADDING),
+            0))
+        goto done;
+
+    /* Size-query call must succeed. */
+    recovered_len = (size_t)recovered_cap;
+    if (!TEST_int_gt(EVP_PKEY_verify_recover(verify_ctx, NULL,
+                         &recovered_len, sig, sig_len),
+            0))
+        goto done;
+
+    /*
+     * The actual recovery call is essential: a NULL output buffer would only
+     * run the size-query path, which never decodes the signature and so would
+     * not reproduce the regression.
+     */
+    recovered_len = (size_t)recovered_cap;
+    if (!TEST_int_gt(EVP_PKEY_verify_recover(verify_ctx, recovered,
+                         &recovered_len, sig, sig_len),
+            0)
+        || !TEST_size_t_eq(recovered_len, 0))
         goto done;
 
     ret = 1;
@@ -6055,6 +6188,133 @@ err:
 }
 
 /*
+ * With AEAD ciphers, associated data must precede the payload. Once plaintext
+ * or ciphertext processing has begun, a further AAD update (out == NULL) must
+ * be rejected, and the rejection must be reported the same way across every
+ * AEAD: ERR_LIB_PROV / PROV_R_UPDATE_CALL_OUT_OF_ORDER. The invariant is
+ * checked in both the encrypt and decrypt directions.
+ */
+static int test_evp_aead_late_aad(int idx)
+{
+    const EVP_CIPHER_TEST_INFO *info = &cipher_list[idx];
+    EVP_CIPHER_CTX *ctx_enc = NULL; /* late AAD after plaintext: must fail */
+    EVP_CIPHER_CTX *ctx_dec = NULL; /* late AAD after ciphertext: must fail */
+
+    unsigned char key[EVP_MAX_KEY_LENGTH] = { 0 };
+    unsigned char iv[EVP_MAX_IV_LENGTH] = { 0 };
+    unsigned char aad[] = "aad";
+    unsigned char msg[] = "message";
+    unsigned char out[sizeof(msg) + EVP_MAX_BLOCK_LENGTH];
+
+    int i = 0, len = 0, testresult = 0, expected = 0;
+    char *errmsg = NULL;
+    unsigned long err_code = 0;
+
+    if (info->taglen == 0 /* skip non-AEAD */
+        || info->mode == EVP_CIPH_GCM_MODE /* rejects, raises 102 PROV_R_CIPHER_OPERATION_FAILED */
+        || info->mode == EVP_CIPH_CCM_MODE /* fails at first AAD */
+        || info->mode == EVP_CIPH_OCB_MODE /* accepts late AAD */
+        /* skip TLS stitched MTE cipher */
+        || EVP_CIPHER_is_a(info->ciph, "AES-128-CBC-HMAC-SHA1")
+        /* skip TLS stitched MTE cipher */
+        || EVP_CIPHER_is_a(info->ciph, "AES-256-CBC-HMAC-SHA1")
+        /* skip TLS stitched MTE cipher */
+        || EVP_CIPHER_is_a(info->ciph, "AES-128-CBC-HMAC-SHA256")
+        /* skip TLS stitched MTE cipher */
+        || EVP_CIPHER_is_a(info->ciph, "AES-256-CBC-HMAC-SHA256"))
+        return 1;
+
+    for (i = 0; i < info->keylen && i < (int)sizeof(key); i++)
+        key[i] = (unsigned char)(0xA0 + i);
+    for (i = 0; i < info->ivlen && i < (int)sizeof(iv); i++)
+        iv[i] = (unsigned char)(0xB0 + i);
+
+    /* encrypt: aad, then plaintext, then a late aad update must be rejected */
+    if (!TEST_ptr(ctx_enc = EVP_CIPHER_CTX_new())) {
+        errmsg = "ENC_ALLOC";
+        goto err;
+    }
+    if (!TEST_true(EVP_EncryptInit_ex2(ctx_enc, info->ciph, key, iv, NULL))) {
+        errmsg = "ENC_INIT";
+        goto err;
+    }
+    if (!TEST_true(EVP_EncryptUpdate(ctx_enc, NULL, &len, aad, sizeof(aad)))) {
+        errmsg = "ENC_AAD";
+        goto err;
+    }
+    if (!TEST_true(EVP_EncryptUpdate(ctx_enc, out, &len, msg, sizeof(msg)))) {
+        errmsg = "ENC_PLAINTEXT";
+        goto err;
+    }
+    ERR_set_mark();
+    if (!TEST_false(EVP_EncryptUpdate(ctx_enc, NULL, &len, aad, sizeof(aad)))) {
+        ERR_clear_last_mark();
+        errmsg = "ENC_LATE_AAD_NOT_REJECTED";
+        goto err;
+    }
+    err_code = ERR_peek_last_error();
+    if (!TEST_int_eq(ERR_GET_LIB(err_code), ERR_LIB_PROV)
+        || !TEST_int_eq(ERR_GET_REASON(err_code), PROV_R_UPDATE_CALL_OUT_OF_ORDER)) {
+        ERR_clear_last_mark();
+        expected = PROV_R_UPDATE_CALL_OUT_OF_ORDER;
+        errmsg = "ENC_LATE_AAD_WRONG_REASON";
+        goto err;
+    }
+    ERR_pop_to_mark();
+
+    /* decrypt: same sequence, late aad after ciphertext must be rejected */
+    if (!TEST_ptr(ctx_dec = EVP_CIPHER_CTX_new())) {
+        errmsg = "DEC_ALLOC";
+        goto err;
+    }
+    if (!TEST_true(EVP_DecryptInit_ex2(ctx_dec, info->ciph, key, iv, NULL))) {
+        errmsg = "DEC_INIT";
+        goto err;
+    }
+    if (!TEST_true(EVP_DecryptUpdate(ctx_dec, NULL, &len, aad, sizeof(aad)))) {
+        errmsg = "DEC_AAD";
+        goto err;
+    }
+    /* the ciphertext content is irrelevant; the tag is never finalized here */
+    if (!TEST_true(EVP_DecryptUpdate(ctx_dec, out, &len, msg, sizeof(msg)))) {
+        errmsg = "DEC_CIPHERTEXT";
+        goto err;
+    }
+    ERR_set_mark();
+    if (!TEST_false(EVP_DecryptUpdate(ctx_dec, NULL, &len, aad, sizeof(aad)))) {
+        ERR_clear_last_mark();
+        errmsg = "DEC_LATE_AAD_NOT_REJECTED";
+        goto err;
+    }
+    err_code = ERR_peek_last_error();
+    if (!TEST_int_eq(ERR_GET_LIB(err_code), ERR_LIB_PROV)
+        || !TEST_int_eq(ERR_GET_REASON(err_code), PROV_R_UPDATE_CALL_OUT_OF_ORDER)) {
+        ERR_clear_last_mark();
+        expected = PROV_R_UPDATE_CALL_OUT_OF_ORDER;
+        errmsg = "DEC_LATE_AAD_WRONG_REASON";
+        goto err;
+    }
+    ERR_pop_to_mark();
+
+    testresult = 1;
+
+err:
+    if (errmsg != NULL) {
+        if (expected != 0)
+            TEST_info("test_evp_aead_late_aad %d, %s: %s"
+                      " (expected reason %d, got %d)",
+                idx, errmsg, info->name,
+                expected, ERR_GET_REASON(err_code));
+        else
+            TEST_info("test_evp_aead_late_aad %d, %s: %s",
+                idx, errmsg, info->name);
+    }
+    EVP_CIPHER_CTX_free(ctx_enc);
+    EVP_CIPHER_CTX_free(ctx_dec);
+    return testresult;
+}
+
+/*
  * Verify stale key is not being used after providing a new key in multiple steps.
  * This test performs a full round of encryption and then changes the
  * key and then the IV in a multi-step init.
@@ -7761,30 +8021,6 @@ err:
     return ret;
 }
 
-#if !defined(OPENSSL_NO_CHACHA) && !defined(OPENSSL_NO_POLY1305)
-static int test_chacha20_poly1305_late_aad(void)
-{
-    EVP_CIPHER_CTX *ctx = NULL;
-    EVP_CIPHER *c = NULL;
-    unsigned char key[32] = { 0 };
-    unsigned char iv[12] = { 0 };
-    unsigned char aad[4] = "aad";
-    unsigned char msg[8] = "message";
-    unsigned char out[32];
-    int len, test;
-
-    test = TEST_ptr(ctx = EVP_CIPHER_CTX_new())
-        && TEST_ptr(c = EVP_CIPHER_fetch(testctx, "ChaCha20-Poly1305", testpropq))
-        && TEST_true(EVP_EncryptInit_ex2(ctx, c, key, iv, NULL))
-        && TEST_true(EVP_EncryptUpdate(ctx, NULL, &len, aad, sizeof(aad)))
-        && TEST_true(EVP_EncryptUpdate(ctx, out, &len, msg, sizeof(msg)))
-        && TEST_false(EVP_EncryptUpdate(ctx, NULL, &len, aad, sizeof(aad)));
-
-    EVP_CIPHER_free(c);
-    EVP_CIPHER_CTX_free(ctx);
-    return test;
-}
-#endif
 /*
  * AES-SIV reuse-without-rekey:
  *   msg1: legit non-empty CT, tag verifies, final_ret=0
@@ -9050,12 +9286,7 @@ int setup_tests(void)
     ADD_TEST(test_EVP_SM2_verify);
 #endif
     ADD_ALL_TESTS(test_set_get_raw_keys, OSSL_NELEM(keys));
-#if defined(_MSC_VER) || defined(OPENSSL_NO_CACHED_FETCH)
-    ADD_MFAIL_ALL_NO_CHECK_TESTS(test_set_get_raw_keys_mfail,
-        OSSL_NELEM(keys));
-#else
     ADD_MFAIL_ALL_TESTS(test_set_get_raw_keys_mfail, OSSL_NELEM(keys));
-#endif
     ADD_ALL_TESTS(test_EVP_PKEY_check, OSSL_NELEM(keycheckdata));
 #ifndef OPENSSL_NO_CMAC
     ADD_TEST(test_CMAC_keygen);
@@ -9077,13 +9308,13 @@ int setup_tests(void)
     ADD_TEST(test_RSA_OAEP_set_get_params);
     ADD_TEST(test_RSA_OAEP_set_null_label);
     ADD_TEST(test_RSA_verify_recover_rejects_short_buffer);
+    ADD_TEST(test_RSA_verify_recover_empty_payload);
     ADD_TEST(test_RSA_encrypt);
 #ifndef OPENSSL_NO_DEPRECATED_3_0
     ADD_TEST(test_RSA_legacy);
 #endif
 #if !defined(OPENSSL_NO_CHACHA) && !defined(OPENSSL_NO_POLY1305)
     ADD_TEST(test_decrypt_null_chunks);
-    ADD_TEST(test_chacha20_poly1305_late_aad);
 #endif
 #ifndef OPENSSL_NO_DH
     ADD_TEST(test_DH_priv_pub);
@@ -9127,6 +9358,7 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_evp_decrypt_roundtrip_multistep, cipher_list_n);
     ADD_ALL_TESTS(test_evp_oneshot_aead_zerolen, cipher_list_n);
     ADD_ALL_TESTS(test_evp_aead_tag_direction, cipher_list_n);
+    ADD_ALL_TESTS(test_evp_aead_late_aad, cipher_list_n);
 
     ADD_ALL_TESTS(test_evp_init_seq, OSSL_NELEM(evp_init_tests));
     ADD_ALL_TESTS(test_evp_reset, OSSL_NELEM(evp_reset_tests));

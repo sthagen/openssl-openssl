@@ -40,6 +40,7 @@
 #include <openssl/ssl.h>
 #include <openssl/core_names.h>
 #include <openssl/encoder.h>
+#include <openssl/decoder.h>
 #include "s_apps.h"
 #include "apps.h"
 
@@ -605,20 +606,46 @@ EVP_PKEY *load_keyparams_suppress(const char *uri, int format, int maybe_stdin,
     int suppress_decode_errors)
 {
     EVP_PKEY *params = NULL;
+    OSSL_DECODER_CTX *dctx = NULL;
+    BIO *file_bio = BIO_new_file(uri, "rb");
+    OSSL_LIB_CTX *libctx = app_get0_libctx();
+    const char *propq = app_get0_propq();
 
     if (desc == NULL)
         desc = "key parameters";
-    (void)load_key_certs_crls(uri, format, maybe_stdin, NULL, desc,
-        suppress_decode_errors,
-        NULL, NULL, &params, NULL, NULL, NULL, NULL, NULL);
-    if (params != NULL && keytype != NULL && !EVP_PKEY_is_a(params, keytype)) {
-        ERR_print_errors(bio_err);
-        BIO_printf(bio_err,
-            "Unable to load %s from %s (unexpected parameters type)\n",
-            desc, uri);
-        EVP_PKEY_free(params);
-        params = NULL;
+    /*
+     * Use the store lookup path for anything that is not DER/ASN1 format
+     * Or if we are unable to opens the uri as a file.
+     */
+    if (format != FORMAT_ASN1 || file_bio == NULL) {
+        (void)load_key_certs_crls(uri, format, maybe_stdin, NULL, desc,
+            suppress_decode_errors,
+            NULL, NULL, &params, NULL, NULL, NULL, NULL, NULL);
+        if (params != NULL && keytype != NULL && !EVP_PKEY_is_a(params, keytype)) {
+            ERR_print_errors(bio_err);
+            BIO_printf(bio_err,
+                "Unable to load %s from %s (unexpected parameters type)\n",
+                desc, uri);
+            EVP_PKEY_free(params);
+            params = NULL;
+        }
+    } else {
+        dctx = OSSL_DECODER_CTX_new_for_pkey(&params, NULL, NULL, keytype,
+            OSSL_KEYMGMT_SELECT_ALL_PARAMETERS,
+            libctx, propq);
+        if (dctx == NULL) {
+            ERR_print_errors(bio_err);
+            BIO_printf(bio_err, "Unable to allocate decoder context\n");
+        } else {
+            if (!OSSL_DECODER_from_bio(dctx, file_bio)) {
+                ERR_print_errors(bio_err);
+                BIO_printf(bio_err, "Unable to decode file %s\n", uri);
+            }
+        }
     }
+
+    BIO_free(file_bio);
+    OSSL_DECODER_CTX_free(dctx);
     return params;
 }
 
@@ -2806,7 +2833,7 @@ static const char *get_dp_url(DIST_POINT *dp)
     for (i = 0; i < sk_GENERAL_NAME_num(gens); i++) {
         gen = sk_GENERAL_NAME_value(gens, i);
         uri = GENERAL_NAME_get0_value(gen, &gtype);
-        if (gtype == GEN_URI && ASN1_STRING_length(uri) > 6) {
+        if (gtype == GEN_URI && ASN1_STRING_length_ex(uri) > 6) {
             const char *uptr = (const char *)ASN1_STRING_get0_data(uri);
 
             if (IS_HTTP(uptr)) /* can/should not use HTTPS here */
@@ -3695,7 +3722,7 @@ int has_stdin_waiting(void)
 int corrupt_signature(ASN1_STRING *signature)
 {
     const unsigned char *valid = ASN1_STRING_get0_data(signature);
-    int length = ASN1_STRING_length(signature);
+    size_t length = ASN1_STRING_length_ex(signature);
     unsigned char *s = OPENSSL_memdup(valid, length);
 
     if (s == NULL)
@@ -3703,7 +3730,7 @@ int corrupt_signature(ASN1_STRING *signature)
 
     s[length - 1] ^= 0x1;
 
-    ASN1_STRING_set0(signature, s, length);
+    ASN1_STRING_set0(signature, s, (int)length);
     return 1;
 }
 
