@@ -89,6 +89,7 @@ const BIGNUM *BN_value_one(void)
     return &const_one;
 }
 
+#ifndef __e2k__
 int BN_num_bits_word(BN_ULONG l)
 {
     BN_ULONG x, mask;
@@ -133,6 +134,20 @@ int BN_num_bits_word(BN_ULONG l)
 
     return bits;
 }
+#else /* __e2k__ */
+#include <x86gprintrin.h>
+int BN_num_bits_word(BN_ULONG l)
+{
+    /* clz(0) is well-defined on e2k, hence no if (l == 0) return 0;
+     * is required here.
+     */
+#if BN_BITS2 > 32
+    return 64 - __builtin_clzll(l);
+#else
+    return 32 - __builtin_clz(l);
+#endif
+}
+#endif /* __e2k__ */
 
 /*
  * This function still leaks `a->dmax`: it's caller's responsibility to
@@ -955,11 +970,11 @@ void BN_consttime_swap(BN_ULONG condition, BIGNUM *a, BIGNUM *b, int nwords)
 
     condition = ((~condition & ((condition - 1))) >> (BN_BITS2 - 1)) - 1;
 
-    t = (a->top ^ b->top) & condition;
+    t = (a->top ^ b->top) & value_barrier_bn(condition);
     a->top ^= t;
     b->top ^= t;
 
-    t = (a->neg ^ b->neg) & condition;
+    t = (a->neg ^ b->neg) & value_barrier_bn(condition);
     a->neg ^= t;
     b->neg ^= t;
 
@@ -987,13 +1002,13 @@ void BN_consttime_swap(BN_ULONG condition, BIGNUM *a, BIGNUM *b, int nwords)
 
 #define BN_CONSTTIME_SWAP_FLAGS (BN_FLG_CONSTTIME | BN_FLG_FIXED_TOP)
 
-    t = ((a->flags ^ b->flags) & BN_CONSTTIME_SWAP_FLAGS) & condition;
+    t = ((a->flags ^ b->flags) & BN_CONSTTIME_SWAP_FLAGS) & value_barrier_bn(condition);
     a->flags ^= t;
     b->flags ^= t;
 
     /* conditionally swap the data */
     for (i = 0; i < nwords; i++) {
-        t = (a->d[i] ^ b->d[i]) & condition;
+        t = (a->d[i] ^ b->d[i]) & value_barrier_bn(condition);
         a->d[i] ^= t;
         b->d[i] ^= t;
     }

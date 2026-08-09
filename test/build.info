@@ -86,7 +86,7 @@ IF[{- !$disabled{tests} -}]
   ENDIF
 
   IF[{- !$disabled{'allocfail-tests'} -}]
-    PROGRAMS{noinst}=handshake-memfail x509-memfail load_key_certs_crls_memfail
+    PROGRAMS{noinst}=handshake-memfail load_key_certs_crls_memfail
   ENDIF
 
   IF[{- !$disabled{quic} -}]
@@ -648,10 +648,6 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[handshake-memfail]=../include ../apps/include
   DEPEND[handshake-memfail]=../libcrypto.a ../libssl.a libtestutil.a
 
-  SOURCE[x509-memfail]=x509_memfail.c
-  INCLUDE[x509-memfail]=../include ../apps/include
-  DEPEND[x509-memfail]=../libcrypto.a libtestutil.a
-
   SOURCE[load_key_certs_crls_memfail]=load_key_certs_crls_memfail.c ../apps/lib/apps.c \
           ../apps/lib/app_rand.c ../apps/lib/app_provider.c ../apps/lib/app_libctx.c \
           ../apps/lib/fmt.c ../apps/lib/apps_ui.c ../apps/lib/app_x509.c \
@@ -816,6 +812,11 @@ IF[{- !$disabled{tests} -}]
   SOURCE[cipher_overhead_test]=cipher_overhead_test.c
   INCLUDE[cipher_overhead_test]=.. ../include ../apps/include
   DEPEND[cipher_overhead_test]=../libcrypto.a ../libssl.a libtestutil.a
+
+  PROGRAMS{noinst}=cipher_dupctx_test
+  SOURCE[cipher_dupctx_test]=cipher_dupctx_test.c
+  INCLUDE[cipher_dupctx_test]=../include ../apps/include
+  DEPEND[cipher_dupctx_test]=../libcrypto libtestutil.a
 
   SOURCE[uitest]=uitest.c ../apps/lib/apps_ui.c
   INCLUDE[uitest]=.. ../include ../apps/include
@@ -1299,6 +1300,10 @@ IF[{- !$disabled{tests} -}]
   ENDIF
   DEPEND[]=provider_internal_test.cnf
   GENERATE[provider_internal_test.cnf]=provider_internal_test.cnf.in
+  DEPEND[]=pathed.cnf
+  GENERATE[pathed.cnf]=pathed.cnf.in
+  DEPEND[]=nocache-and-default.cnf
+  GENERATE[nocache-and-default.cnf]=nocache-and-default.cnf.in
 
   PROGRAMS{noinst}=provider_fallback_test
   SOURCE[provider_fallback_test]=provider_fallback_test.c
@@ -1434,7 +1439,7 @@ ENDIF
 
   SOURCE[strtoultest]=strtoultest.c
   INCLUDE[strtoultest]=../include ../apps/include
-  DEPEND[strtoultest]=../libcrypto libtestutil.a
+  DEPEND[strtoultest]=../libcrypto.a libtestutil.a
 
   SOURCE[bio_pw_callback_test]=bio_pw_callback_test.c
   INCLUDE[bio_pw_callback_test]=../include ../apps/include

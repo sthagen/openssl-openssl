@@ -5291,6 +5291,76 @@ end:
 }
 
 /*
+ * Locks in the requirement that a resumed PSK's exact ciphersuite, not
+ * merely a shared digest, must match the negotiated one before 0-RTT data
+ * is accepted: the client encrypts its early data with the AEAD bound to
+ * its own PSK session before it can know what cipher the server will
+ * negotiate, so a same-digest-but-different-cipher negotiation must fall
+ * back to an ordinary connection rather than attempt decryption with the
+ * wrong cipher.
+ */
+static int test_early_data_psk_cipher_mismatch(void)
+{
+#if !defined(OPENSSL_NO_CHACHA) && !defined(OPENSSL_NO_POLY1305)
+    SSL_CTX *cctx = NULL, *sctx = NULL;
+    SSL *clientssl = NULL, *serverssl = NULL;
+    int testresult = 0;
+    SSL_SESSION *sess = NULL;
+    unsigned char buf[20];
+    size_t readbytes, written;
+
+    if (is_fips) {
+        testresult = TEST_skip("CHACHA is not supported in FIPS");
+        return 1;
+    }
+
+    if (!TEST_true(setupearly_data_test(&cctx, &sctx, &clientssl,
+            &serverssl, &sess, 2, SHA256_DIGEST_LENGTH)))
+        goto end;
+
+    /*
+     * The PSK is bound to AES-128-GCM (SHA256 digest), but both ends can
+     * only negotiate ChaCha20-Poly1305 -- same digest, different cipher.
+     */
+    if (!TEST_true(SSL_set_ciphersuites(clientssl,
+            "TLS_CHACHA20_POLY1305_SHA256"))
+        || !TEST_true(SSL_set_ciphersuites(serverssl,
+            "TLS_CHACHA20_POLY1305_SHA256")))
+        goto end;
+
+    SSL_set_connect_state(clientssl);
+    if (!TEST_true(SSL_write_early_data(clientssl, MSG1, strlen(MSG1),
+            &written)))
+        goto end;
+
+    if (!TEST_int_eq(SSL_read_early_data(serverssl, buf, sizeof(buf),
+                         &readbytes),
+            SSL_READ_EARLY_DATA_FINISH)
+        || !TEST_int_eq(SSL_get_early_data_status(serverssl),
+            SSL_EARLY_DATA_REJECTED))
+        goto end;
+
+    if (!TEST_true(create_ssl_connection(serverssl, clientssl,
+            SSL_ERROR_NONE)))
+        goto end;
+
+    testresult = 1;
+end:
+    SSL_SESSION_free(sess);
+    SSL_SESSION_free(clientpsk);
+    SSL_SESSION_free(serverpsk);
+    clientpsk = serverpsk = NULL;
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+    return testresult;
+#else
+    return 1;
+#endif
+}
+
+/*
  * Test that a server that doesn't try to read early data can handle a
  * client sending some.
  */
@@ -13556,6 +13626,70 @@ end:
     return testresult;
 }
 
+/*
+ * Test that a BIO returning 0 without a retry flag for a write with a positive
+ * length is not treated as a successful write.
+ */
+static int test_data_write_zero_no_retry(int tst)
+{
+    SSL_CTX *cctx = NULL, *sctx = NULL;
+    SSL *clientssl = NULL, *serverssl = NULL;
+    BIO *bzero = BIO_new(bio_s_no_retry_zero());
+    const SSL_METHOD *smeth = TLS_server_method();
+    const SSL_METHOD *cmeth = TLS_client_method();
+    unsigned char inbuf[1] = { 0 };
+    size_t written;
+    unsigned long errcode;
+    int err, min_version = 0, max_version = 0, testresult = 0;
+
+    if (tst == 1) {
+#if !defined(OPENSSL_NO_DTLS) && !defined(OPENSSL_NO_DTLS1_2)
+        smeth = DTLS_server_method();
+        cmeth = DTLS_client_method();
+        min_version = max_version = DTLS1_2_VERSION;
+#else
+        BIO_free(bzero);
+        return TEST_skip("DTLS 1.2 not supported");
+#endif
+    }
+
+    if (!TEST_ptr(bzero))
+        goto end;
+
+    if (!TEST_true(create_ssl_ctx_pair(libctx, smeth, cmeth, min_version,
+            max_version, &sctx, &cctx, cert, privkey)))
+        goto end;
+
+    if (!TEST_true(create_ssl_objects(sctx, cctx, &serverssl, &clientssl, NULL,
+            NULL)))
+        goto end;
+
+    if (!TEST_true(create_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE)))
+        goto end;
+
+    SSL_set0_wbio(clientssl, bzero);
+    bzero = NULL;
+
+    ERR_clear_error();
+    if (!TEST_false(SSL_write_ex(clientssl, inbuf, sizeof(inbuf), &written)))
+        goto end;
+
+    err = SSL_get_error(clientssl, 0);
+    errcode = ERR_get_error();
+    if (!TEST_int_eq(err, SSL_ERROR_SYSCALL)
+        || !TEST_ulong_eq(errcode, 0))
+        goto end;
+
+    testresult = 1;
+end:
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+    BIO_free_all(bzero);
+    return testresult;
+}
+
 struct resume_servername_cb_data {
     int i;
     SSL_CTX *cctx;
@@ -15473,6 +15607,7 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_early_data_not_sent, 3);
     ADD_ALL_TESTS(test_early_data_psk, 8);
     ADD_ALL_TESTS(test_early_data_psk_with_all_ciphers, 7);
+    ADD_TEST(test_early_data_psk_cipher_mismatch);
     ADD_ALL_TESTS(test_early_data_not_expected, 3);
 #ifndef OPENSSL_NO_TLS1_2
     ADD_ALL_TESTS(test_early_data_tls1_2, 3);
@@ -15598,6 +15733,7 @@ int setup_tests(void)
     ADD_TEST(test_rstate_string);
     ADD_ALL_TESTS(test_handshake_retry, 16);
     ADD_TEST(test_data_retry);
+    ADD_ALL_TESTS(test_data_write_zero_no_retry, 2);
     ADD_ALL_TESTS(test_multi_resume, 5);
     ADD_ALL_TESTS(test_select_next_proto, OSSL_NELEM(next_proto_tests));
 #if !defined(OPENSSL_NO_TLS1_2) && !defined(OPENSSL_NO_NEXTPROTONEG)
@@ -15649,6 +15785,7 @@ void cleanup_tests(void)
     bio_s_mempacket_test_free();
     bio_s_always_retry_free();
     bio_s_maybe_retry_free();
+    bio_s_no_retry_zero_free();
     OSSL_PROVIDER_unload(defctxnull);
     OSSL_LIB_CTX_free(libctx);
 }
