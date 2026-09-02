@@ -53,18 +53,19 @@ IF[{- !$disabled{tests} -}]
           v3nametest v3ext byteorder_test punycode_test evp_byname_test \
           crltest danetest bad_dtls_test lhash_test sparse_array_test \
           conf_include_test params_api_test params_conversion_test \
-          constant_time_test crypto_memcmp_test safe_math_test verify_extra_test clienthellotest \
+          constant_time_test crypto_memcmp_test ct_validation_helpers_test \
+          safe_math_test verify_extra_test clienthellotest \
           packettest asynctest secmemtest srptest memleaktest stack_test \
-          dtlsv1listentest ct_test threadstest d2i_test \
+          ct_test threadstest d2i_test \
           ssl_test_ctx_test ssl_test x509aux cipherlist_test asynciotest \
-          bio_callback_test bio_memleak_test bio_core_test bio_dgram_test param_build_test \
+          bio_callback_test bio_memleak_test bio_ndef_test bio_core_test bio_dgram_test param_build_test \
           sslapitest ssl_handshake_rtt_test dtlstest sslcorrupttest \
           bio_base64_test bio_enc_test pkey_meth_kdf_test evp_kdf_test uitest \
           cipherbytes_test threadstest_fips threadpool_test \
           asn1_encode_test asn1_decode_test asn1_string_table_test asn1_stable_parse_test \
           x509_time_test x509_dup_cert_test x509_check_cert_pkey_test \
           recordlentest drbgtest rand_status_test sslbuffertest \
-          time_offset_test pemtest ssl_cert_table_internal_test ciphername_test \
+          time_offset_test pemtest dtls13_internal_test ssl_cert_table_internal_test ciphername_test \
           servername_test ocspapitest ocsptest fatalerrtest tls13ccstest \
           sysdefaulttest errtest ssl_ctx_test build_wincrypt_test \
           context_internal_test aesgcmtest params_test evp_pkey_dparams_test \
@@ -107,8 +108,12 @@ IF[{- !$disabled{tests} -}]
     PROGRAMS{noinst}=cert_comp_test
   ENDIF
 
-  IF[{- !$disabled{dtls} -}]
+  IF[{- !$disabled{dtls1} || !$disabled{dtls1_2} -}]
     PROGRAMS{noinst}=dtls_ccs_reorder_test
+  ENDIF
+
+  IF[{- !$disabled{dtls1_2} -}]
+    PROGRAMS{noinst}=dtlsv1listentest
   ENDIF
 
   SOURCE[confdump]=confdump.c
@@ -157,6 +162,18 @@ IF[{- !$disabled{tests} -}]
   SOURCE[ecstresstest]=ecstresstest.c
   INCLUDE[ecstresstest]=../include ../apps/include
   DEPEND[ecstresstest]=../libcrypto libtestutil.a
+
+  IF[{- !$disabled{ec} -}]
+    PROGRAMS{noinst}=genec_test
+    SOURCE[genec_test]=genec_test.c
+    INCLUDE[genec_test]=../include ../apps/include
+    DEPEND[genec_test]=../libcrypto libtestutil.a
+
+    PROGRAMS{noinst}=ecparam_test
+    SOURCE[ecparam_test]=ecparam_test.c
+    INCLUDE[ecparam_test]=../include ../apps/include
+    DEPEND[ecparam_test]=../libcrypto libtestutil.a
+  ENDIF
 
   SOURCE[gmdifftest]=gmdifftest.c
   INCLUDE[gmdifftest]=../include ../apps/include
@@ -377,6 +394,10 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[crypto_memcmp_test]=../include ../apps/include
   DEPEND[crypto_memcmp_test]=../libcrypto libtestutil.a
 
+  SOURCE[ct_validation_helpers_test]=ct_validation_helpers_test.c
+  INCLUDE[ct_validation_helpers_test]=../include ../apps/include
+  DEPEND[ct_validation_helpers_test]=../libcrypto libtestutil.a
+
   SOURCE[safe_math_test]=safe_math_test.c
   INCLUDE[safe_math_test]=../include ../apps/include
   DEPEND[safe_math_test]=../libcrypto libtestutil.a
@@ -530,9 +551,27 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[lhash_test]=../include ../apps/include
   DEPEND[lhash_test]=../libcrypto.a libtestutil.a
 
-  SOURCE[dtlsv1listentest]=dtlsv1listentest.c
-  INCLUDE[dtlsv1listentest]=../include ../apps/include
-  DEPEND[dtlsv1listentest]=../libssl libtestutil.a
+  IF[{- !$disabled{dtls1_2} -}]
+    SOURCE[dtlsv1listentest]=dtlsv1listentest.c helpers/ssltestlib.c
+    INCLUDE[dtlsv1listentest]=../include ../apps/include
+    DEPEND[dtlsv1listentest]=../libcrypto ../libssl libtestutil.a
+  ENDIF
+
+  IF[{- !$disabled{sock} && !$disabled{dtls} -}]
+    PROGRAMS{noinst}=dtlsssllistenertest
+
+    SOURCE[dtlsssllistenertest]=dtlsssllistenertest.c helpers/ssltestlib.c
+    INCLUDE[dtlsssllistenertest]=../include ../apps/include
+    DEPEND[dtlsssllistenertest]=../libcrypto.a ../libssl.a libtestutil.a
+  ENDIF
+
+  IF[{- !$disabled{sock} && !$disabled{dtls} && !$disabled{threads}-}]
+    PROGRAMS{noinst}=dtls_multithread_test
+
+    SOURCE[dtls_multithread_test]=dtls_multithread_test.c helpers/ssltestlib.c
+    INCLUDE[dtls_multithread_test]=../include ../apps/include
+    DEPEND[dtls_multithread_test]=../libcrypto.a ../libssl.a libtestutil.a
+  ENDIF
 
   SOURCE[ct_test]=ct_test.c
   INCLUDE[ct_test]=../include ../apps/include
@@ -594,6 +633,10 @@ IF[{- !$disabled{tests} -}]
   SOURCE[bio_memleak_test]=bio_memleak_test.c
   INCLUDE[bio_memleak_test]=../include ../apps/include
   DEPEND[bio_memleak_test]=../libcrypto libtestutil.a
+
+  SOURCE[bio_ndef_test]=bio_ndef_test.c
+  INCLUDE[bio_ndef_test]=../include ../apps/include
+  DEPEND[bio_ndef_test]=../libcrypto libtestutil.a
 
   SOURCE[bio_meth_test]=bio_meth_test.c
   INCLUDE[bio_meth_test]=../include ../apps/include
@@ -775,6 +818,10 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[pemtest]=../include ../apps/include
   DEPEND[pemtest]=../libcrypto libtestutil.a
 
+  SOURCE[dtls13_internal_test]=dtls13_internal_test.c
+  INCLUDE[dtls13_internal_test]=.. ../include ../apps/include
+  DEPEND[dtls13_internal_test]=../libssl.a ../libcrypto.a libtestutil.a
+
   SOURCE[ssl_cert_table_internal_test]=ssl_cert_table_internal_test.c
   INCLUDE[ssl_cert_table_internal_test]=.. ../include ../apps/include
   DEPEND[ssl_cert_table_internal_test]=../libcrypto libtestutil.a
@@ -858,7 +905,7 @@ IF[{- !$disabled{tests} -}]
   IF[{- !$disabled{cmp} -}]
     PROGRAMS{noinst}=cmp_asn_test cmp_ctx_test cmp_status_test cmp_hdr_test \
                      cmp_protect_test cmp_msg_test cmp_vfy_test \
-                     cmp_server_test cmp_client_test
+                     cmp_server_test cmp_client_test cmp_extracerts_dos_test
   ENDIF
 
   SOURCE[cmp_asn_test]=cmp_asn_test.c helpers/cmp_testlib.c
@@ -884,6 +931,10 @@ IF[{- !$disabled{tests} -}]
   SOURCE[cmp_msg_test]=cmp_msg_test.c helpers/cmp_testlib.c
   INCLUDE[cmp_msg_test]=.. ../include ../apps/include
   DEPEND[cmp_msg_test]=../libcrypto.a libtestutil.a
+
+  SOURCE[cmp_extracerts_dos_test]=cmp_extracerts_dos_test.c helpers/cmp_testlib.c
+  INCLUDE[cmp_extracerts_dos_test]=.. ../include ../apps/include
+  DEPEND[cmp_extracerts_dos_test]=../libcrypto.a libtestutil.a
 
   SOURCE[cmp_vfy_test]=cmp_vfy_test.c helpers/cmp_testlib.c
   INCLUDE[cmp_vfy_test]=.. ../include ../apps/include
@@ -1148,6 +1199,7 @@ IF[{- !$disabled{tests} -}]
     SOURCE[bn_internal_test]=bn_internal_test.c
     INCLUDE[bn_internal_test]=.. ../include ../crypto/bn ../apps/include
     DEPEND[bn_internal_test]=../libcrypto.a libtestutil.a
+    DEPEND[bn_internal_test.o]=../crypto/bn/bn_prime.h
 
     SOURCE[asn1_dsa_internal_test]=asn1_dsa_internal_test.c
     INCLUDE[asn1_dsa_internal_test]=.. ../include ../apps/include
@@ -1224,7 +1276,7 @@ IF[{- !$disabled{tests} -}]
     PROGRAMS{noinst}=tls13secretstest
     SOURCE[tls13secretstest]=tls13secretstest.c
     DEFINE[tls13secretstest]=OPENSSL_NO_KTLS
-    SOURCE[tls13secretstest]= ../ssl/tls13_enc.c ../crypto/packet.c ../crypto/quic_vlint.c
+    SOURCE[tls13secretstest]= ../ssl/tls13_enc.c ../ssl/d1_transcript.c ../crypto/packet.c ../crypto/quic_vlint.c
     INCLUDE[tls13secretstest]=.. ../include ../apps/include
     DEPEND[tls13secretstest]=../libcrypto ../libssl libtestutil.a
   ENDIF
@@ -1344,6 +1396,11 @@ IF[{- !$disabled{tests} -}]
   SOURCE[trace_api_test]=trace_api_test.c
   INCLUDE[trace_api_test]=.. ../include ../apps/include
   DEPEND[trace_api_test]=../libcrypto libtestutil.a
+
+  PROGRAMS{noinst}=endecode_api_test
+  SOURCE[endecode_api_test]=endecode_api_test.c $INITSRC
+  INCLUDE[endecode_api_test]=../include ../apps/include
+  DEPEND[endecode_api_test]=../libcrypto libtestutil.a
 
   PROGRAMS{noinst}=endecode_test
   SOURCE[endecode_test]=endecode_test.c helpers/predefined_dhparams.c

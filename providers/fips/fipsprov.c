@@ -101,7 +101,7 @@ typedef struct fips_global_st {
 
 } FIPS_GLOBAL;
 
-static inline FIPS_PARAMS *get_fips_params(FIPS_GLOBAL *fgbl)
+static ossl_inline FIPS_PARAMS *get_fips_params(FIPS_GLOBAL *fgbl)
 {
     return &fgbl->fips_params;
 }
@@ -1189,6 +1189,17 @@ void *CRYPTO_aligned_alloc(size_t num, size_t align, void **freeptr,
 {
     return ossl_malloc_align(num, align, freeptr, file, line);
 }
+
+/*
+ * The public BIO_snprintf() prototype is hidden when the public headers
+ * are built with OPENSSL_NO_DEPRECATED_4_1, but the FIPS module still
+ * defines and exports the symbol for callers compiled into the module.
+ * Provide a local prototype in that configuration so the definition is
+ * well-formed.
+ */
+#ifdef OPENSSL_NO_DEPRECATED_4_1
+int BIO_snprintf(char *buf, size_t n, const char *format, ...);
+#endif
 
 int BIO_snprintf(char *buf, size_t n, const char *format, ...)
 {

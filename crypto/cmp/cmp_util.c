@@ -9,6 +9,7 @@
  * https://www.openssl.org/source/license.html
  */
 
+#include <stdio.h>
 #include <string.h>
 #include <openssl/cmp_util.h>
 #include "cmp_local.h" /* just for decls of internal functions defined here */
@@ -170,13 +171,13 @@ void OSSL_CMP_print_errors_cb(OSSL_CMP_log_cb_t log_fn)
         }
 #endif
         if (rs == NULL) {
-            BIO_snprintf(rsbuf, sizeof(rsbuf), "reason(%lu)", reason);
+            snprintf(rsbuf, sizeof(rsbuf), "reason(%lu)", reason);
             rs = rsbuf;
         }
         if (data != NULL && (flags & ERR_TXT_STRING) != 0)
-            BIO_snprintf(msg, sizeof(msg), "%s:%s", rs, data);
+            snprintf(msg, sizeof(msg), "%s:%s", rs, data);
         else
-            BIO_snprintf(msg, sizeof(msg), "%s", rs);
+            snprintf(msg, sizeof(msg), "%s", rs);
 
         if (log_fn == NULL) {
 #ifndef OPENSSL_NO_STDIO
@@ -223,7 +224,8 @@ int ossl_cmp_sk_ASN1_UTF8STRING_push_str(STACK_OF(ASN1_UTF8STRING) *sk,
 {
     ASN1_UTF8STRING *utf8string;
 
-    if (!ossl_assert(sk != NULL && text != NULL))
+    /* text == NULL with len == 0 is the canonical empty string and is valid */
+    if (!ossl_assert(sk != NULL && (text != NULL || len == 0)))
         return 0;
     if ((utf8string = ASN1_UTF8STRING_new()) == NULL)
         return 0;

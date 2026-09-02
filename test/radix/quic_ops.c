@@ -1075,6 +1075,27 @@ err:
     return ok;
 }
 
+/* Inhibit ticking at the QUIC_ENGINE level */
+DEF_FUNC(hf_set_engine_tick_inhibit)
+{
+    int ok = 0;
+    uint64_t inhibit;
+    SSL *ssl;
+    QUIC_CHANNEL *ch;
+
+    F_POP(inhibit);
+    REQUIRE_SSL(ssl);
+
+    if (!TEST_ptr(ch = ossl_quic_conn_get_channel(ssl)))
+        goto err;
+
+    ossl_quic_engine_set_inhibit_tick(ossl_quic_channel_get0_engine(ch),
+        inhibit != 0);
+    ok = 1;
+err:
+    return ok;
+}
+
 /*
  * Skip fake time and wait for the assist thread to catch up. It waits on real
  * time internally, so wake it and spin until the event timeout is back in the
@@ -1467,6 +1488,56 @@ err:
     return ok;
 }
 
+DEF_FUNC(hf_push_stream_id_plus_one)
+{
+    int ok = 0;
+    SSL *ssl;
+    uint64_t stream_id_plus_one;
+
+    REQUIRE_SSL(ssl);
+    stream_id_plus_one = SSL_get_stream_id(ssl) + 1;
+    F_PUSH(stream_id_plus_one);
+    ok = 1;
+err:
+    return ok;
+}
+
+DEF_FUNC(hf_inhibit_tick)
+{
+    int ok = 0;
+    uint64_t inhibit;
+    SSL *ssl;
+    QUIC_CHANNEL *ch;
+
+    F_POP(inhibit);
+    REQUIRE_SSL(ssl);
+
+    ch = ossl_quic_conn_get_channel(ssl);
+    ossl_quic_engine_set_inhibit_tick(ossl_quic_channel_get0_engine(ch),
+        (int)inhibit);
+
+    ok = 1;
+err:
+    return ok;
+}
+
+DEF_FUNC(hf_set_write_buf_size)
+{
+    int ok = 0;
+    size_t size;
+    SSL *ssl;
+
+    F_POP(size);
+    REQUIRE_SSL(ssl);
+
+    if (!TEST_true(ossl_quic_set_write_buffer_size(ssl, size)))
+        goto err;
+
+    ok = 1;
+err:
+    return ok;
+}
+
 #define OP_UNBIND(name) \
     (OP_PUSH_PZ(#name), \
         OP_FUNC(hf_unbind))
@@ -1721,6 +1792,20 @@ err:
         OP_PUSH_U64(1),      \
         OP_FUNC(hf_set_tick_active))
 
+/*
+ * Inhibits/uninhibits ticking of the QUIC_ENGINE that "name" belongs  (see
+ * see hf_set_engine_tick_inhibit).
+ */
+#define OP_ENGINE_TICK_DISABLE(name) \
+    (OP_SELECT_SSL(0, name),         \
+        OP_PUSH_U64(1),              \
+        OP_FUNC(hf_set_engine_tick_inhibit))
+
+#define OP_ENGINE_TICK_ENABLE(name) \
+    (OP_SELECT_SSL(0, name),        \
+        OP_PUSH_U64(0),             \
+        OP_FUNC(hf_set_engine_tick_inhibit))
+
 #define OP_SKIP_TIME_WAIT(name, ms) \
     (OP_SELECT_SSL(0, name),        \
         OP_PUSH_U64(ms),            \
@@ -1772,3 +1857,17 @@ err:
     (OP_PUSH_U64(word0),                 \
         OP_PUSH_U64(word1),              \
         OP_FUNC(hf_set_inject_word))
+
+#define OP_PUSH_STREAM_ID_PLUS_ONE(name) \
+    (OP_SELECT_SSL(0, name),             \
+        OP_FUNC(hf_push_stream_id_plus_one))
+
+#define OP_INHIBIT_TICK(name, inhibit) \
+    (OP_SELECT_SSL(0, name),           \
+        OP_PUSH_U64(inhibit),          \
+        OP_FUNC(hf_inhibit_tick))
+
+#define OP_SET_WRITE_BUF_SIZE(name, size) \
+    (OP_SELECT_SSL(0, name),              \
+        OP_PUSH_SIZE(size),               \
+        OP_FUNC(hf_set_write_buf_size))

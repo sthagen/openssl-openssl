@@ -200,9 +200,8 @@ static int export_sub_cb(const OSSL_PARAM *params, void *varg)
             return 0;
         if (len != sub_arg->prvlen) {
             ERR_raise_data(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR,
-                "Unexpected %s private key length %lu != %lu",
-                sub_arg->algorithm_name, (unsigned long)len,
-                (unsigned long)sub_arg->publen);
+                "Unexpected %s private key length %zu != %zu",
+                sub_arg->algorithm_name, len, sub_arg->prvlen);
             return 0;
         }
         ++sub_arg->prvcount;
@@ -393,7 +392,9 @@ load_keys(MLX_KEY *key,
         } else if (publen) {
             /* Absent private key data, import public keys */
             if (!load_slot(key->libctx, key->propq, OSSL_PKEY_PARAM_PUB_KEY,
-                    minimal_selection, key, slot, pubenc,
+                    OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS
+                        | OSSL_KEYMGMT_SELECT_PUBLIC_KEY,
+                    key, slot, pubenc,
                     (int)key->minfo->pubkey_bytes,
                     (int)key->xinfo->pubkey_bytes))
                 goto err;
