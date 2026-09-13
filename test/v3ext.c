@@ -80,6 +80,39 @@ static int test_duplicate_field(int idx)
         && test_field_config(duplicate_field_configs[idx].duplicate, 0);
 }
 
+static int test_asn1_multi_mfail(void)
+{
+    static const char config[] = "[default]\n"
+                                 "1.2.3.4 = ASN1:SEQUENCE:items\n"
+                                 "[items]\n"
+                                 "value = INTEGER:1\n";
+    size_t config_len = strlen(config);
+    BIO *in = NULL;
+    CONF *conf = NULL;
+    X509 *cert = NULL;
+    X509V3_CTX ctx;
+    int ret = 0;
+
+    if (!TEST_ptr(in = BIO_new_mem_buf(config, (int)config_len))
+        || !TEST_ptr(conf = NCONF_new(NULL))
+        || !TEST_int_gt(NCONF_load_bio(conf, in, NULL), 0)
+        || !TEST_ptr(cert = X509_new()))
+        goto end;
+
+    X509V3_set_ctx(&ctx, NULL, NULL, NULL, NULL, 0);
+    X509V3_set_nconf(&ctx, conf);
+
+    MFAIL_start();
+    ret = X509V3_EXT_add_nconf(conf, &ctx, "default", cert);
+    MFAIL_end();
+
+end:
+    X509_free(cert);
+    NCONF_free(conf);
+    BIO_free(in);
+    return ret;
+}
+
 static int test_pathlen(void)
 {
     X509 *x = NULL;
@@ -1229,6 +1262,70 @@ end:
     return ret;
 }
 
+/*
+ * Regression test for IPAddrBlocks_new/free and d2i/i2d_IPAddrBlocks (issue #18528).
+ * Ensures empty and non-empty IPAddrBlocks round-trip correctly.
+ */
+static int test_ipaddrblocks_api(void)
+{
+    IPAddrBlocks *addr = NULL, *decoded = NULL;
+    ASN1_OCTET_STRING *ip1 = NULL, *ip2 = NULL;
+    unsigned char *der = NULL, *derp;
+    int len;
+    int ret = 0;
+
+    /* Round-trip empty IPAddrBlocks */
+    addr = IPAddrBlocks_new();
+    if (!TEST_ptr(addr))
+        goto end;
+    len = i2d_IPAddrBlocks(addr, &der);
+    if (!TEST_int_ge(len, 0) || !TEST_ptr(der))
+        goto end;
+    derp = der;
+    decoded = d2i_IPAddrBlocks(NULL, (const unsigned char **)&derp, len);
+    if (!TEST_ptr(decoded) || !TEST_int_eq(sk_IPAddressFamily_num(decoded), 0))
+        goto end;
+    IPAddrBlocks_free(addr);
+    IPAddrBlocks_free(decoded);
+    OPENSSL_free(der);
+    addr = decoded = NULL;
+    der = NULL;
+
+    /* Round-trip non-empty IPAddrBlocks and verify structure */
+    addr = IPAddrBlocks_new();
+    if (!TEST_ptr(addr))
+        goto end;
+    if (!TEST_true(X509v3_addr_canonize(addr)))
+        goto end;
+    ip1 = a2i_IPADDRESS(ranges[0].ip1);
+    ip2 = a2i_IPADDRESS(ranges[0].ip2);
+    if (!TEST_ptr(ip1) || !TEST_ptr(ip2))
+        goto end;
+    if (!TEST_true(X509v3_addr_add_range(addr, ranges[0].afi, NULL, ip1->data, ip2->data)))
+        goto end;
+    if (!TEST_true(X509v3_addr_is_canonical(addr)))
+        goto end;
+
+    len = i2d_IPAddrBlocks(addr, &der);
+    if (!TEST_int_ge(len, 0) || !TEST_ptr(der))
+        goto end;
+    derp = der;
+    decoded = d2i_IPAddrBlocks(NULL, (const unsigned char **)&derp, len);
+    if (!TEST_ptr(decoded))
+        goto end;
+    if (!check_addr(decoded, ranges[0].rorp))
+        goto end;
+
+    ret = 1;
+end:
+    IPAddrBlocks_free(addr);
+    IPAddrBlocks_free(decoded);
+    OPENSSL_free(der);
+    ASN1_OCTET_STRING_free(ip1);
+    ASN1_OCTET_STRING_free(ip2);
+    return ret;
+}
+
 #endif /* OPENSSL_NO_RFC3779 */
 
 OPT_TEST_DECLARE_USAGE("cert.pem\n")
@@ -1245,6 +1342,7 @@ int setup_tests(void)
 
     ADD_TEST(test_pathlen);
     ADD_ALL_TESTS(test_duplicate_field, OSSL_NELEM(duplicate_field_configs));
+    ADD_MFAIL_TEST(test_asn1_multi_mfail);
 #ifndef OPENSSL_NO_RFC3779
     ADD_TEST(test_asid);
     ADD_TEST(test_addr_ranges);
@@ -1262,6 +1360,7 @@ int setup_tests(void)
     ADD_TEST(test_addr_canonize_failure_then_inspect);
     ADD_TEST(test_asid_range_merge_canonize);
     ADD_TEST(test_asid_canonize_inverted_midsweep);
+    ADD_TEST(test_ipaddrblocks_api);
 #endif /* OPENSSL_NO_RFC3779 */
     return 1;
 }

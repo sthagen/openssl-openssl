@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2010-2026 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -1551,6 +1551,13 @@ int CRYPTO_gcm128_decrypt_ctr32(GCM128_CONTEXT *ctx,
 #endif
 }
 
+/*
+ * Calculate the tag and verify it against the supplied tag.
+ * Returns:
+ * -1: invalid tag length
+ *  0: tag verified
+ * >0: tag mismatch
+ */
 int CRYPTO_gcm128_finish(GCM128_CONTEXT *ctx, const unsigned char *tag,
     size_t len)
 {

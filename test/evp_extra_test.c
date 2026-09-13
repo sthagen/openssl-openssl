@@ -22,6 +22,8 @@
 #include <openssl/pem.h>
 #include <openssl/kdf.h>
 #include <openssl/provider.h>
+#include <openssl/prov_ssl.h>
+#include <openssl/ssl3.h>
 #include <openssl/core_names.h>
 #include <openssl/params.h>
 #include <openssl/param_build.h>
@@ -6561,6 +6563,99 @@ err:
 }
 
 /*
+ * A decrypt with a wrong tag must be rejected by EVP_DecryptFinal_ex().
+ * Negative test for the rejection, as well as the expected error reason.
+ * Does ct / aad / ct + aad variants.
+ */
+static int test_evp_aead_tag_reject(int idx)
+{
+    const EVP_CIPHER_TEST_INFO *info = &cipher_list[idx];
+    EVP_CIPHER_CTX *ctx_ct = NULL;
+    EVP_CIPHER_CTX *ctx_aad = NULL;
+    EVP_CIPHER_CTX *ctx_ct_aad = NULL;
+    EVP_CIPHER_CTX *ctx_c_ct = NULL;
+    unsigned char key[EVP_MAX_KEY_LENGTH];
+    unsigned char iv[EVP_MAX_IV_LENGTH];
+    unsigned char aad[] = "aad";
+    unsigned char ct[] = "ciphertext";
+    unsigned char out[sizeof(ct) + EVP_MAX_BLOCK_LENGTH];
+    unsigned char tag[EVPTEST_TAG_LEN_MAX] = { 0xd0 };
+    OSSL_PARAM params[2];
+    int i, len = 0, testresult = 0;
+
+    if (info->taglen == 0 /* skip non-AEAD */
+        || info->mode == EVP_CIPH_CCM_MODE /* verifies at update, not final */
+        /* skip TLS stitched MTE ciphers */
+        || EVP_CIPHER_is_a(info->ciph, "AES-128-CBC-HMAC-SHA1")
+        || EVP_CIPHER_is_a(info->ciph, "AES-256-CBC-HMAC-SHA1")
+        || EVP_CIPHER_is_a(info->ciph, "AES-128-CBC-HMAC-SHA256")
+        || EVP_CIPHER_is_a(info->ciph, "AES-256-CBC-HMAC-SHA256"))
+        return 1;
+
+    for (i = 0; i < info->keylen && i < (int)sizeof(key); i++)
+        key[i] = (unsigned char)(0x11 + i);
+    for (i = 0; i < info->ivlen && i < (int)sizeof(iv); i++)
+        iv[i] = (unsigned char)(0x22 + i);
+    params[0] = OSSL_PARAM_construct_octet_string(OSSL_CIPHER_PARAM_AEAD_TAG,
+        tag, info->taglen);
+    params[1] = OSSL_PARAM_construct_end();
+
+    /* ciphertext only */
+    ERR_clear_error();
+    if (!TEST_ptr(ctx_ct = EVP_CIPHER_CTX_new())
+        || !TEST_true(EVP_DecryptInit_ex2(ctx_ct, info->ciph, key, iv, params))
+        || !TEST_true(EVP_DecryptUpdate(ctx_ct, out, &len, ct, sizeof(ct)))
+        || !TEST_int_le(EVP_DecryptFinal_ex(ctx_ct, out + len, &len), 0)
+        || !TEST_err_r(ERR_LIB_PROV, PROV_R_BAD_DECRYPT)) {
+        TEST_info("test_evp_aead_tag_reject %s: ciphertext variant", info->name);
+        goto err;
+    }
+
+    /* AAD only */
+    ERR_clear_error();
+    if (!TEST_ptr(ctx_aad = EVP_CIPHER_CTX_new())
+        || !TEST_true(EVP_DecryptInit_ex2(ctx_aad, info->ciph, key, iv, params))
+        || !TEST_true(EVP_DecryptUpdate(ctx_aad, NULL, &len, aad, sizeof(aad)))
+        || !TEST_int_le(EVP_DecryptFinal_ex(ctx_aad, out, &len), 0)
+        || !TEST_err_r(ERR_LIB_PROV, PROV_R_BAD_DECRYPT)) {
+        TEST_info("test_evp_aead_tag_reject %s: AAD variant", info->name);
+        goto err;
+    }
+
+    /* ciphertext + AAD */
+    ERR_clear_error();
+    if (!TEST_ptr(ctx_ct_aad = EVP_CIPHER_CTX_new())
+        || !TEST_true(EVP_DecryptInit_ex2(ctx_ct_aad, info->ciph, key, iv, params))
+        || !TEST_true(EVP_DecryptUpdate(ctx_ct_aad, NULL, &len, aad, sizeof(aad)))
+        || !TEST_true(EVP_DecryptUpdate(ctx_ct_aad, out, &len, ct, sizeof(ct)))
+        || !TEST_int_le(EVP_DecryptFinal_ex(ctx_ct_aad, out + len, &len), 0)
+        || !TEST_err_r(ERR_LIB_PROV, PROV_R_BAD_DECRYPT)) {
+        TEST_info("test_evp_aead_tag_reject %s: ciphertext + AAD variant", info->name);
+        goto err;
+    }
+
+    /* ciphertext only, EVP_Cipher() interface */
+    ERR_clear_error();
+    if (!TEST_ptr(ctx_c_ct = EVP_CIPHER_CTX_new())
+        || !TEST_true(EVP_DecryptInit_ex2(ctx_c_ct, info->ciph, key, iv, params))
+        || !TEST_int_ge(EVP_Cipher(ctx_c_ct, out, ct, sizeof(ct)), 0)
+        || !TEST_int_lt(EVP_Cipher(ctx_c_ct, out, NULL, 0), 0)
+        || !TEST_err_r(ERR_LIB_PROV, PROV_R_BAD_DECRYPT)) {
+        TEST_info("test_evp_aead_tag_reject %s: ciphertext variant (EVP_Cipher)",
+            info->name);
+        goto err;
+    }
+
+    testresult = 1;
+err:
+    EVP_CIPHER_CTX_free(ctx_ct);
+    EVP_CIPHER_CTX_free(ctx_aad);
+    EVP_CIPHER_CTX_free(ctx_ct_aad);
+    EVP_CIPHER_CTX_free(ctx_c_ct);
+    return testresult;
+}
+
+/*
  * Verify stale key is not being used after providing a new key in multiple steps.
  * This test performs a full round of encryption and then changes the
  * key and then the IV in a multi-step init.
@@ -7810,6 +7905,158 @@ err:
     return res;
 }
 
+enum cipher_param_list_type {
+    CIPHER_ALGORITHM_PARAMS,
+    CIPHER_GETTABLE_CTX_PARAMS,
+    CIPHER_SETTABLE_CTX_PARAMS
+};
+
+struct cipher_param_test_st {
+    const char *cipher;
+    const char *properties;
+    const char *param;
+    unsigned int type;
+    size_t size;
+    enum cipher_param_list_type list_type;
+    int optional;
+};
+
+static const struct cipher_param_test_st cipher_param_tests[] = {
+    { "AES-128-CBC", "provider=default", OSSL_CIPHER_PARAM_TLS_MAC,
+        OSSL_PARAM_OCTET_PTR, 0, CIPHER_GETTABLE_CTX_PARAMS, 0 },
+    { "AES-128-CBC-CTS", "provider=default", OSSL_CIPHER_PARAM_CTS_MODE,
+        OSSL_PARAM_UTF8_STRING, 0, CIPHER_GETTABLE_CTX_PARAMS, 0 },
+#if !defined(OPENSSL_NO_MULTIBLOCK)
+    { "AES-128-CBC-HMAC-SHA256", "provider=default",
+        OSSL_CIPHER_PARAM_TLS1_MULTIBLOCK_AAD, OSSL_PARAM_OCTET_STRING, 0,
+        CIPHER_SETTABLE_CTX_PARAMS, 1 },
+#endif
+#ifndef OPENSSL_NO_DES
+    { "DES-EDE3-CBC", "provider=default", OSSL_CIPHER_PARAM_DECRYPT_ONLY,
+        OSSL_PARAM_INTEGER, sizeof(int), CIPHER_ALGORITHM_PARAMS, 0 },
+    { "DES-EDE3-CBC", "provider=default", OSSL_CIPHER_PARAM_RANDOM_KEY,
+        OSSL_PARAM_OCTET_STRING, 0, CIPHER_GETTABLE_CTX_PARAMS, 0 },
+#endif
+#ifndef OPENSSL_NO_RC2
+    { "RC2-CBC", "provider=legacy",
+        OSSL_CIPHER_PARAM_ALGORITHM_ID_PARAMS_OLD, OSSL_PARAM_OCTET_STRING, 0,
+        CIPHER_GETTABLE_CTX_PARAMS, 0 },
+#endif
+#ifndef OPENSSL_NO_RC5
+    { "RC5-CBC", "provider=legacy", OSSL_CIPHER_PARAM_ROUNDS,
+        OSSL_PARAM_UNSIGNED_INTEGER, sizeof(unsigned int),
+        CIPHER_GETTABLE_CTX_PARAMS, 0 },
+#endif
+};
+
+static int test_cipher_param_types(int idx)
+{
+    const struct cipher_param_test_st *t = &cipher_param_tests[idx];
+    const OSSL_PARAM *params, *p;
+    EVP_CIPHER *cipher = NULL;
+    int ret = 0;
+
+    if (strcmp(t->properties, "provider=legacy") == 0 && lgcyprov == NULL)
+        return TEST_skip("Test requires legacy provider to be loaded");
+
+    cipher = EVP_CIPHER_fetch(testctx, t->cipher, t->properties);
+    if (cipher == NULL && t->optional) {
+        ERR_clear_error();
+        return TEST_skip("Optional cipher is not available");
+    }
+    if (!TEST_ptr(cipher))
+        goto end;
+
+    switch (t->list_type) {
+    case CIPHER_ALGORITHM_PARAMS:
+        params = EVP_CIPHER_gettable_params(cipher);
+        break;
+    case CIPHER_GETTABLE_CTX_PARAMS:
+        params = EVP_CIPHER_gettable_ctx_params(cipher);
+        break;
+    case CIPHER_SETTABLE_CTX_PARAMS:
+        params = EVP_CIPHER_settable_ctx_params(cipher);
+        break;
+    default:
+        goto end;
+    }
+
+    if (!TEST_ptr(params)
+        || !TEST_ptr(p = OSSL_PARAM_locate_const(params, t->param))
+        || !TEST_uint_eq(p->data_type, t->type)
+        || !TEST_size_t_eq(p->data_size, t->size))
+        goto end;
+    ret = 1;
+end:
+    EVP_CIPHER_free(cipher);
+    return ret;
+}
+
+#if !defined(OPENSSL_NO_MULTIBLOCK)
+static int test_aes_cbc_hmac_sha_reject_multiblock_params(const OSSL_PARAM *params)
+{
+    static const unsigned char key[16] = { 0 };
+    static const unsigned char iv[16] = { 0 };
+    EVP_CIPHER *cipher = NULL;
+    EVP_CIPHER_CTX *ctx = NULL;
+    int ret = 0;
+
+    cipher = EVP_CIPHER_fetch(testctx, "AES-128-CBC-HMAC-SHA256",
+        "provider=default");
+    if (cipher == NULL) {
+        ERR_clear_error();
+        return TEST_skip("AES-CBC-HMAC-SHA multiblock cipher is not available");
+    }
+    if (!TEST_ptr(ctx = EVP_CIPHER_CTX_new())
+        || !TEST_true(EVP_EncryptInit_ex2(ctx, cipher, key, iv, NULL))
+        || !TEST_false(EVP_CIPHER_CTX_set_params(ctx, params)))
+        goto end;
+
+    ERR_clear_error();
+    ret = 1;
+end:
+    EVP_CIPHER_CTX_free(ctx);
+    EVP_CIPHER_free(cipher);
+    return ret;
+}
+
+static int test_aes_cbc_hmac_sha_short_multiblock_aad(void)
+{
+    unsigned char aad[EVP_AEAD_TLS1_AAD_LEN - 1] = { 0 };
+    unsigned int interleave = 4;
+    OSSL_PARAM params[] = {
+        OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_TLS1_MULTIBLOCK_AAD, aad,
+            sizeof(aad)),
+        OSSL_PARAM_uint(OSSL_CIPHER_PARAM_TLS1_MULTIBLOCK_INTERLEAVE,
+            &interleave),
+        OSSL_PARAM_END
+    };
+
+    return test_aes_cbc_hmac_sha_reject_multiblock_params(params);
+}
+
+static int test_aes_cbc_hmac_sha_large_multiblock_aad(void)
+{
+    static const unsigned int oversized_len = SSL3_RT_MAX_PLAIN_LENGTH + 1;
+    unsigned char aad[EVP_AEAD_TLS1_AAD_LEN] = { 0 };
+    unsigned int interleave = 4;
+    OSSL_PARAM params[] = {
+        OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_TLS1_MULTIBLOCK_AAD, aad,
+            sizeof(aad)),
+        OSSL_PARAM_uint(OSSL_CIPHER_PARAM_TLS1_MULTIBLOCK_INTERLEAVE,
+            &interleave),
+        OSSL_PARAM_END
+    };
+
+    aad[9] = (unsigned char)(TLS1_2_VERSION >> 8);
+    aad[10] = (unsigned char)TLS1_2_VERSION;
+    aad[11] = (unsigned char)(oversized_len >> 8);
+    aad[12] = (unsigned char)oversized_len;
+
+    return test_aes_cbc_hmac_sha_reject_multiblock_params(params);
+}
+#endif
+
 #ifndef OPENSSL_NO_ECX
 static int ecxnids[] = {
     NID_X25519,
@@ -8080,8 +8327,9 @@ static int aes_gcm_encrypt(const unsigned char *gcm_key, size_t gcm_key_s,
         || !TEST_size_t_eq(params[0].return_size, gcm_ivlen)
         || !TEST_size_t_eq(params[1].return_size, gcm_ivlen)
         || !TEST_size_t_eq(params[2].return_size, sizeof(outtag)))
+        goto err;
 
-        ret = 1;
+    ret = 1;
 err:
     EVP_CIPHER_free(cipher);
     EVP_CIPHER_CTX_free(ctx);
@@ -9944,6 +10192,7 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_evp_oneshot_aead_zerolen, cipher_list_n);
     ADD_ALL_TESTS(test_evp_aead_tag_direction, cipher_list_n);
     ADD_ALL_TESTS(test_evp_aead_late_aad, cipher_list_n);
+    ADD_ALL_TESTS(test_evp_aead_tag_reject, cipher_list_n);
 
     ADD_ALL_TESTS(test_evp_init_seq, OSSL_NELEM(evp_init_tests));
     ADD_ALL_TESTS(test_evp_reset, OSSL_NELEM(evp_reset_tests));
@@ -9957,6 +10206,11 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_iv_reuse, OSSL_NELEM(iv_state_ciphers));
     if (OSSL_NELEM(keylen_change_ciphers) - 1 > 0)
         ADD_ALL_TESTS(test_keylen_change, OSSL_NELEM(keylen_change_ciphers) - 1);
+    ADD_ALL_TESTS(test_cipher_param_types, OSSL_NELEM(cipher_param_tests));
+#if !defined(OPENSSL_NO_MULTIBLOCK)
+    ADD_TEST(test_aes_cbc_hmac_sha_short_multiblock_aad);
+    ADD_TEST(test_aes_cbc_hmac_sha_large_multiblock_aad);
+#endif
 
 #ifndef OPENSSL_NO_ECX
     ADD_ALL_TESTS(test_ecx_short_keys, OSSL_NELEM(ecxnids));

@@ -37,6 +37,9 @@ IF[{- !$disabled{tests} -}]
           testutil/options.c testutil/test_options.c testutil/provider.c \
           testutil/apps_shims.c testutil/random.c testutil/helper.c \
           testutil/compare.c mfail/mfail.c $LIBAPPSSRC
+  IF[{- $target{needs_c99_snprintf_compat} -}]
+    SOURCE[libtestutil.a]=../crypto/msvc2013_snprintf.c
+  ENDIF
   INCLUDE[libtestutil.a]=../include ../apps/include .. mfail
   DEPEND[libtestutil.a]=../libcrypto
 
@@ -740,7 +743,7 @@ IF[{- !$disabled{tests} -}]
   ENDIF
 
   SOURCE[dtlstest]=dtlstest.c helpers/ssltestlib.c
-  INCLUDE[dtlstest]=../include ../apps/include
+  INCLUDE[dtlstest]=.. ../include ../apps/include
   DEPEND[dtlstest]=../libcrypto ../libssl libtestutil.a
 
   IF[{- !$disabled{dtls} -}]
@@ -818,7 +821,7 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[pemtest]=../include ../apps/include
   DEPEND[pemtest]=../libcrypto libtestutil.a
 
-  SOURCE[dtls13_internal_test]=dtls13_internal_test.c
+  SOURCE[dtls13_internal_test]=dtls13_internal_test.c helpers/ssltestlib.c
   INCLUDE[dtls13_internal_test]=.. ../include ../apps/include
   DEPEND[dtls13_internal_test]=../libssl.a ../libcrypto.a libtestutil.a
 
