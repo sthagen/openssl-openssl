@@ -75,6 +75,12 @@ static int ossl_statem_server13_read_transition(SSL_CONNECTION *s, int mt)
 {
     OSSL_STATEM *st = &s->statem;
 
+    if (st->hand_state == TLS_ST_SR_ACK) {
+        st->hand_state = st->pre_ack_hand_state;
+        if (mt == SSL3_MT_DUMMY)
+            return 1;
+    }
+
     /*
      * Note: There is no case for TLS_ST_BEFORE because at that stage we have
      * not negotiated TLSv1.3 yet, so that case is handled by
@@ -154,10 +160,10 @@ static int ossl_statem_server13_read_transition(SSL_CONNECTION *s, int mt)
         }
         break;
 
-    case TLS_ST_SR_ACK:
     case TLS_ST_SW_KEY_UPDATE:
     case TLS_ST_SW_SESSION_TICKET:
         if (mt == DTLS13_MT_ACK) {
+            st->pre_ack_hand_state = st->hand_state;
             st->hand_state = TLS_ST_SR_ACK;
             return 1;
         }
@@ -191,6 +197,7 @@ static int ossl_statem_server13_read_transition(SSL_CONNECTION *s, int mt)
         }
 
         if (mt == DTLS13_MT_ACK) {
+            st->pre_ack_hand_state = st->hand_state;
             st->hand_state = TLS_ST_SR_ACK;
             return 1;
         }
@@ -607,6 +614,12 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
     OSSL_HANDSHAKE_STATE next_state;
     OSSL_STATEM *st = &s->statem;
 
+    if (st->ack_for_retransmit && st->hand_state != TLS_ST_SW_ACK) {
+        st->deferred_ack_state = st->hand_state;
+        st->hand_state = TLS_ST_SW_ACK;
+        return WRITE_TRAN_CONTINUE;
+    }
+
     /*
      * No case for TLS_ST_BEFORE, because at that stage we have not negotiated
      * TLSv1.3 yet, so that is handled by ossl_statem_server_write_transition()
@@ -803,6 +816,10 @@ static WRITE_TRAN ossl_statem_server13_write_transition(SSL_CONNECTION *s)
 
     case TLS_ST_SW_ACK:
         st->hand_state = st->deferred_ack_state;
+        if (st->ack_for_retransmit) {
+            st->ack_for_retransmit = 0;
+            return WRITE_TRAN_FINISHED;
+        }
 
         return WRITE_TRAN_CONTINUE;
     }
@@ -1670,9 +1687,7 @@ CON_FUNC_RETURN dtls_construct_hello_verify_request(SSL_CONNECTION *s,
     int cb_ret = 0;
 
 #if !defined(OPENSSL_NO_DTLS)
-    DTLS_LISTENER *dl = (s->d1 != NULL && s->d1->listener != NULL)
-        ? (DTLS_LISTENER *)s->d1->listener
-        : NULL;
+    DTLS_LISTENER *dl = (DTLS_LISTENER *)s->d1->listener;
 
     if (dl != NULL && dl->require_hvr_cookie && sctx->app_gen_cookie_cb == NULL) {
         cb_ret = ossl_dtls_listener_gen_cookie_cb(ussl, s->d1->cookie, &cookie_leni);
@@ -4269,6 +4284,7 @@ MSG_PROCESS_RETURN tls_process_client_certificate(SSL_CONNECTION *s,
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_CRYPTO_LIB);
             goto err;
         }
+        x = NULL;
     }
 
     /*

@@ -9,6 +9,7 @@ name: Cross Compile
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths-ignore:
       - 'doc/**'
       - '*.md'
@@ -228,8 +229,8 @@ jobs:
 
     - name: Set OpenSSL caps environment
       if: matrix.platform.opensslcapsname != ''
-      run: echo "OPENSSL_${{ matrix.platform.opensslcapsname }}=\
-                 ${{ matrix.platform.opensslcaps }}" >> $GITHUB_ENV
+      run: |
+        echo "OPENSSL_${{ matrix.platform.opensslcapsname }}=${{ matrix.platform.opensslcaps }}" >> "$GITHUB_ENV"
 
     - name: get cpu info
       if: matrix.platform.tests != 'none'

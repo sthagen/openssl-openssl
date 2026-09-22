@@ -59,6 +59,7 @@ IF[{- !$disabled{tests} -}]
           constant_time_test crypto_memcmp_test ct_validation_helpers_test \
           safe_math_test verify_extra_test clienthellotest \
           packettest asynctest secmemtest srptest memleaktest stack_test \
+          asn1_string_poison_test \
           ct_test threadstest d2i_test \
           ssl_test_ctx_test ssl_test x509aux cipherlist_test asynciotest \
           bio_callback_test bio_memleak_test bio_ndef_test bio_core_test bio_dgram_test param_build_test \
@@ -309,7 +310,7 @@ IF[{- !$disabled{tests} -}]
     DEPEND[acvp_test]=../libcrypto libtestutil.a
   ENDIF
 
-  SOURCE[ossl_store_test]=ossl_store_test.c
+  SOURCE[ossl_store_test]=ossl_store_test.c fake_storeprov.c
   INCLUDE[ossl_store_test]=../include ../apps/include
   DEPEND[ossl_store_test]=../libcrypto libtestutil.a
 
@@ -521,6 +522,10 @@ IF[{- !$disabled{tests} -}]
   SOURCE[memleaktest]=memleaktest.c
   INCLUDE[memleaktest]=../include ../apps/include
   DEPEND[memleaktest]=../libcrypto libtestutil.a
+
+  SOURCE[asn1_string_poison_test]=asn1_string_poison_test.c
+  INCLUDE[asn1_string_poison_test]=../include ../apps/include
+  DEPEND[asn1_string_poison_test]=../libcrypto libtestutil.a
 
   SOURCE[pkcs12_format_test]=pkcs12_format_test.c helpers/pkcs12.c
   INCLUDE[pkcs12_format_test]=../include ../apps/include
@@ -954,9 +959,9 @@ IF[{- !$disabled{tests} -}]
   SOURCE[ca_internals_test]=ca_internals_test.c ../apps/ca.c ../apps/lib/apps.c \
                             ../apps/lib/app_rand.c ../apps/lib/app_provider.c \
                             ../apps/lib/app_libctx.c ../apps/lib/fmt.c ../apps/lib/apps_ui.c \
-                            ../apps/lib/app_x509.c ../crypto/asn1/a_time.c ../crypto/ctype.c
+                            ../apps/lib/app_x509.c
   INCLUDE[ca_internals_test]=.. ../include ../apps/include
-  DEPEND[ca_internals_test]=libtestutil.a ../libssl
+  DEPEND[ca_internals_test]=libtestutil.a ../libssl.a ../libcrypto.a
 
   # Internal test programs.  These are essentially a collection of internal
   # test routines.  Some of them need to reach internal symbols that aren't
@@ -1262,10 +1267,9 @@ IF[{- !$disabled{tests} -}]
   ENDIF
 
   PROGRAMS{noinst}=asn1_time_test
-  SOURCE[asn1_time_test]=asn1_time_test.c ../crypto/ctype.c \
-                         ../crypto/asn1/a_time.c
+  SOURCE[asn1_time_test]=asn1_time_test.c
   INCLUDE[asn1_time_test]=../include ../apps/include
-  DEPEND[asn1_time_test]=../libcrypto libtestutil.a
+  DEPEND[asn1_time_test]=../libcrypto.a libtestutil.a
 
   PROGRAMS{noinst}=asn1_string_test
   SOURCE[asn1_string_test]=asn1_string_test.c

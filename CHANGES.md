@@ -34,7 +34,11 @@ OpenSSL 4.2
 
 ### Changes between 4.1 and 4.2 [xx XXX xxxx]
 
- * none yet
+ * Added AVX-512 and VAES optimizations for AES-CTR mode. Performance for
+   large inputs (1024 bytes or more) improved by 2.9x to 3.9x.
+   <!-- https://github.com/openssl/openssl/pull/30755 -->
+
+   *Madan Mohan Manokar*
 
 OpenSSL 4.1
 -----------
@@ -418,6 +422,12 @@ OpenSSL 4.1
 
    *Mounir IDRASSI*
 
+ * Added script to generate CMP test credentials.
+
+   This work was sponsored by Siemens AG.
+
+   *Rajeev Ranjan*
+
  * Fixed TLS 1.3 clients to encrypt 0-RTT early data with the first offered
    PSK identity ([RFC 9846 Section 4.3.10]) when a 0-RTT-capable resumption
    ticket has aged out and an external PSK is offered in its place. The early
@@ -531,6 +541,18 @@ OpenSSL 4.1
    or `ASN1_STRING_set1_string()`, and `ASN1_STRING_get_length()` should be used
    in their place.  This prepares the `ASN1_STRING` type to support modern
    `size_t` length values in the future.
+
+   The data of an `ASN1_STRING` has never been guaranteed to be
+   NUL-terminated, although some operations terminated it anyway.  A
+   future release will stop doing so; the new setters above already do
+   not add a terminator. When OpenSSL is built with AddressSanitizer
+   or MemorySanitizer, or is run under Valgrind having been built
+   where the Valgrind headers are installed, the added nul byte is
+   marked inaccessible, so treating the result of
+   `ASN1_STRING_get0_data()` as a C string (`strlen()`, `%s`,
+   `strdup()` and the like) is reported as an error.  All such uses
+   must be changed to honour `ASN1_STRING_get_length()`. The Valgrind
+   check may be disabled by building with OPENSSL_NO_VALGRIND_CHECK.
    <!-- https://github.com/openssl/openssl/pull/31194 -->
 
    *Bob Beck*
