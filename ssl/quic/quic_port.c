@@ -477,8 +477,8 @@ int ossl_quic_port_set_net_wbio(QUIC_PORT *port, BIO *net_wbio)
     if (!port_update_poll_desc(port, net_wbio, /*for_write=*/1))
         return 0;
 
-    OSSL_LIST_FOREACH(ch, ch, &port->channel_list)
-    ossl_qtx_set_bio(ch->qtx, net_wbio);
+    OSSL_LIST_FOREACH (ch, ch, &port->channel_list)
+        ossl_qtx_set_bio(ch->qtx, net_wbio);
 
     port->net_wbio = net_wbio;
     port_update_addressing_mode(port);
@@ -821,8 +821,7 @@ void ossl_quic_port_subtick(QUIC_PORT *port, QUIC_TICK_RESULT *res,
             port_rx_pre(port);
 
         /* Iterate through all channels and service them. */
-        OSSL_LIST_FOREACH(ch, ch, &port->channel_list)
-        {
+        OSSL_LIST_FOREACH (ch, ch, &port->channel_list) {
             QUIC_TICK_RESULT subr = { 0 };
 
             ossl_quic_channel_subtick(ch, &subr, flags);
@@ -1659,6 +1658,7 @@ static void port_default_packet_handler(QUIC_URXE *e, void *arg,
         && ossl_quic_lcidm_lookup(port->lcidm, dcid, NULL,
             (void **)&ch)) {
         assert(ch != NULL);
+        ossl_quic_tx_packetiser_add_unvalidated_credit(ch->txp, e->data_len);
         ossl_quic_channel_inject(ch, e);
         return;
     }
@@ -1870,6 +1870,7 @@ static void port_default_packet_handler(QUIC_URXE *e, void *arg,
          * Time to reinject packets from qrx to channel before
          * qrx will be destroyed here.
          */
+        ossl_quic_tx_packetiser_add_unvalidated_credit(new_ch->txp, e->data_len);
         while (ossl_qrx_read_pkt(qrx_src, &qrx_pkt) == 1)
             ossl_quic_channel_inject_pkt(new_ch, qrx_pkt);
         ossl_qrx_update_pn_space(qrx_src, new_ch->qrx);
@@ -1921,9 +1922,9 @@ void ossl_quic_port_raise_net_error(QUIC_PORT *port,
     if (triggering_ch != NULL)
         ossl_quic_channel_raise_net_error(triggering_ch);
 
-    OSSL_LIST_FOREACH(ch, ch, &port->channel_list)
-    if (ch != triggering_ch)
-        ossl_quic_channel_raise_net_error(ch);
+    OSSL_LIST_FOREACH (ch, ch, &port->channel_list)
+        if (ch != triggering_ch)
+            ossl_quic_channel_raise_net_error(ch);
 }
 
 void ossl_quic_port_restore_err_state(const QUIC_PORT *port)

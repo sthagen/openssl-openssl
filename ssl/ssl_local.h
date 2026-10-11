@@ -1507,6 +1507,9 @@ struct ssl_connection_st {
             const struct sigalg_lookup_st *sigalg;
             /* Pointer to certificate we use */
             CERT_PKEY *cert;
+            /* Client identity awaiting verification */
+            STACK_OF(X509) *pending_peer_chain;
+            EVP_PKEY *pending_peer_rpk;
             /*
              * signature algorithms peer reports: e.g. supported signature
              * algorithms extension for server or as part of a certificate
@@ -1596,6 +1599,24 @@ struct ssl_connection_st {
     } s3;
 
     struct dtls1_state_st *d1; /* DTLSv1 variables */
+#ifndef OPENSSL_NO_DTLS
+    /* Stable alias for d1->rx while SSL_clear() resets or replaces d1. */
+    DTLS_RX *listener_rx;
+    /*
+     * Set when this connection is being driven by dtls_listener_drive_pending().
+     * Used to prevent multiple threads from driving the same connection
+     * concurrently and to allow the demux pump to be called without holding
+     * the listener mutex.
+     */
+    unsigned int listener_being_driven;
+    /*
+     * Set while the listener itself is driving this connection's handshake, to
+     * stop it blocking. The listener drives pending connections from inside its
+     * own tick, so a connection which blocked there would stop the listener
+     * making any further progress, including the progress being waited for.
+     */
+    unsigned int listener_force_nonblocking;
+#endif
     /* callback that allows applications to peek at protocol messages */
     void (*msg_callback)(int write_p, int version, int content_type,
         const void *buf, size_t len, SSL *ssl, void *arg);
@@ -1889,6 +1910,36 @@ struct ssl_connection_st {
         bool tick_age_checked;
         bool tick_age_ok;
 
+        /*
+         * Client-only. Whether the loaded resumption ticket (s->session)
+         * qualifies as an offered PSK for the ClientHello under construction.
+         * Frozen once by tls_construct_ctos_early_data() (the first consumer,
+         * which also decides 0-RTT from it) so tls_construct_ctos_psk() offers
+         * exactly the same identity 0 -- never re-evaluating the SECOP-dependent
+         * tls13_digest_offered() a second time, which could otherwise drop the
+         * ticket after early_data was already committed and leave the early
+         * secret underived.
+         */
+        bool psk_resumption_offered;
+
+        /*
+         * Client-only. Set in tls_psk_do_binder() when the first-offered PSK's
+         * binder derives s->early_secret for the current ClientHello flight;
+         * reset at the top of tls_construct_ctos_early_data(). The early-write
+         * key install (tls13_change_cipher_state()) refuses to proceed unless it
+         * is set, so 0-RTT can never be keyed off an underived (all-zero)
+         * s->early_secret even if the offer and early_data decisions somehow
+         * diverge.
+         */
+        bool early_secret_derived;
+
+        /*
+         * Records that an early exporter secret actually exists.  It may not
+         * yet be computed if the CH1 write blocks early enough.  Remains
+         * unchanged after CH2.
+         */
+        bool early_exporter_ready;
+
         /* Have we received a cookie from the client? */
         bool cookieok;
 
@@ -2130,26 +2181,51 @@ typedef struct dtls_msg_info_st {
     unsigned short msg_seq;
 } dtls_msg_info;
 
+/* RFC 9147, section 4: a 64-bit epoch and a 64-bit sequence number. */
+#define DTLS13_RECORD_NUMBER_LEN 16
+/* RFC 9147, section 7: the ACK vector's two-byte length prefix. */
+#define DTLS13_ACK_HEADER_LEN 2
+/* A nonempty ACK contains the prefix and at least one record number. */
+#define DTLS13_ACK_MIN_NONEMPTY_LEN \
+    (DTLS13_ACK_HEADER_LEN + DTLS13_RECORD_NUMBER_LEN)
+
 /* rfc9147, section 4 */
 typedef struct dtls1_record_number_st DTLS1_RECORD_NUMBER;
 
 struct dtls1_record_number_st {
     uint64_t epoch;
     uint64_t seqnum;
+    /*
+     * Byte range within the message this record number's transmission
+     * covered. Only meaningful for entries on a dtls_sent_msg's rec_nums;
+     * unused (left 0) for entries on the incoming ack_rec_num list.
+     */
+    size_t frag_off;
+    size_t frag_len;
     OSSL_LIST_MEMBER(record_number, DTLS1_RECORD_NUMBER);
 };
 
 DEFINE_LIST_OF(record_number, DTLS1_RECORD_NUMBER);
 
-DTLS1_RECORD_NUMBER *dtls1_record_number_new(uint64_t epoch, uint64_t seqnum);
+DTLS1_RECORD_NUMBER *dtls1_record_number_new(uint64_t epoch, uint64_t seqnum,
+    size_t frag_off, size_t frag_len);
 
-void ossl_list_record_number_elem_free(OSSL_LIST(record_number) * p_list);
+void ossl_list_record_number_elem_free(OSSL_LIST(record_number) *p_list);
 
 typedef struct dtls_sent_msg_st {
     dtls_msg_info msg_info;
     OSSL_LIST(record_number)
     rec_nums;
     unsigned char *msg_buf;
+    /*
+     * Bitmask of msg_info.msg_body_len bytes, one bit per byte, tracking
+     * which byte ranges of the message have been acknowledged so far --
+     * across every transmission round, not just the most recent one. A
+     * trailing allocation off the end of this struct (see
+     * dtls1_sent_msg_new()), mirroring how hm_fragment tracks receive-side
+     * reassembly. NULL when msg_info.msg_body_len == 0 (nothing to cover).
+     */
+    unsigned char *covered;
     struct dtls1_retransmit_state saved_retransmit_state;
 } dtls_sent_msg;
 
@@ -2194,6 +2270,13 @@ typedef struct dtls1_state_st {
     size_t link_mtu; /* max on-the-wire DTLS packet size */
     size_t mtu; /* max DTLS packet size */
     dtls_msg_info w_msg;
+    /*
+     * Byte range of the handshake fragment currently being written by
+     * dtls1_do_write(), read back by do_dtls1_write() (rec_layer_d1.c) when
+     * recording this write's record number on the buffered sent message.
+     */
+    size_t w_frag_off;
+    size_t w_frag_len;
     unsigned short r_msg_seq;
     /* Number of alerts received so far */
     unsigned int timeout_num_alerts;
@@ -2249,26 +2332,10 @@ typedef struct dtls1_state_st {
     OSSL_TIME created_at;
 
     /*
-     * Set when this connection is being driven by dtls_listener_drive_pending().
-     * Used to prevent multiple threads from driving the same connection
-     * concurrently and to allow the demux pump to be called without holding
-     * the listener mutex.
-     */
-    unsigned int being_driven : 1;
-
-    /*
      * Blocking mode requested for this connection, as a DTLS_BLOCKING_MODE.
      * Defaults to inheriting from the listener it came from.
      */
     unsigned int req_blocking_mode : 2;
-
-    /*
-     * Set while the listener itself is driving this connection's handshake, to
-     * stop it blocking. The listener drives pending connections from inside its
-     * own tick, so a connection which blocked there would stop the listener
-     * making any further progress, including the progress being waited for.
-     */
-    unsigned int force_nonblocking : 1;
 #endif
 
 } DTLS1_STATE;
@@ -2864,6 +2931,8 @@ __owur SSL_SESSION *lookup_sess_in_cache(SSL_CONNECTION *s,
     size_t sess_id_len);
 __owur int ssl_get_prev_session(SSL_CONNECTION *s, CLIENTHELLO_MSG *hello);
 __owur SSL_SESSION *ssl_session_dup(const SSL_SESSION *src, int ticket);
+void ossl_session_set0_peer(SSL_SESSION *sess, STACK_OF(X509) *peer_chain,
+    EVP_PKEY *peer_rpk, long verify_result);
 __owur int ssl_cipher_id_cmp(const SSL_CIPHER *a, const SSL_CIPHER *b);
 DECLARE_OBJ_BSEARCH_GLOBAL_CMP_FN(SSL_CIPHER, SSL_CIPHER, ssl_cipher_id);
 __owur int ssl_cipher_ptr_id_cmp(const SSL_CIPHER *const *ap,
@@ -3119,6 +3188,8 @@ int ossl_dtls_listener_gen_stateless_cookie_cb(SSL *ssl, unsigned char *cookie,
 int ossl_dtls_listener_verify_stateless_cookie_cb(SSL *ssl,
     const unsigned char *cookie,
     size_t cookie_len);
+int dtls_listener_cookie_hmac(SSL *ssl, uint64_t timestamp,
+    unsigned char *hmac_out);
 #endif /* !OPENSSL_NO_DTLS && !OPENSSL_NO_SOCK */
 
 __owur int tls1_new(SSL *s);
@@ -3306,6 +3377,7 @@ __owur int ssl_handshake_hash(SSL_CONNECTION *s,
     unsigned char *out, size_t outlen,
     size_t *hashlen);
 __owur const EVP_MD *ssl_md(SSL_CTX *ctx, int idx);
+__owur int ssl_cipher_get_handshake_digest_nid(const SSL_CIPHER *c);
 int ssl_get_md_idx(int md_nid);
 __owur const EVP_MD *ssl_handshake_md(SSL_CONNECTION *s);
 __owur const EVP_MD *ssl_prf_md(SSL_CONNECTION *s);

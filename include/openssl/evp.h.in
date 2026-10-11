@@ -7,6 +7,12 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* clang-format off */
+{-
+use OpenSSL::stackhash qw(generate_stack_macros);
+-}
+/* clang-format on */
+
 #ifndef OPENSSL_EVP_H
 #define OPENSSL_EVP_H
 #pragma once
@@ -117,6 +123,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* clang-format off */
+{-
+    generate_stack_macros("EVP_SKEY");
+-}
+/* clang-format on */
 
 int EVP_set_default_properties(OSSL_LIB_CTX *libctx, const char *propq);
 char *EVP_get1_default_properties(OSSL_LIB_CTX *libctx);
@@ -1939,6 +1951,10 @@ EVP_SKEY *EVP_SKEY_import_raw_key(OSSL_LIB_CTX *libctx, const char *skeymgmtname
     const char *propquery);
 EVP_SKEY *EVP_SKEY_import_SKEYMGMT(OSSL_LIB_CTX *libctx, EVP_SKEYMGMT *skeymgmt,
     int selection, const OSSL_PARAM *params);
+/**
+ * @brief Get the raw bytes and/or the length of a symmetric key.
+ * @see EVP_SKEY_get0_raw_key(3)
+ */
 int EVP_SKEY_get0_raw_key(const EVP_SKEY *skey, const unsigned char **key,
     size_t *len);
 const char *EVP_SKEY_get0_key_id(const EVP_SKEY *skey);

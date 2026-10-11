@@ -435,7 +435,7 @@ static int state_machine(SSL_CONNECTION *s, int server)
                 goto end;
             }
         } else {
-            if ((s->version >> 8) != SSL3_VERSION_MAJOR) {
+            if ((s->version >> 8) != TLS1_VERSION_MAJOR) {
                 SSLfatal(s, SSL_AD_NO_ALERT, ERR_R_INTERNAL_ERROR);
                 goto end;
             }
@@ -1085,11 +1085,5 @@ int ossl_statem_export_allowed(SSL_CONNECTION *s)
  */
 int ossl_statem_export_early_allowed(SSL_CONNECTION *s)
 {
-    /*
-     * The early exporter secret is only present on the server if we
-     * have accepted early_data. It is present on the client as long
-     * as we have sent early_data.
-     */
-    return s->ext.early_data == SSL_EARLY_DATA_ACCEPTED
-        || (!s->server && s->ext.early_data != SSL_EARLY_DATA_NOT_SENT);
+    return s->ext.early_exporter_ready;
 }

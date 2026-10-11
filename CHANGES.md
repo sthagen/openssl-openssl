@@ -30,15 +30,106 @@ OpenSSL Releases
  - [OpenSSL 0.9.x](#openssl-09x)
 
 OpenSSL 4.2
------------
 
 ### Changes between 4.1 and 4.2 [xx XXX xxxx]
+
+ * Changed TLS 1.3 clients to offer a PSK, and to attempt 0-RTT early data,
+   only when it can actually be used. A resumption ticket or external PSK is
+   offered only if some offered ciphersuite shares its handshake digest, and
+   0-RTT is attempted only if the first offered PSK's exact ciphersuite and,
+   where recorded, its ALPN protocol are offered and, for a ticket, it has not
+   aged out. When 0-RTT is not viable the client keeps the PSK for a 1-RTT
+   handshake. In particular a client-detected ALPN inconsistency now suppresses
+   0-RTT rather than failing with `SSL_R_INCONSISTENT_EARLY_DATA_ALPN`.
+
+   Fixed TLS 1.3 clients to reject a `psk_use_session` callback PSK whose master
+   key is empty, with `SSL_R_BAD_PSK`, instead of failing later in binder
+   computation.
+
+   *Viktor Dukhovni*
+
+ * `EVP_SKEY_get0_raw_key()` now accepts a NULL key pointer to retrieve only
+   the key length.  The length is obtained from the `OSSL_SKEY_PARAM_KEY_LENGTH`
+   key parameter without exporting the key, so it is also available for keys
+   that cannot be exported, provided the key management reports it.  The
+   built-in key managements now include this parameter when exporting key
+   parameters.
+   <!-- https://github.com/openssl/openssl/pull/33035 -->
+
+   *Iva Marinova*
+
+ * `X509_OBJECT_up_ref_count()` has been deprecated. Despite its name,
+   X509_OBJECT_up_ref_count() does not reference count the X509_OBJECT itself.
+   With X509_OBJECT being opaque there is nothing useful an application can do
+   with it.
+   <!-- https://github.com/openssl/openssl/pull/32823 -->
+
+   *Daniel Kubec*
+
+ * Changed the OpenSSL FIPS provider so that every algorithm advertised with
+   `fips=yes` explicitly exposes the `fips-indicator` as a gettable context
+   parameter and returns 1 for an approved operation.  The absence of an
+   indicator is no longer interpreted as approval.  Algorithms advertised
+   with `fips=no`, including X448MLKEM1024, remain unapproved and return 0 when
+   they expose the indicator.
+
+   *Shane Lontis and Paul Dale*
+
+ * Added the `MLKEM512X25519` and `SecP256r1MLKEM512` hybrid TLS KEMs for the
+   newly assigned IANA codepoints per [draft-rosomakho-tls-ecdhe-mlkem512-00].
+
+   *Viktor Dukhovni*
+
+ * Added public API for `IPAddrBlocks` ([RFC 3779]), mirroring the existing
+   `ASIdentifiers` API: `IPAddrBlocks_new()`, `IPAddrBlocks_free()`,
+   `d2i_IPAddrBlocks()`, `i2d_IPAddrBlocks()`, and the exported
+   `IPAddrBlocks_it` ASN.1 item for use in custom ASN.1 templates
+   (e.g. RPKI Signed Checklist).
+   <!-- https://github.com/openssl/openssl/pull/30430 -->
+
+   *John Claus*
 
  * Added AVX-512 and VAES optimizations for AES-CTR mode. Performance for
    large inputs (1024 bytes or more) improved by 2.9x to 3.9x.
    <!-- https://github.com/openssl/openssl/pull/30755 -->
 
    *Madan Mohan Manokar*
+
+ * Added support for parsing Java-generated PKCS#12 files containing symmetric
+   keys. The `openssl pkcs12` command can now extract symmetric secret keys
+   from PKCS#12 files created by Java's keytool utility. New API functions
+   `PKCS12_parse_ex()` with `PKCS12_PARSE_CTX` for selective extraction of
+   keys, certificates, and symmetric keys from PKCS#12 files.
+   <!-- https://github.com/openssl/openssl/pull/30973 -->
+
+   *Dmitry Belyavskiy*
+
+ * Added the ASCON-AEAD128 cipher as specified in NIST SP 800-232. ASCON-AEAD128
+   provides authenticated encryption with associated data (AEAD) using 128-bit
+   keys, nonces, and tags. The cipher is available through the EVP interface and
+   the default provider. This implementation only supports byte-aligned inputs
+   and full-length tags.
+
+   *Dominic Cunningham, Billy Bob Brumley*
+
+ * The TLS 1.3 server now enforces the RFC 8446 section 9.2 requirement that
+   a ClientHello containing a supported_groups extension also contains a
+   key_share extension and vice versa, aborting the handshake with a
+   missing_extension alert otherwise. Previously a PSK resumption ClientHello
+   that offered psk_ke and carried supported_groups but no key_share was
+   accepted when the server allowed non-DHE PSK key exchange.
+
+   *Paul Grubbs*
+
+ * Added optimized ML-KEM NTT and scalar multiplication operations on `s390x`
+   (with potential reuse for other architectures with 128 bit vector registers).
+
+   *Timo Keller*
+
+ * Added optimized ML-DSA NTT and scalar multiplication operations on `s390x`
+   (with potential reuse for other architectures with 128 bit vector registers).
+
+   *Timo Keller*
 
 OpenSSL 4.1
 -----------
@@ -246,6 +337,31 @@ OpenSSL 4.1
 
    *Bob Beck*
 
+ * Added `ASN1_STRING_set1_data()`, `ASN1_STRING_set1_string()`,
+   and `ASN1_STRING_get_length()` API functions, and deprecated
+   `ASN1_STRING_set()` and `ASN1_STRING_length()`.
+
+   The new setter functions do not append a terminating NUL byte to the newly
+   allocated strings, contrary to historic `ASN1_STRING_set()`'s behaviour,
+   so `ASN1_STRING_get0_data()` may return data not followed
+   by an out-of-`ASN1_STRING_get_length()` bounds NUL byte (whose presence
+   has never been guaranteed there by API contract) in more cases
+   than it used to before.  A future release will switch to the usage
+   of the new APIs internally.
+
+   When OpenSSL is built with `AddressSanitizer` or `MemorySanitizer` support,
+   or is run under Valgrind having been built where the Valgrind headers
+   are installed, the added NUL byte is marked inaccessible, so treating
+   the result of `ASN1_STRING_get0_data()` as a C string (`strlen()`, `%s`,
+   `strdup()` and the like) is reported as an error.  All such uses
+   must be changed to honour `ASN1_STRING_get_length()`. The Valgrind
+   check may be disabled by building with `-DOPENSSL_NO_VALGRIND_CHECK`.
+   <!-- https://github.com/openssl/openssl/pull/31194 -->
+   <!-- https://github.com/openssl/openssl/pull/32829 -->
+   <!-- https://github.com/openssl/openssl/pull/32837 -->
+
+   *Bob Beck*
+
  * Added `CMS_add_standard_smimecap_ex()` API function, which populates
    an `SMIMECapabilities` list using `EVP_CIPHER_fetch()` and `EVP_MD_fetch()`
    so that only algorithms available in the active providers are advertised.
@@ -343,12 +459,6 @@ OpenSSL 4.1
    <!-- https://github.com/openssl/openssl/pull/30709 -->
 
    *Danny Tsen*
-
- * Added optimized ML-DSA NTT operations on `s390x`
-   (or other architectures with 128 bit vector registers).
-   <!-- https://github.com/openssl/openssl/pull/30812 -->
-
-   *Timo Keller*
 
  * Added AVX2-optimized ML-DSA NTT operations on `x86_64`.
    <!-- https://github.com/openssl/openssl/pull/30160 -->
@@ -470,14 +580,6 @@ OpenSSL 4.1
 
    *Adam Tabak*
 
- * Added public API for IPAddrBlocks (RFC 3779), mirroring the existing
-   ASIdentifiers API: `IPAddrBlocks_new()`, `IPAddrBlocks_free()`,
-   `d2i_IPAddrBlocks()`, `i2d_IPAddrBlocks()`, and the exported
-   `IPAddrBlocks_it` ASN.1 item for use in custom ASN.1 templates
-   (e.g. RPKI Signed Checklist).  Fixes issue #18528.
-
-   *John Claus*
-
  * Fixed X.509 verification of certificate chains that use DSA signatures
    with SHA-384 or SHA-512 by registering `dsa_with_SHA384` and
    `dsa_with_SHA512` in the signature-algorithm cross-reference table.
@@ -485,11 +587,27 @@ OpenSSL 4.1
 
    *John Claus*
 
+ * Fixed `CMS_SignerInfo_verify()` to no longer accept signature algorithm
+   identifiers as valid `digestAlgorithms`, in violation of [RFC 5652].
+   <!-- https://github.com/openssl/openssl/pull/32702 -->
+
+   *Jakub Zelenka*
+
  * Fixed reading of binary data (for example, certificates in DER format)
    by `openssl` command from `stdin` on Windows.
    <!-- https://github.com/openssl/openssl/pull/30559 -->
 
    *Milan Brož*
+
+ * Fixed CRL scope checking for certificates without a CRL distribution
+   points extension.  A CRL having an issuing distribution point extension
+   including a name that matches the certificate issuer name or any
+   `issuerAltName` of the certificate is now accepted, as required
+   by the default distribution point rule at the end
+   of [RFC 5280 Section 6.3.3], instead of being rejected
+   with `X509_V_ERR_DIFFERENT_CRL_SCOPE`.
+
+   *Paul Grubbs*
 
  * TLS clients no longer send the TLS padding extension ([RFC 7685]).  It was
    only ever sent when `SSL_OP_TLSEXT_PADDING` was set, to work around
@@ -536,27 +654,6 @@ OpenSSL 4.1
 
    *Shane Lontis*
 
- * Deprecated `ASN1_STRING_set()` and `ASN1_STRING_length()` functions.
-   The replacement functions `ASN1_STRING_set1_data()`
-   or `ASN1_STRING_set1_string()`, and `ASN1_STRING_get_length()` should be used
-   in their place.  This prepares the `ASN1_STRING` type to support modern
-   `size_t` length values in the future.
-
-   The data of an `ASN1_STRING` has never been guaranteed to be
-   NUL-terminated, although some operations terminated it anyway.  A
-   future release will stop doing so; the new setters above already do
-   not add a terminator. When OpenSSL is built with AddressSanitizer
-   or MemorySanitizer, or is run under Valgrind having been built
-   where the Valgrind headers are installed, the added nul byte is
-   marked inaccessible, so treating the result of
-   `ASN1_STRING_get0_data()` as a C string (`strlen()`, `%s`,
-   `strdup()` and the like) is reported as an error.  All such uses
-   must be changed to honour `ASN1_STRING_get_length()`. The Valgrind
-   check may be disabled by building with OPENSSL_NO_VALGRIND_CHECK.
-   <!-- https://github.com/openssl/openssl/pull/31194 -->
-
-   *Bob Beck*
-
  * Deprecated `ASN1_BIT_STRING_name_print()`, `ASN1_BIT_STRING_num_asc()`,
    and `ASN1_BIT_STRING_set_asc()` functions. Refer to the manual
    pages for more information.
@@ -570,10 +667,10 @@ OpenSSL 4.1
 
    *Norbert Pócs*
 
- * Deprecated `CMS_stream()` and `PKCS7_stream()` functions.  These are internal
-   plumbing that leaked into the public API, and no longer return a streaming
-   boundary.  Use `BIO_new_CMS()` or `BIO_new_PKCS7()` to stream CMS and PKCS#7
-   content.
+ * Deprecated `CMS_stream()` and `PKCS7_stream()` API functions.  These
+   are internal plumbing that was unintentionally exposed as the public API,
+   and they no longer return a streaming boundary.  Use `BIO_new_CMS()`
+   or `BIO_new_PKCS7()` to stream CMS and PKCS#7 content.
    <!-- https://github.com/openssl/openssl/pull/32242 -->
 
    *Bob Beck*
@@ -600,15 +697,6 @@ OpenSSL 4.1
    <!-- https://github.com/openssl/openssl/pull/30446 -->
 
    *Tomáš Mráz*
-
- * Fixed CRL scope checking for certificates without a CRL distribution
-   points extension. A CRL having an issuing distribution point extension
-   including a name that matches the certificate issuer name or any
-   issuerAltName of the certificate is now accepted, as required
-   by the default distribution point rule at the end of RFC 5280 section 6.3.3,
-   instead of being rejected with X509_V_ERR_DIFFERENT_CRL_SCOPE.
-
-   *Paul Grubbs*
 
 OpenSSL 4.0
 -----------
@@ -1662,8 +1750,9 @@ OpenSSL 4.0
 
    *Bob Beck*
 
- * Added `OSSL_CMP_OPT_PERMIT_TA_IN_EXTRACERTS_FOR_IR` option for `OSSL_CMP_CTX`
-   and a corresponding `-ta_in_ip_extracert` option for the `openssl cmp` command.
+ * Added a `-ta_in_ip_extracert` option for the `openssl cmp` command, that sets
+   `OSSL_CMP_OPT_PERMIT_TA_IN_EXTRACERTS_FOR_IR` option for the `OSSL_CMP_CTX`
+   object.
 
    This work was sponsored by Siemens AG.
 
@@ -24183,9 +24272,12 @@ ndif
 [ESV]: https://csrc.nist.gov/Projects/cryptographic-module-validation-program/entropy-validations
 [RFC 2578 (STD 58), section 3.5]: https://datatracker.ietf.org/doc/html/rfc2578#section-3.5
 [RFC 3211]: https://datatracker.ietf.org/doc/html/rfc3211
+[RFC 3779]: https://datatracker.ietf.org/doc/html/rfc3779
 [RFC 4492 Section 5.1.2]: https://datatracker.ietf.org/doc/html/rfc4492#section-5.1.2
 [RFC 5280]: https://datatracker.ietf.org/doc/html/rfc5280
+[RFC 5280 Section 6.3.3]: https://datatracker.ietf.org/doc/html/rfc5280#section-6.3.3
 [RFC 5297]: https://datatracker.ietf.org/doc/html/rfc5297
+[RFC 5652]: https://datatracker.ietf.org/doc/html/rfc5652
 [RFC 7250]: https://datatracker.ietf.org/doc/html/rfc7250
 [RFC 7685]: https://datatracker.ietf.org/doc/html/rfc7685
 [RFC 7919]: https://datatracker.ietf.org/doc/html/rfc7919
@@ -24207,3 +24299,4 @@ ndif
 [SP 800-208]: https://csrc.nist.gov/pubs/sp/800/208/final
 [TCG Credential Profiles specification Version 1.2, Section 3.2.7]: https://trustedcomputinggroup.org/wp-content/uploads/Credential_Profiles_V1.2_Level2_Revision8.pdf#page=35
 [tls-hybrid-sm2-mlkem]: https://datatracker.ietf.org/doc/html/draft-yang-tls-hybrid-sm2-mlkem-03#name-iana-considerations
+[draft-rosomakho-tls-ecdhe-mlkem512-00]: https://datatracker.ietf.org/doc/html/draft-rosomakho-tls-ecdhe-mlkem512-00.html

@@ -311,8 +311,10 @@ static int vaes_gcm_setiv(PROV_GCM_CTX *ctx, const unsigned char *iv,
     gcmctx->mres = 0;
 
     /* IV is limited by 2^64 bits, thus 2^61 bytes */
+#if SIZE_MAX > 0xFFFFFFFFu
     if (ivlen > (U64(1) << 61))
         return 0;
+#endif
 
     ossl_aes_gcm_setiv_avx512(gcmctx->key, gcmctx, iv, ivlen);
 
@@ -328,9 +330,9 @@ static int vaes_gcm_aadupdate(PROV_GCM_CTX *ctx,
     unsigned int ares;
     size_t i, lenBlks;
 
-    /* Bad sequence: call of AAD update after message processing */
+    /* Bad sequence: AAD update after message processing (out of order) */
     if (gcmctx->len.u[1] > 0)
-        return 0;
+        return -2;
 
     alen += aad_len;
     /* AAD is limited by 2^64 bits, thus 2^61 bytes */

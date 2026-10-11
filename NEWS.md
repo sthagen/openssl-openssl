@@ -29,7 +29,8 @@ OpenSSL 4.2
 
 ### Major changes between OpenSSL 4.1 and OpenSSL 4.2 [under development]
 
-  * none
+  * Added support for Java keytool PKCS#12 files with symmetric keys.
+    New API `PKCS12_parse_ex()` with `PKCS12_PARSE_CTX` has been added.
 
 OpenSSL 4.1
 -----------
@@ -47,7 +48,7 @@ changes:
     that are present in MSVC 2013.
 
   * Added optimized ML-DSA and ML-KEM NTT operations on `ppc64le`;
-    optimized ML-DSA operations on `s390x`, and `x86_64`;
+    optimized ML-DSA operations on `x86_64`;
     AVX-512-optimized SHAKE x4 operations for ML-DSA on `x86_64`;
     AVX-512 and VAES optimizations for AES-CBC decryption on `x86_64`.
 
@@ -75,6 +76,16 @@ This release adds the following new features:
   * Support for IKEV2 KDF.
 
   * Initial support for the Elbrus2000 (`e2k`) architecture.
+
+Known issues in 4.1.0
+
+  * <https://github.com/openssl/openssl/issues/32878>
+    When a DTLS 1.3 KeyUpdate is received, all other outstanding
+    post-handshake records are dropped from the retransmission buffer.
+    This means post-handshake records still awaiting an ACK (such as a
+    NewSessionTicket) will no longer be retransmitted if the original
+    transmission is lost. A fix is in progress and planned for a future
+    release.
 
 OpenSSL 4.0
 -----------
